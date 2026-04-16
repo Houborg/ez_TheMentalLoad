@@ -4,6 +4,7 @@ import type {
   AppSettings,
   AssistantDraft,
   AssistantParseResponse,
+  AssistantStatusResponse,
   Calendar,
   DashboardSnapshot,
   Entry,
@@ -66,7 +67,7 @@ const USER_DEFAULT_MAIL_SETTINGS = {
 } as const;
 
 type AppView = 'planner' | 'settings';
-type SettingsTab = 'members' | 'mailpit' | 'weather' | 'sync' | 'theme' | 'birthdays' | 'ai' | 'general';
+type SettingsTab = 'members' | 'mailpit' | 'weather' | 'sync' | 'theme' | 'birthdays' | 'recurring' | 'ai' | 'general';
 type ToolTab = 'quick' | 'assistant' | 'ics';
 type EditableMember = { name: string; role: Member['role']; email: string };
 type EditableEntry = { id: string; title: string; status: Entry['status']; startTime: string; endTime: string };
@@ -95,6 +96,7 @@ type FoodModalDraft = {
 };
 
 type FoodEditorState = Record<FoodPlanDay, { dishName: string; groceryText: string; open: boolean }>;
+type RecurringWeekday = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
 export default function App() {
   const [members, setMembers] = useState<Member[]>([]);
@@ -123,6 +125,12 @@ export default function App() {
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [birthdayName, setBirthdayName] = useState('');
   const [birthdayDate, setBirthdayDate] = useState('2026-05-01');
+  const [recurringTitle, setRecurringTitle] = useState('Soccer training');
+  const [recurringMemberId, setRecurringMemberId] = useState('');
+  const [recurringCalendarId, setRecurringCalendarId] = useState('');
+  const [recurringWeekday, setRecurringWeekday] = useState<RecurringWeekday>('wednesday');
+  const [recurringStartClock, setRecurringStartClock] = useState('17:30');
+  const [recurringEndClock, setRecurringEndClock] = useState('19:30');
   const [funPrompt, setFunPrompt] = useState('Write a cheerful one-liner');
   const [funReply, setFunReply] = useState('Ask the AI playground anything fun about family planning.');
   const [toolTab, setToolTab] = useState<ToolTab>('quick');
@@ -569,6 +577,18 @@ export default function App() {
     }
   }
 
+  async function testOllamaConnection(): Promise<void> {
+    try {
+      const response = await fetch(apiUrl('/api/v1/assistant/status'));
+      const result = (await response.json()) as AssistantStatusResponse;
+      setFunReply(result.message);
+      setStatus(result.ok ? 'Ollama ready' : 'Ollama fallback active');
+    } catch {
+      setFunReply('Could not reach the backend assistant status endpoint.');
+      setStatus('Ollama status check failed');
+    }
+  }
+
   async function deleteBirthday(entryId: string): Promise<void> {
     const baseEntryId = toBaseEntryId(entryId);
     const linkedTasks = entries.filter((entry) =>
@@ -975,6 +995,49 @@ export default function App() {
     setStatus(result.message ?? (response.ok ? 'Test email sent' : 'Email failed'));
   }
 
+  async function testEventWithIcsInvite(): Promise<void> {
+    if (!selectedMemberId || !selectedCalendarId) {
+      setStatus('Choose a member and calendar first');
+      return;
+    }
+
+    try {
+      const owner = members.find((m) => m.id === selectedMemberId);
+      const ownerEmail = owner?.email?.trim();
+      const testTime = new Date();
+      testTime.setHours(testTime.getHours() + 1, 0, 0, 0);
+      const endTime = new Date(testTime.getTime() + 60 * 60 * 1000);
+
+      const response = await fetch(apiUrl('/api/v1/entries'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `🧪 Test Event [${new Date().toLocaleTimeString()}]`,
+          type: 'event',
+          ownerMemberId: selectedMemberId,
+          calendarId: selectedCalendarId,
+          startTime: testTime.toISOString(),
+          endTime: endTime.toISOString(),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          allDay: false,
+          reminders: [],
+          invitees: ownerEmail ? [{ email: ownerEmail }] : [],
+        }),
+      });
+
+      if (!response.ok) {
+        setStatus('Test event creation failed');
+        return;
+      }
+
+      const recipient = ownerEmail || settings?.mail.testRecipient || 'unknown';
+      setStatus(`✅ Test event created! ICS invite sent to: ${recipient}. Check Mailpit at http://localhost:8025 or your email inbox.`);
+      await loadDashboard();
+    } catch {
+      setStatus('Test event creation error');
+    }
+  }
+
   async function pullInboxToMailpit(): Promise<void> {
     const response = await fetch(apiUrl('/api/v1/mailpit/pull-inbox'), {
       method: 'POST',
@@ -1296,13 +1359,13 @@ export default function App() {
                         const isBirthday = isBirthdayTitle(entry.title);
                         const hasPending = entryIdsWithPendingTasks.has(entry.id);
                         const allDone = entryIdsWithAllTasksDone.has(entry.id);
-                        const pillLabel = isBirthday ? normalizeBirthdayTitle(entry.title) : (owner?.name ?? '?');
+                        const pillLabel = isBirthday ? extractBirthdayName(entry.title) : (owner?.name ?? '?');
                         const pillColor = isBirthday ? '#c7362f' : (memberColorById[entry.ownerMemberId] ?? '#8fa1b7');
                         return (
                           <button
                             key={entry.id}
                             type="button"
-                            className="month-pill"
+                            className={isBirthday ? 'month-pill birthday-pill' : 'month-pill'}
                             title={entry.title}
                             onClick={(event) => {
                               event.stopPropagation();
@@ -1310,9 +1373,10 @@ export default function App() {
                             }}
                             style={{ '--pill-color': pillColor } as CSSProperties}
                           >
+                            {isBirthday ? <span className="fi fi-dk birthday-pill-flag" aria-hidden="true" /> : null}
                             <span className="pill-name">{pillLabel}</span>
-                            {hasPending ? <span className="pill-task-icon pending" title="Unfinished tasks">📝</span> : null}
-                            {allDone ? <span className="pill-task-icon done" title="All tasks done">✓</span> : null}
+                            {!isBirthday && hasPending ? <span className="pill-task-icon pending" title="Unfinished tasks">📝</span> : null}
+                            {!isBirthday && allDone ? <span className="pill-task-icon done" title="All tasks done">✓</span> : null}
                           </button>
                         );
                       })}
@@ -1486,14 +1550,15 @@ export default function App() {
 
             <div className="settings-grid">
               <div className="tab-list" role="tablist" aria-label="Settings sections">
-                {['members', 'mailpit', 'weather', 'sync', 'theme', 'birthdays', 'ai', 'general'].map((tab) => {
+                {['members', 'mailpit', 'weather', 'sync', 'theme', 'birthdays', 'recurring', 'ai', 'general'].map((tab) => {
                   const labelMap: Record<string, string> = {
                     members: 'Members',
-                    mailpit: 'Mailpit',
+                    mailpit: 'Email transport',
                     weather: 'Weather',
-                    sync: 'Sync and mail',
+                    sync: 'Calendar sync',
                     theme: 'Theme',
                     birthdays: 'Birthdays',
+                    recurring: 'Recurring events',
                     ai: 'AI playground',
                     general: 'General',
                   };
@@ -1587,8 +1652,12 @@ export default function App() {
 
                 {activeSettingsTab === 'mailpit' && settings ? (
                   <section className="settings-section">
-                    <h3>Mailpit and mail transport</h3>
-                    <p className="subtle">Use this tab for Mailpit SMTP and your default SMTP/IMAP profile. Mailpit web UI is usually at http://localhost:8025.</p>
+                    <h3>Email transport (SMTP & IMAP)</h3>
+                    <p className="subtle">
+                      <strong>SMTP</strong> (sending): Delivers event invites, reminders, and test emails. For local dev, use Mailpit SMTP (mailpit:1025). 
+                      <strong>IMAP</strong> (receiving): Pulls emails from your inbox into Mailpit for syncing events. Leave empty for local dev.
+                      Mailpit web UI is at http://localhost:8025.
+                    </p>
 
                     <div className="summary-card">
                       <strong>Mailpit inbox bridge</strong>
@@ -1718,6 +1787,7 @@ export default function App() {
                     <div className="button-row">
                       <button type="button" onClick={() => void saveSettings()}>Save settings</button>
                       <button type="button" className="secondary-action" onClick={() => void sendTestEmail()}>Send test email</button>
+                      <button type="button" className="secondary-action" onClick={() => void testEventWithIcsInvite()}>Test event + ICS invite</button>
                       <button type="button" className="secondary-action" onClick={() => void pullInboxToMailpit()}>Pull inbox to Mailpit</button>
                     </div>
                   </section>
@@ -1797,7 +1867,13 @@ export default function App() {
 
                 {activeSettingsTab === 'sync' && settings ? (
                   <section className="settings-section">
-                    <h3>Mailpit and SMTP/IMAP settings</h3>
+                    <h3>Calendar sync (independent of email transport)</h3>
+                    <p className="subtle">
+                      Sync pulls calendar events from external sources. <strong>None</strong> = only local events. 
+                      <strong>Google/Apple/Outlook</strong> = OAuth connect to external calendar. 
+                      <strong>Invite-mail</strong> = pulls calendar invites from your email inbox (requires IMAP configured in Email transport tab).
+                      This is separate from email delivery (SMTP) which sends invites.
+                    </p>
                     <div className="three-col">
                       <label>
                         SMTP host
@@ -1960,9 +2036,72 @@ export default function App() {
                   </section>
                 ) : null}
 
+                {activeSettingsTab === 'recurring' ? (
+                  <section className="settings-section">
+                    <h3>Recurring events</h3>
+                    <p className="subtle">Create repeating weekly events from Settings. Example: Emil, Soccer training, every Wednesday from 17:30 to 19:30.</p>
+
+                    <form className="form inline-form" onSubmit={(event) => void saveRecurringEvent(event)}>
+                      <div className="two-col">
+                        <label>
+                          Event title
+                          <input aria-label="Recurring event title" value={recurringTitle} onChange={(event) => setRecurringTitle(event.target.value)} />
+                        </label>
+                        <label>
+                          Member
+                          <select aria-label="Recurring event member" value={recurringMemberId || selectedMemberId || members[0]?.id || ''} onChange={(event) => setRecurringMemberId(event.target.value)}>
+                            {members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="three-col">
+                        <label>
+                          Calendar
+                          <select aria-label="Recurring event calendar" value={recurringCalendarId || selectedCalendarId || calendars[0]?.id || ''} onChange={(event) => setRecurringCalendarId(event.target.value)}>
+                            {calendars.map((calendar) => <option key={calendar.id} value={calendar.id}>{calendar.name}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Weekday
+                          <select aria-label="Recurring event weekday" value={recurringWeekday} onChange={(event) => setRecurringWeekday(event.target.value as RecurringWeekday)}>
+                            <option value="monday">Monday</option>
+                            <option value="tuesday">Tuesday</option>
+                            <option value="wednesday">Wednesday</option>
+                            <option value="thursday">Thursday</option>
+                            <option value="friday">Friday</option>
+                            <option value="saturday">Saturday</option>
+                            <option value="sunday">Sunday</option>
+                          </select>
+                        </label>
+                        <label>
+                          Starts next
+                          <input value={formatLongDate(nextRecurringOccurrence(recurringWeekday))} readOnly />
+                        </label>
+                      </div>
+
+                      <div className="two-col">
+                        <label>
+                          Start time
+                          <input aria-label="Recurring event start time" type="time" value={recurringStartClock} onChange={(event) => setRecurringStartClock(event.target.value)} />
+                        </label>
+                        <label>
+                          End time
+                          <input aria-label="Recurring event end time" type="time" value={recurringEndClock} onChange={(event) => setRecurringEndClock(event.target.value)} />
+                        </label>
+                      </div>
+
+                      <div className="button-row">
+                        <button type="submit">Save recurring event</button>
+                      </div>
+                    </form>
+                  </section>
+                ) : null}
+
                 {activeSettingsTab === 'ai' && settings ? (
                   <section className="settings-section">
                     <h3>Manage Ollama and AI chat</h3>
+                    <p className="subtle">Use the test button to verify that the backend can reach Ollama and that the configured model is installed.</p>
                     <div className="two-col">
                       <label>
                         Ollama URL
@@ -1998,6 +2137,7 @@ export default function App() {
                     </label>
                     <div className="button-row">
                       <button type="button" onClick={() => void askFunAssistant()}>Ask AI</button>
+                      <button type="button" className="secondary-action" onClick={() => void testOllamaConnection()}>Test Ollama</button>
                       <button type="button" className="secondary-action" onClick={() => void saveSettings()}>Save settings</button>
                     </div>
                     <div className="draft-card">
@@ -2263,6 +2403,51 @@ export default function App() {
     setStatus('Birthday saved');
     await loadDashboard();
   }
+
+  async function saveRecurringEvent(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    const ownerMemberId = recurringMemberId || selectedMemberId || members[0]?.id;
+    const calendarId = recurringCalendarId || selectedCalendarId || calendars[0]?.id;
+    if (!recurringTitle.trim() || !ownerMemberId || !calendarId || !recurringStartClock || !recurringEndClock) {
+      setStatus('Recurring event title, member, calendar, and times are required');
+      return;
+    }
+
+    const baseDate = nextRecurringOccurrence(recurringWeekday);
+    const startDate = combineDateAndTime(baseDate, recurringStartClock);
+    const endDate = combineDateAndTime(baseDate, recurringEndClock);
+    if (endDate <= startDate) {
+      setStatus('Recurring event end time must be after start time');
+      return;
+    }
+
+    const response = await fetch(apiUrl('/api/v1/entries'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: recurringTitle.trim(),
+        type: 'event',
+        ownerMemberId,
+        calendarId,
+        startTime: startDate.toISOString(),
+        endTime: endDate.toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        allDay: false,
+        recurrenceRule: 'FREQ=WEEKLY',
+        reminders: [{ minutesBefore: 30 }],
+      }),
+    });
+
+    if (!response.ok) {
+      setStatus('Could not save recurring event');
+      return;
+    }
+
+    setRecurringTitle('');
+    setStatus('Recurring event saved');
+    await loadDashboard();
+  }
 }
 
 function createEmptyFoodEditor(): FoodEditorState {
@@ -2275,6 +2460,41 @@ function createEmptyFoodEditor(): FoodEditorState {
     saturday: { dishName: '', groceryText: '', open: false },
     sunday: { dishName: '', groceryText: '', open: false },
   };
+}
+
+function nextRecurringOccurrence(weekday: RecurringWeekday): Date {
+  const weekdayMap: Record<RecurringWeekday, number> = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+  };
+  const now = new Date();
+  const result = new Date(now);
+  result.setHours(0, 0, 0, 0);
+  const target = weekdayMap[weekday];
+  const delta = (target - result.getDay() + 7) % 7 || 7;
+  result.setDate(result.getDate() + delta);
+  return result;
+}
+
+function combineDateAndTime(date: Date, timeValue: string): Date {
+  const [hours, minutes] = timeValue.split(':').map((part) => Number(part));
+  const next = new Date(date);
+  next.setHours(hours || 0, minutes || 0, 0, 0);
+  return next;
+}
+
+function formatLongDate(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(date);
 }
 
 function buildFoodEditor(foodPlan: Record<FoodPlanDay, FoodPlanItem | undefined>): FoodEditorState {
@@ -2332,13 +2552,17 @@ function capitalize(value: string): string {
 }
 
 function normalizeBirthdayTitle(title: string): string {
+  const name = extractBirthdayName(title);
+  return name ? `🇩🇰 ${name}` : '🇩🇰';
+}
+
+function extractBirthdayName(title: string): string {
   const raw = title.trim();
   const withoutFlag = raw.replace(/^🇩🇰\s*/u, '').trim();
   const withoutBirthdayWord = withoutFlag
     .replace(/\b(birthday|f[øo]dselsdag)\b\s*/giu, '')
     .trim();
-  const name = withoutBirthdayWord || withoutFlag;
-  return name ? `🇩🇰 ${name}` : '🇩🇰';
+  return withoutBirthdayWord || withoutFlag;
 }
 
 function isBirthdayTitle(title: string): boolean {

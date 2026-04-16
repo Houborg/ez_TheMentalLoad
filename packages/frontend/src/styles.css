@@ -217,6 +217,17 @@ button[disabled] {
   line-height: 1.6;
 }
 
+.month-pill.birthday-pill {
+  gap: 3px;
+  width: fit-content;
+  max-width: 38%;
+  padding: 1px 4px;
+  border-left-width: 2px;
+  font-size: 5px;
+  line-height: 1.15;
+  justify-self: start;
+}
+
 .month-pill:hover {
   filter: brightness(0.94);
 }
@@ -229,6 +240,21 @@ button[disabled] {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.birthday-pill .pill-name {
+  flex: 0 1 auto;
+  max-width: 100%;
+  font-size: 5px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.birthday-pill-flag {
+  flex: 0 0 auto;
+  font-size: 6px;
+  line-height: 1;
+  border-radius: 999px;
 }
 
 .pill-task-icon {

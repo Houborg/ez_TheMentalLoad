@@ -24,7 +24,7 @@ export class SettingsService {
 
   async updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
     const current = await this.getSettings();
-    const next = mergeSettings(current, patch);
+    const next = normalizeLoadedSettings(mergeSettings(current, patch));
 
     if (next.sync.provider !== 'none' && !next.sync.isConnected) {
       throw new Error('Connect the selected sync provider before saving settings.');
@@ -39,7 +39,7 @@ export class SettingsService {
     const settings = await this.getSettings();
     const validation = validateSyncProvider(provider, configJson, settings);
 
-    this.cache = {
+    this.cache = normalizeLoadedSettings({
       ...settings,
       sync: {
         ...settings.sync,
@@ -51,7 +51,7 @@ export class SettingsService {
         isConnected: validation.ok,
       },
       updatedAt: new Date().toISOString(),
-    };
+    });
 
     if (validation.ok) {
       await this.persist(this.cache);
@@ -63,7 +63,7 @@ export class SettingsService {
   async markSyncRun(provider: SyncProvider, importedCount: number, configJson?: Record<string, unknown>): Promise<AppSettings> {
     const current = await this.getSettings();
     const lastSyncAt = new Date().toISOString();
-    const next: AppSettings = {
+    const next = normalizeLoadedSettings({
       ...current,
       sync: {
         ...current.sync,
@@ -81,7 +81,7 @@ export class SettingsService {
         lastSyncAt,
       },
       updatedAt: lastSyncAt,
-    };
+    });
 
     this.cache = next;
     await this.persist(next);
@@ -92,7 +92,12 @@ export class SettingsService {
     try {
       const existing = await fs.readFile(this.settingsPath, 'utf8');
       const parsed = JSON.parse(existing) as AppSettings;
-      return mergeSettings(createDefaultSettings(), parsed);
+      const merged = mergeSettings(createDefaultSettings(), parsed);
+      const normalized = normalizeLoadedSettings(merged);
+      if (JSON.stringify(normalized) !== JSON.stringify(merged)) {
+        await this.persist(normalized);
+      }
+      return normalized;
     } catch {
       const defaults = createDefaultSettings();
       await this.persist(defaults);
@@ -117,7 +122,7 @@ function createDefaultSettings(): AppSettings {
       enabled: true,
       language: 'en',
       modelName: process.env.OLLAMA_MODEL ?? 'llama3.2:3b',
-      ollamaUrl: process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434',
+      ollamaUrl: resolveDefaultOllamaUrl(),
     },
     mail: {
       smtpHost: process.env.SMTP_HOST ?? '',
@@ -176,6 +181,37 @@ function mergeSettings(current: AppSettings, patch: Partial<AppSettings>): AppSe
     },
     updatedAt,
   };
+}
+
+function normalizeLoadedSettings(settings: AppSettings): AppSettings {
+  const envOllamaUrl = process.env.OLLAMA_URL?.trim();
+  const currentUrl = settings.assistant.ollamaUrl?.trim();
+  const nextAssistant = { ...settings.assistant };
+
+  if ((!currentUrl || isLoopbackOllamaUrl(currentUrl)) && envOllamaUrl) {
+    nextAssistant.ollamaUrl = envOllamaUrl;
+  }
+
+  if (!nextAssistant.modelName?.trim() && process.env.OLLAMA_MODEL?.trim()) {
+    nextAssistant.modelName = process.env.OLLAMA_MODEL.trim();
+  }
+
+  if (nextAssistant === settings.assistant) {
+    return settings;
+  }
+
+  return {
+    ...settings,
+    assistant: nextAssistant,
+  };
+}
+
+function resolveDefaultOllamaUrl(): string {
+  return process.env.OLLAMA_URL?.trim() || 'http://127.0.0.1:11434';
+}
+
+function isLoopbackOllamaUrl(value: string): boolean {
+  return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(value.trim());
 }
 
 function validateSyncProvider(

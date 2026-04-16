@@ -41,10 +41,15 @@ export class InboxBridgeService {
       await client.connect();
       const lock = await client.getMailboxLock('INBOX');
       try {
+        const status = await client.status('INBOX', { messages: true });
         const fetched: Array<{ uid: number; source?: Buffer }> = [];
-        for await (const message of client.fetch('1:*', { uid: true, source: true })) {
-          if (message.uid > sinceUid && message.source) {
-            fetched.push({ uid: message.uid, source: message.source });
+        const messageCount = typeof status.messages === 'number' ? status.messages : 0;
+
+        if (messageCount > 0) {
+          for await (const message of client.fetch('1:*', { uid: true, source: true })) {
+            if (message.uid > sinceUid && message.source) {
+              fetched.push({ uid: message.uid, source: message.source });
+            }
           }
         }
 
