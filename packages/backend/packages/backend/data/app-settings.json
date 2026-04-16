@@ -1,7 +1,7 @@
 {
   "id": "local-settings",
   "theme": {
-    "mode": "dark"
+    "mode": "light"
   },
   "assistant": {
     "id": "assistant-default",
@@ -11,7 +11,7 @@
     "ollamaUrl": "http://127.0.0.1:11434"
   },
   "mail": {
-    "smtpHost": "",
+    "smtpHost": "mailpit",
     "smtpPort": 1025,
     "smtpUser": "",
     "smtpPass": "",
@@ -22,7 +22,7 @@
     "imapPass": "",
     "imapSecure": true,
     "testRecipient": "qa@local.test",
-    "previewMode": true,
+    "previewMode": false,
     "inboxSource": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nSUMMARY:Imported from sync\r\nDTSTART:20260430T080000Z\r\nDTEND:20260430T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR",
     "lastSyncAt": "2026-04-16T07:57:06.413Z"
   },
@@ -30,6 +30,9 @@
     "id": "sync-default",
     "provider": "google",
     "configJson": {
+      "mailpitPullMinutes": 1,
+      "mailpitAutoPullEnabled": true,
+      "mailpitLastUid": 16,
       "calendarId": "family-primary",
       "feedUrl": "https://calendar.example.test/family.ics",
       "lastProvider": "google",

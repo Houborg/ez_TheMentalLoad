@@ -15,6 +15,7 @@ export class AssistantService {
     private readonly listMembers: () => Promise<Member[]>,
     private readonly listCalendars: () => Promise<Calendar[]>,
     private readonly createEntry: (input: CreateEntryRequest) => Promise<unknown>,
+    private readonly getAssistantRuntimeConfig?: () => Promise<{ ollamaUrl?: string; modelName?: string }>,
   ) {}
 
   async parseRequest(input: AssistantParseRequest): Promise<AssistantParseResponse> {
@@ -36,7 +37,8 @@ export class AssistantService {
       return interpreted;
     }
 
-    const ollamaDraft = await tryOllamaFallback(input, initialDraft);
+    const runtimeConfig = await this.getAssistantRuntimeConfig?.();
+    const ollamaDraft = await tryOllamaFallback(input, initialDraft, runtimeConfig);
     if (ollamaDraft && ollamaDraft.missingFields.length < interpreted.missingFields.length) {
       return ollamaDraft;
     }
@@ -65,7 +67,8 @@ export class AssistantService {
   }
 
   async funChat(input: AssistantFunRequest): Promise<AssistantFunResponse> {
-    const ollamaResponse = await tryOllamaChat(input.message);
+    const runtimeConfig = await this.getAssistantRuntimeConfig?.();
+    const ollamaResponse = await tryOllamaChat(input.message, runtimeConfig);
     if (ollamaResponse) {
       return {
         source: 'ollama-fallback',
@@ -262,17 +265,22 @@ function buildFunFallback(message: string): string {
   return `MentalLoad playground: ${message.trim() || 'Ready for a cheerful family-planning prompt.'}`;
 }
 
-async function tryOllamaChat(message: string): Promise<string | undefined> {
-  if (!process.env.OLLAMA_URL || !process.env.OLLAMA_MODEL) {
+async function tryOllamaChat(
+  message: string,
+  runtimeConfig?: { ollamaUrl?: string; modelName?: string },
+): Promise<string | undefined> {
+  const ollamaUrl = runtimeConfig?.ollamaUrl?.trim() || process.env.OLLAMA_URL;
+  const modelName = runtimeConfig?.modelName?.trim() || process.env.OLLAMA_MODEL;
+  if (!ollamaUrl || !modelName) {
     return undefined;
   }
 
   try {
-    const response = await fetch(`${process.env.OLLAMA_URL}/api/generate`, {
+    const response = await fetch(`${ollamaUrl}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: process.env.OLLAMA_MODEL,
+        model: modelName,
         stream: false,
         prompt: `You are a cheerful family planning assistant. Reply briefly and helpfully. User: ${message}`,
       }),
@@ -292,17 +300,20 @@ async function tryOllamaChat(message: string): Promise<string | undefined> {
 async function tryOllamaFallback(
   input: AssistantParseRequest,
   baseDraft: AssistantDraft,
+  runtimeConfig?: { ollamaUrl?: string; modelName?: string },
 ): Promise<AssistantParseResponse | undefined> {
-  if (!process.env.OLLAMA_URL || !process.env.OLLAMA_MODEL) {
+  const ollamaUrl = runtimeConfig?.ollamaUrl?.trim() || process.env.OLLAMA_URL;
+  const modelName = runtimeConfig?.modelName?.trim() || process.env.OLLAMA_MODEL;
+  if (!ollamaUrl || !modelName) {
     return undefined;
   }
 
   try {
-    const response = await fetch(`${process.env.OLLAMA_URL}/api/generate`, {
+    const response = await fetch(`${ollamaUrl}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: process.env.OLLAMA_MODEL,
+        model: modelName,
         stream: false,
         prompt: [
           'Extract a scheduling draft as JSON with keys title, type, startTime, endTime, allDay, recurrenceRule, location.',

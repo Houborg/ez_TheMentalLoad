@@ -18,6 +18,8 @@
     "@mental-load/contracts": "0.1.0",
     "bullmq": "^5.56.1",
     "fastify": "^5.0.0",
+    "imapflow": "^1.3.1",
+    "mailparser": "^3.9.8",
     "node-ical": "^0.20.1",
     "nodemailer": "^8.0.5",
     "pg": "^8.16.0",
@@ -25,6 +27,7 @@
     "uuid": "^11.0.3"
   },
   "devDependencies": {
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^22.10.2",
     "@types/nodemailer": "^6.4.17",
     "@types/pg": "^8.15.2",

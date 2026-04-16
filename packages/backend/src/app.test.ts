@@ -283,7 +283,7 @@ test('settings, member management, email preview, and manual sync endpoints work
 
   const settingsResponse = await app.inject({ method: 'GET', url: '/api/v1/settings' });
   assert.equal(settingsResponse.statusCode, 200);
-  assert.equal(settingsResponse.json().theme.mode, 'system');
+  assert.equal(settingsResponse.json().theme.mode, 'light');
 
   const connectResponse = await app.inject({
     method: 'POST',

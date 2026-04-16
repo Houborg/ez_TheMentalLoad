@@ -1,4 +1,15 @@
-import type { AppSettings, AssistantDraft, Calendar, Entry, Member, MemberRole, SupportedLanguage, SyncProvider } from './domain';
+import type {
+  AppSettings,
+  AssistantDraft,
+  Calendar,
+  Entry,
+  FoodPlanDay,
+  FoodPlanItem,
+  Member,
+  MemberRole,
+  SupportedLanguage,
+  SyncProvider,
+} from './domain';
 
 export interface ApiHealth {
   status: 'ok';
@@ -48,6 +59,13 @@ export interface AssistantFunResponse {
 export interface CreateMemberRequest {
   name: string;
   role: MemberRole;
+  email?: string;
+}
+
+export interface UpdateMemberRequest {
+  name?: string;
+  role?: MemberRole;
+  email?: string;
 }
 
 export type UpdateSettingsRequest = Partial<AppSettings>;
@@ -60,6 +78,18 @@ export interface MailActionResponse {
   ok: boolean;
   preview: boolean;
   transport: 'log' | 'smtp';
+  message: string;
+}
+
+export interface PullInboxToMailpitRequest {
+  sinceUid?: number;
+  limit?: number;
+}
+
+export interface PullInboxToMailpitResponse {
+  ok: boolean;
+  importedCount: number;
+  latestUid: number;
   message: string;
 }
 
@@ -91,6 +121,23 @@ export interface SyncRunResponse {
   message: string;
 }
 
+export interface ListFoodPlanResponse {
+  weekStart: string;
+  items: FoodPlanItem[];
+}
+
+export interface UpsertFoodPlanItemRequest {
+  weekStart: string;
+  day: FoodPlanDay;
+  dishName: string;
+  groceryList?: string[];
+}
+
+export interface DeleteFoodPlanItemRequest {
+  weekStart: string;
+  day: FoodPlanDay;
+}
+
 export type CreateEntryRequest = Pick<
   Entry,
   | 'title'
@@ -105,6 +152,8 @@ export type CreateEntryRequest = Pick<
   | 'recurrenceRule'
 > & {
   reminders?: Array<{ minutesBefore: number }>;
+  invitees?: Array<{ email: string }>;
+  parentEntryId?: string;
 };
 
 export type UpdateEntryRequest = Partial<CreateEntryRequest> & {

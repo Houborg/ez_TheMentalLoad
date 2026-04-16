@@ -71,7 +71,12 @@ export class EntryService {
       status: 'active',
       location: input.location,
       recurrenceRule: input.recurrenceRule,
-      invitees: [],
+      parentEntryId: input.parentEntryId,
+      invitees: (input.invitees ?? []).map((invitee) => ({
+        id: uuid(),
+        email: invitee.email,
+        status: 'pending',
+      })),
       linkedEntryIds: [],
       createdAt: now,
       updatedAt: now,
