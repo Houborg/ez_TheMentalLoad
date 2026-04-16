@@ -1,0 +1,24 @@
+import type { Member } from '@mental-load/contracts';
+
+export interface MemberRepository {
+  list(): Promise<Member[]>;
+  findById(id: string): Promise<Member | undefined>;
+  create(member: Member): Promise<Member>;
+}
+
+export class InMemoryMemberRepository implements MemberRepository {
+  constructor(private readonly members: Member[] = []) {}
+
+  async list(): Promise<Member[]> {
+    return [...this.members];
+  }
+
+  async findById(id: string): Promise<Member | undefined> {
+    return this.members.find((member) => member.id === id);
+  }
+
+  async create(member: Member): Promise<Member> {
+    this.members.push(member);
+    return member;
+  }
+}

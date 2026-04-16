@@ -1,0 +1,43 @@
+{
+  "id": "local-settings",
+  "theme": {
+    "mode": "dark"
+  },
+  "assistant": {
+    "id": "assistant-default",
+    "enabled": true,
+    "language": "en",
+    "modelName": "llama3.2:3b",
+    "ollamaUrl": "http://127.0.0.1:11434"
+  },
+  "mail": {
+    "smtpHost": "",
+    "smtpPort": 1025,
+    "smtpUser": "",
+    "smtpPass": "",
+    "smtpFrom": "mental-load@local.test",
+    "imapHost": "",
+    "imapPort": 993,
+    "imapUser": "",
+    "imapPass": "",
+    "imapSecure": true,
+    "testRecipient": "qa@local.test",
+    "previewMode": true,
+    "inboxSource": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nSUMMARY:Imported from sync\r\nDTSTART:20260430T080000Z\r\nDTEND:20260430T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR",
+    "lastSyncAt": "2026-04-16T07:57:06.413Z"
+  },
+  "sync": {
+    "id": "sync-default",
+    "provider": "google",
+    "configJson": {
+      "calendarId": "family-primary",
+      "feedUrl": "https://calendar.example.test/family.ics",
+      "lastProvider": "google",
+      "lastImportCount": 1,
+      "inboxSource": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nSUMMARY:Imported from sync\r\nDTSTART:20260430T080000Z\r\nDTEND:20260430T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR"
+    },
+    "isConnected": true,
+    "lastSyncAt": "2026-04-16T07:57:06.413Z"
+  },
+  "updatedAt": "2026-04-16T07:57:06.413Z"
+}
