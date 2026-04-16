@@ -1,4 +1,5 @@
 import type {
+  AssistantStatusResponse,
   AssistantConfirmRequest,
   AssistantDraft,
   AssistantFunRequest,
@@ -80,6 +81,11 @@ export class AssistantService {
       source: 'rule-based',
       response: buildFunFallback(input.message),
     };
+  }
+
+  async getStatus(): Promise<AssistantStatusResponse> {
+    const runtimeConfig = await this.getAssistantRuntimeConfig?.();
+    return checkOllamaStatus(runtimeConfig);
   }
 }
 
@@ -269,18 +275,17 @@ async function tryOllamaChat(
   message: string,
   runtimeConfig?: { ollamaUrl?: string; modelName?: string },
 ): Promise<string | undefined> {
-  const ollamaUrl = runtimeConfig?.ollamaUrl?.trim() || process.env.OLLAMA_URL;
-  const modelName = runtimeConfig?.modelName?.trim() || process.env.OLLAMA_MODEL;
-  if (!ollamaUrl || !modelName) {
+  const config = resolveOllamaConfig(runtimeConfig);
+  if (!config) {
     return undefined;
   }
 
   try {
-    const response = await fetch(`${ollamaUrl}/api/generate`, {
+    const response = await fetch(`${config.ollamaUrl}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: modelName,
+        model: config.modelName,
         stream: false,
         prompt: `You are a cheerful family planning assistant. Reply briefly and helpfully. User: ${message}`,
       }),
@@ -302,18 +307,17 @@ async function tryOllamaFallback(
   baseDraft: AssistantDraft,
   runtimeConfig?: { ollamaUrl?: string; modelName?: string },
 ): Promise<AssistantParseResponse | undefined> {
-  const ollamaUrl = runtimeConfig?.ollamaUrl?.trim() || process.env.OLLAMA_URL;
-  const modelName = runtimeConfig?.modelName?.trim() || process.env.OLLAMA_MODEL;
-  if (!ollamaUrl || !modelName) {
+  const config = resolveOllamaConfig(runtimeConfig);
+  if (!config) {
     return undefined;
   }
 
   try {
-    const response = await fetch(`${ollamaUrl}/api/generate`, {
+    const response = await fetch(`${config.ollamaUrl}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: modelName,
+        model: config.modelName,
         stream: false,
         prompt: [
           'Extract a scheduling draft as JSON with keys title, type, startTime, endTime, allDay, recurrenceRule, location.',
@@ -347,5 +351,75 @@ async function tryOllamaFallback(
     };
   } catch {
     return undefined;
+  }
+}
+
+function resolveOllamaConfig(runtimeConfig?: { ollamaUrl?: string; modelName?: string }): { ollamaUrl: string; modelName: string } | undefined {
+  const ollamaUrl = runtimeConfig?.ollamaUrl?.trim() || process.env.OLLAMA_URL?.trim();
+  const modelName = runtimeConfig?.modelName?.trim() || process.env.OLLAMA_MODEL?.trim();
+  if (!ollamaUrl || !modelName) {
+    return undefined;
+  }
+
+  return { ollamaUrl, modelName };
+}
+
+async function checkOllamaStatus(
+  runtimeConfig?: { ollamaUrl?: string; modelName?: string },
+): Promise<AssistantStatusResponse> {
+  const config = resolveOllamaConfig(runtimeConfig);
+  if (!config) {
+    return {
+      ok: false,
+      enabled: false,
+      reachable: false,
+      modelAvailable: false,
+      provider: 'rule-based',
+      message: 'Ollama is not configured. The assistant will use rule-based fallback only.',
+    };
+  }
+
+  try {
+    const response = await fetch(`${config.ollamaUrl}/api/tags`);
+    if (!response.ok) {
+      return {
+        ok: false,
+        enabled: true,
+        reachable: false,
+        modelAvailable: false,
+        provider: 'rule-based',
+        ollamaUrl: config.ollamaUrl,
+        modelName: config.modelName,
+        message: `Ollama is configured but not reachable at ${config.ollamaUrl}.`,
+      };
+    }
+
+    const payload = (await response.json()) as { models?: Array<{ name?: string; model?: string }> };
+    const models = payload.models ?? [];
+    const modelAvailable = models.some((entry) => entry.name === config.modelName || entry.model === config.modelName);
+
+    return {
+      ok: modelAvailable,
+      enabled: true,
+      reachable: true,
+      modelAvailable,
+      provider: modelAvailable ? 'ollama' : 'rule-based',
+      ollamaUrl: config.ollamaUrl,
+      modelName: config.modelName,
+      message: modelAvailable
+        ? `Ollama is ready with model ${config.modelName}.`
+        : `Ollama is reachable, but model ${config.modelName} is not installed.`,
+    };
+  } catch {
+    return {
+      ok: false,
+      enabled: true,
+      reachable: false,
+      modelAvailable: false,
+      provider: 'rule-based',
+      ollamaUrl: config.ollamaUrl,
+      modelName: config.modelName,
+      message: `Ollama is configured but not reachable at ${config.ollamaUrl}.`,
+    };
   }
 }

@@ -56,6 +56,17 @@ export interface AssistantFunResponse {
   response: string;
 }
 
+export interface AssistantStatusResponse {
+  ok: boolean;
+  enabled: boolean;
+  reachable: boolean;
+  modelAvailable: boolean;
+  provider: 'ollama' | 'rule-based';
+  ollamaUrl?: string;
+  modelName?: string;
+  message: string;
+}
+
 export interface CreateMemberRequest {
   name: string;
   role: MemberRole;

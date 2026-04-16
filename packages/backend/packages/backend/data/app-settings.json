@@ -8,7 +8,7 @@
     "enabled": true,
     "language": "en",
     "modelName": "llama3.2:3b",
-    "ollamaUrl": "http://127.0.0.1:11434"
+    "ollamaUrl": "http://ollama:11434"
   },
   "mail": {
     "smtpHost": "mailpit",

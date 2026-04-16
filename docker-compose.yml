@@ -37,8 +37,20 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: mentalload-ollama
+    ports:
+      - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: mentalload-ollama-init
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "llama3.2:3b"]
+    restart: on-failure
 
   backend:
     build:
@@ -46,6 +58,8 @@ services:
       dockerfile: packages/backend/Dockerfile
     container_name: mentalload-backend
     depends_on:
+      ollama:
+        condition: service_started
       postgres:
         condition: service_healthy
       redis:
@@ -69,6 +83,8 @@ services:
       dockerfile: packages/backend/Dockerfile
     container_name: mentalload-worker
     depends_on:
+      ollama:
+        condition: service_started
       redis:
         condition: service_healthy
       postgres:

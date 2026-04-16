@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import { v4 as uuid } from 'uuid';
 import type {
+  AssistantStatusResponse,
   AssistantConfirmRequest,
   AssistantFunRequest,
   AssistantParseRequest,
@@ -275,6 +276,8 @@ export async function buildApp() {
     reply.code(200);
     return result;
   });
+
+  app.get('/api/v1/assistant/status', async (): Promise<AssistantStatusResponse> => assistantService.getStatus());
 
   app.post<{ Body: AssistantConfirmRequest }>('/api/v1/assistant/confirm', async (request, reply) => {
     try {
