@@ -4,9 +4,11 @@ import { runMigrations } from '../database/migrations';
 import { InMemoryReminderScheduler, RedisReminderScheduler, type ReminderScheduler } from '../reminders/reminder-scheduler';
 import { InMemoryCalendarRepository, type CalendarRepository } from './calendar-repository';
 import { InMemoryEntryRepository, type EntryRepository } from './entry-repository';
+import { InMemoryFoodPlanRepository, type FoodPlanRepository } from './food-plan-repository';
 import { InMemoryMemberRepository, type MemberRepository } from './member-repository';
 import { PostgresCalendarRepository } from './postgres/calendar-repository';
 import { PostgresEntryRepository } from './postgres/entry-repository';
+import { PostgresFoodPlanRepository } from './postgres/food-plan-repository';
 import { PostgresMemberRepository } from './postgres/member-repository';
 
 const DEMO_IDS = {
@@ -21,6 +23,7 @@ export interface RepositoryBundle {
   memberRepository: MemberRepository;
   calendarRepository: CalendarRepository;
   entryRepository: EntryRepository;
+  foodPlanRepository: FoodPlanRepository;
   reminderScheduler: ReminderScheduler;
   persistence: 'memory' | 'postgres';
   close(): Promise<void>;
@@ -41,6 +44,7 @@ export async function createRepositoryBundle(): Promise<RepositoryBundle> {
         memberRepository: new PostgresMemberRepository(pool),
         calendarRepository: new PostgresCalendarRepository(pool),
         entryRepository: new PostgresEntryRepository(pool),
+        foodPlanRepository: new PostgresFoodPlanRepository(pool),
         reminderScheduler: scheduler,
         persistence: 'postgres',
         close: async () => {
@@ -68,6 +72,7 @@ export async function createRepositoryBundle(): Promise<RepositoryBundle> {
     memberRepository: new InMemoryMemberRepository(seedMembers),
     calendarRepository: new InMemoryCalendarRepository(seedCalendars),
     entryRepository: new InMemoryEntryRepository(),
+    foodPlanRepository: new InMemoryFoodPlanRepository(),
     reminderScheduler: scheduler,
     persistence: 'memory',
     close: async () => undefined,

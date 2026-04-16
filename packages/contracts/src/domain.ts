@@ -9,6 +9,7 @@ export interface Member {
   id: string;
   name: string;
   role: MemberRole;
+  email?: string;
   createdAt: string;
 }
 
@@ -130,5 +131,17 @@ export interface AppSettings {
   assistant: AssistantConfig;
   mail: MailSettings;
   sync: SyncSettings;
+  updatedAt: string;
+}
+
+export type FoodPlanDay = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+
+export interface FoodPlanItem {
+  id: string;
+  weekStart: string;
+  day: FoodPlanDay;
+  dishName: string;
+  groceryList: string[];
+  createdAt: string;
   updatedAt: string;
 }

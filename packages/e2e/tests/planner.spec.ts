@@ -60,7 +60,7 @@ test('loads the planner shell and manages the tabbed settings experience', async
   await page.getByRole('textbox', { name: 'Birthday name' }).fill('Noah');
   await page.getByRole('textbox', { name: 'Birthday date' }).fill('2026-05-01');
   await page.getByRole('button', { name: 'Save birthday' }).click();
-  await expect(page.getByText('Noah birthday').first()).toBeVisible();
+  await expect(page.getByText('🇩🇰 Noah').first()).toBeVisible();
 
   await page.getByRole('tab', { name: 'AI playground' }).click();
   await page.getByRole('textbox', { name: 'Fun AI prompt' }).fill('Write a cheerful one-liner');

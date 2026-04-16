@@ -5,6 +5,11 @@ export interface ReminderNotificationPayload {
   to: string;
   subject: string;
   text: string;
+  attachments?: Array<{
+    filename: string;
+    content: string;
+    contentType: string;
+  }>;
 }
 
 export interface MailActionResult {
@@ -61,6 +66,7 @@ export class MailService {
       to: payload.to,
       subject: payload.subject,
       text: payload.text,
+      attachments: payload.attachments,
     });
 
     return {

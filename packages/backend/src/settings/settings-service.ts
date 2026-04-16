@@ -111,7 +111,7 @@ function createDefaultSettings(): AppSettings {
 
   return {
     id: 'local-settings',
-    theme: { mode: 'system' },
+    theme: { mode: 'light' },
     assistant: {
       id: 'assistant-default',
       enabled: true,
@@ -137,7 +137,11 @@ function createDefaultSettings(): AppSettings {
     sync: {
       id: 'sync-default',
       provider: 'none',
-      configJson: {},
+      configJson: {
+        mailpitPullMinutes: 1,
+        mailpitAutoPullEnabled: true,
+        mailpitLastUid: 0,
+      },
       isConnected: true,
     },
     updatedAt: now,
