@@ -1,0 +1,236 @@
+{
+  "version": "v1",
+  "source": "packages/backend/src/app.ts",
+  "contracts": [
+    "packages/contracts/src/api.ts",
+    "packages/contracts/src/domain.ts"
+  ],
+  "http": [
+    {
+      "method": "GET",
+      "path": "/api/v1/health",
+      "domain": "health",
+      "request": null,
+      "response": "ApiHealth",
+      "statusCodes": [200]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings",
+      "domain": "settings",
+      "request": null,
+      "response": "AppSettings",
+      "statusCodes": [200]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/settings",
+      "domain": "settings",
+      "request": "UpdateSettingsRequest",
+      "response": "AppSettings | { message: string }",
+      "statusCodes": [200, 400]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/test-email",
+      "domain": "settings",
+      "request": "TestEmailRequest",
+      "response": "MailActionResponse",
+      "statusCodes": [200]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/mailpit/pull-inbox",
+      "domain": "mail",
+      "request": "PullInboxToMailpitRequest",
+      "response": "PullInboxToMailpitResponse",
+      "statusCodes": [200, 400]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sync/connect",
+      "domain": "sync",
+      "request": "SyncConnectRequest",
+      "response": "SyncConnectResponse",
+      "statusCodes": [200, 400]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sync/run",
+      "domain": "sync",
+      "request": "SyncRunRequest",
+      "response": "SyncRunResponse",
+      "statusCodes": [200, 400]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/members",
+      "domain": "members",
+      "request": null,
+      "response": "Member[]",
+      "statusCodes": [200]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/members",
+      "domain": "members",
+      "request": "CreateMemberRequest",
+      "response": "Member | { message: string }",
+      "statusCodes": [201, 400]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/members/:id",
+      "domain": "members",
+      "request": "UpdateMemberRequest",
+      "response": "Member | { message: string }",
+      "statusCodes": [200, 400, 404]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/food-plan",
+      "domain": "food-plan",
+      "request": "Query { weekStart?: string }",
+      "response": "ListFoodPlanResponse | { message: string }",
+      "statusCodes": [200, 400]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/food-plan",
+      "domain": "food-plan",
+      "request": "UpsertFoodPlanItemRequest",
+      "response": "FoodPlanItem | { message: string }",
+      "statusCodes": [200, 400]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/food-plan",
+      "domain": "food-plan",
+      "request": "DeleteFoodPlanItemRequest",
+      "response": "null | { message: string }",
+      "statusCodes": [204, 400, 404]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calendars",
+      "domain": "calendars",
+      "request": null,
+      "response": "Calendar[]",
+      "statusCodes": [200]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calendars/:id/export.ics",
+      "domain": "calendars",
+      "request": null,
+      "response": "text/calendar",
+      "statusCodes": [200]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/entries",
+      "domain": "entries",
+      "request": null,
+      "response": "Entry[]",
+      "statusCodes": [200]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/entries/occurrences",
+      "domain": "entries",
+      "request": "Query { from?: string; to?: string }",
+      "response": "Entry[] | { message: string }",
+      "statusCodes": [200, 400]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reminders/jobs",
+      "domain": "entries",
+      "request": null,
+      "response": "Array<{ id: string; runAt: string }>",
+      "statusCodes": [200]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/dashboard",
+      "domain": "dashboard",
+      "request": null,
+      "response": "DashboardSnapshot",
+      "statusCodes": [200]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/entries",
+      "domain": "entries",
+      "request": "CreateEntryRequest",
+      "response": "Entry",
+      "statusCodes": [201]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/entries/:id",
+      "domain": "entries",
+      "request": "UpdateEntryRequest",
+      "response": "Entry | { message: string }",
+      "statusCodes": [200, 404]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/entries/:id",
+      "domain": "entries",
+      "request": null,
+      "response": "null | { message: string }",
+      "statusCodes": [204, 404]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/entries/import/ics",
+      "domain": "entries",
+      "request": "{ calendarId: string; ownerMemberId: string; ics: string }",
+      "response": "{ importedCount: number }",
+      "statusCodes": [200]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assistant/parse",
+      "domain": "assistant",
+      "request": "AssistantParseRequest",
+      "response": "AssistantParseResponse",
+      "statusCodes": [200]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assistant/fun",
+      "domain": "assistant",
+      "request": "AssistantFunRequest",
+      "response": "AssistantFunResponse",
+      "statusCodes": [200]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistant/status",
+      "domain": "assistant",
+      "request": null,
+      "response": "AssistantStatusResponse",
+      "statusCodes": [200]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assistant/confirm",
+      "domain": "assistant",
+      "request": "AssistantConfirmRequest",
+      "response": "Entry | { message: string }",
+      "statusCodes": [201, 400]
+    }
+  ],
+  "websocket": {
+    "path": "/ws",
+    "events": [
+      { "name": "connected", "payload": "{ type: 'connected', id: string }" },
+      { "name": "entry.created", "payload": "{ type: 'entry.created', payload: { entry: Entry }, occurredAt: string }" },
+      { "name": "entry.updated", "payload": "{ type: 'entry.updated', payload: { entry: Entry }, occurredAt: string }" },
+      { "name": "entry.deleted", "payload": "{ type: 'entry.deleted', payload: { entry: Entry }, occurredAt: string }" },
+      { "name": "reminder.scheduled", "payload": "{ type: 'reminder.scheduled', payload: unknown, occurredAt: string }" }
+    ]
+  }
+}
