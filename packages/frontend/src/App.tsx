@@ -1,9 +1,7 @@
-import { FormEvent, Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { FormEvent, Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import confetti from 'canvas-confetti';
 import type {
   AppSettings,
-  AssistantDraft,
-  AssistantParseResponse,
   AssistantStatusResponse,
   Calendar,
   DashboardSnapshot,
@@ -12,11 +10,10 @@ import type {
   FoodPlanItem,
   ListFoodPlanResponse,
   Member,
+  ThemeAppearance,
   PullInboxToMailpitResponse,
 } from '@mental-load/contracts';
 
-const initialStart = nextRoundedHour();
-const initialEnd = new Date(initialStart.getTime() + 60 * 60 * 1000);
 const sampleIcs = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT', 'SUMMARY:Imported school event', 'DTSTART:20260428T080000Z', 'DTEND:20260428T090000Z', 'RRULE:FREQ=WEEKLY;COUNT=2', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
 const AGENDA_DAYS = 6;
 const FOOD_DAYS: FoodPlanDay[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -68,7 +65,6 @@ const USER_DEFAULT_MAIL_SETTINGS = {
 
 type AppView = 'planner' | 'settings';
 type SettingsTab = 'members' | 'mailpit' | 'weather' | 'sync' | 'theme' | 'birthdays' | 'recurring' | 'ai' | 'general';
-type ToolTab = 'quick' | 'assistant' | 'ics';
 type EditableMember = { name: string; role: Member['role']; email: string };
 type EditableEntry = { id: string; title: string; status: Entry['status']; startTime: string; endTime: string };
 type WeatherDayForecast = { code: number; icon: string; label: string; temperatureC?: number };
@@ -109,17 +105,7 @@ export default function App() {
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('members');
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [selectedCalendarId, setSelectedCalendarId] = useState('');
-  const [title, setTitle] = useState('School pickup');
-  const [entryType, setEntryType] = useState<Entry['type']>('event');
-  const [recurrenceRule, setRecurrenceRule] = useState('');
-  const [allDay, setAllDay] = useState(false);
-  const [startTime, setStartTime] = useState(toDateTimeLocal(initialStart));
-  const [endTime, setEndTime] = useState(toDateTimeLocal(initialEnd));
   const [reminderJobs, setReminderJobs] = useState(0);
-  const [icsText, setIcsText] = useState(sampleIcs);
-  const [assistantMessage, setAssistantMessage] = useState('make an event tomorrow at 10:00 in Saga calendar: Birthday at ELLA');
-  const [assistantDraft, setAssistantDraft] = useState<AssistantDraft | null>(null);
-  const [assistantResponse, setAssistantResponse] = useState('');
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberRole, setNewMemberRole] = useState<Member['role']>('child');
   const [newMemberEmail, setNewMemberEmail] = useState('');
@@ -133,8 +119,6 @@ export default function App() {
   const [recurringEndClock, setRecurringEndClock] = useState('19:30');
   const [funPrompt, setFunPrompt] = useState('Write a cheerful one-liner');
   const [funReply, setFunReply] = useState('Ask the AI playground anything fun about family planning.');
-  const [toolTab, setToolTab] = useState<ToolTab>('quick');
-  const [toolsOpen, setToolsOpen] = useState(true);
   const [editingEntry, setEditingEntry] = useState<EditableEntry | null>(null);
   const [weatherByDate, setWeatherByDate] = useState<Record<string, WeatherDayForecast>>({});
   const [weatherLookupBusy, setWeatherLookupBusy] = useState(false);
@@ -150,8 +134,7 @@ export default function App() {
     saturday: undefined,
     sunday: undefined,
   });
-  const [foodEditor, setFoodEditor] = useState<FoodEditorState>(() => createEmptyFoodEditor());
-  const autohideRef = useRef<number | null>(null);
+  const [, setFoodEditor] = useState<FoodEditorState>(() => createEmptyFoodEditor());
 
   const agendaDays = useMemo(() => buildAgendaDays(), []);
   const monthDays = useMemo(() => buildMonthDays(new Date()), []);
@@ -266,15 +249,30 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const mode = settings?.theme.mode ?? 'light';
-    document.documentElement.dataset.theme = mode;
-  }, [settings?.theme.mode]);
+    const root = document.documentElement;
+    const modeSetting = settings?.theme.mode ?? 'light';
+    const appearanceSetting = settings?.theme.appearance ?? 'classic';
 
-  useEffect(() => () => {
-    if (autohideRef.current) {
-      window.clearTimeout(autohideRef.current);
+    const applyTheme = () => {
+      const resolvedMode = modeSetting === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        : modeSetting;
+      root.dataset.theme = resolvedMode;
+      root.dataset.appearance = appearanceSetting;
+    };
+
+    applyTheme();
+
+    if (modeSetting !== 'system') {
+      return;
     }
-  }, []);
+
+    const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemThemeChange = () => applyTheme();
+
+    darkModeQuery.addEventListener('change', handleSystemThemeChange);
+    return () => darkModeQuery.removeEventListener('change', handleSystemThemeChange);
+  }, [settings?.theme.mode, settings?.theme.appearance]);
 
   const activeMember = useMemo(
     () => members.find((member) => member.id === selectedMemberId),
@@ -444,119 +442,6 @@ export default function App() {
     setFoodEditor(buildFoodEditor(mapped));
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-
-    if (!selectedMemberId || !selectedCalendarId) {
-      setStatus('Select a member and calendar first');
-      return;
-    }
-
-    const ownerEmail = members.find((member) => member.id === selectedMemberId)?.email?.trim();
-
-    try {
-      const response = await fetch(apiUrl('/api/v1/entries'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
-          type: entryType,
-          ownerMemberId: selectedMemberId,
-          calendarId: selectedCalendarId,
-          startTime: new Date(startTime).toISOString(),
-          endTime: new Date(endTime).toISOString(),
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          allDay,
-          recurrenceRule: recurrenceRule || undefined,
-          reminders: [{ minutesBefore: 30 }],
-          invitees: ownerEmail ? [{ email: ownerEmail }] : [],
-        }),
-      });
-
-      if (!response.ok) {
-        setStatus('Could not create event');
-        return;
-      }
-
-      setStatus('Event created');
-      setTitle('');
-      setRecurrenceRule('');
-      triggerToolsAutohide();
-      await loadDashboard();
-    } catch {
-      setStatus('Could not create event');
-    }
-  }
-
-  async function importIcs(): Promise<void> {
-    const response = await fetch(apiUrl('/api/v1/entries/import/ics'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        calendarId: selectedCalendarId,
-        ownerMemberId: selectedMemberId,
-        ics: icsText,
-      }),
-    });
-
-    if (!response.ok) {
-      setStatus('ICS import failed');
-      return;
-    }
-
-    const result = (await response.json()) as { importedCount: number };
-    setStatus(`Imported ${result.importedCount} item(s)`);
-    triggerToolsAutohide();
-    await loadDashboard();
-  }
-
-  async function parseAssistant(): Promise<void> {
-    const response = await fetch(apiUrl('/api/v1/assistant/parse'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: assistantMessage,
-        memberId: selectedMemberId,
-        calendarId: selectedCalendarId,
-        language: settings?.assistant.language ?? 'en',
-        existingDraft: assistantDraft ?? undefined,
-      }),
-    });
-
-    if (!response.ok) {
-      setAssistantResponse('Assistant parsing failed');
-      return;
-    }
-
-    const result = (await response.json()) as AssistantParseResponse;
-    setAssistantDraft(result.draft);
-    setAssistantResponse(result.response);
-    setStatus(result.missingFields.length === 0 ? 'Assistant draft ready' : 'Assistant follow-up needed');
-  }
-
-  async function confirmAssistant(): Promise<void> {
-    if (!assistantDraft) {
-      return;
-    }
-
-    const response = await fetch(apiUrl('/api/v1/assistant/confirm'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ draft: assistantDraft }),
-    });
-
-    if (!response.ok) {
-      setStatus('Assistant confirm failed');
-      return;
-    }
-
-    setStatus('Assistant entry created');
-    setAssistantDraft(null);
-    setAssistantMessage('');
-    triggerToolsAutohide();
-    await loadDashboard();
-  }
-
   async function askFunAssistant(): Promise<void> {
     try {
       const response = await fetch(apiUrl('/api/v1/assistant/fun'), {
@@ -713,12 +598,13 @@ export default function App() {
 
   function openExistingEventModal(entry: Entry): void {
     const dateKey = entryDateKey(entry.startTime);
+    const baseEntryId = toBaseEntryId(entry.id);
     const linkedTasks = entries
-      .filter((candidate) => candidate.parentEntryId === entry.id && candidate.type === 'task')
+      .filter((candidate) => candidate.type === 'task' && (candidate.parentEntryId === entry.id || candidate.parentEntryId === baseEntryId))
       .sort((left, right) => left.startTime.localeCompare(right.startTime));
 
     setEventModalDraft({
-      entryId: entry.id,
+      entryId: baseEntryId,
       dateKey,
       title: entry.title,
       type: entry.type,
@@ -729,7 +615,7 @@ export default function App() {
       endTime: toDateTimeLocal(new Date(entry.endTime)),
       allDay: entry.allDay,
       taskLines: '',
-      existingTasks: linkedTasks.map((task) => ({ id: task.id, title: task.title, status: task.status })),
+      existingTasks: linkedTasks.map((task) => ({ id: toBaseEntryId(task.id), title: task.title, status: task.status })),
     });
   }
 
@@ -778,7 +664,13 @@ export default function App() {
     }
 
     const updatedOrCreated = (await response.json()) as Entry;
-    await syncEventTasks(updatedOrCreated, eventModalDraft.taskLines);
+    try {
+      await syncEventTasks(updatedOrCreated, eventModalDraft.taskLines);
+    } catch {
+      setStatus('Event saved, but one or more tasks failed to create');
+      await loadDashboard();
+      return;
+    }
 
     setEventModalDraft(null);
     setStatus(eventModalDraft.entryId ? 'Event updated' : 'Event created');
@@ -790,12 +682,15 @@ export default function App() {
       return;
     }
 
-    const linkedTasks = entries.filter((entry) => entry.parentEntryId === eventModalDraft.entryId && entry.type === 'task');
+    const baseEntryId = toBaseEntryId(eventModalDraft.entryId);
+    const linkedTasks = entries.filter((entry) =>
+      entry.type === 'task' && (entry.parentEntryId === eventModalDraft.entryId || entry.parentEntryId === baseEntryId),
+    );
     for (const task of linkedTasks) {
-      await fetch(apiUrl(`/api/v1/entries/${task.id}`), { method: 'DELETE' });
+      await fetch(apiUrl(`/api/v1/entries/${toBaseEntryId(task.id)}`), { method: 'DELETE' });
     }
 
-    const response = await fetch(apiUrl(`/api/v1/entries/${eventModalDraft.entryId}`), { method: 'DELETE' });
+    const response = await fetch(apiUrl(`/api/v1/entries/${baseEntryId}`), { method: 'DELETE' });
     if (!response.ok) {
       setStatus('Could not delete event');
       return;
@@ -808,7 +703,8 @@ export default function App() {
 
   async function toggleTaskComplete(taskId: string, completed: boolean): Promise<void> {
     const newStatus: Entry['status'] = completed ? 'completed' : 'active';
-    const response = await fetch(apiUrl(`/api/v1/entries/${taskId}`), {
+    const baseTaskId = toBaseEntryId(taskId);
+    const response = await fetch(apiUrl(`/api/v1/entries/${baseTaskId}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus }),
@@ -825,7 +721,7 @@ export default function App() {
   }
 
   async function deleteExistingTask(taskId: string): Promise<void> {
-    const response = await fetch(apiUrl(`/api/v1/entries/${taskId}`), { method: 'DELETE' });
+    const response = await fetch(apiUrl(`/api/v1/entries/${toBaseEntryId(taskId)}`), { method: 'DELETE' });
     if (!response.ok) return;
     setEventModalDraft((current) => {
       if (!current) return current;
@@ -835,9 +731,10 @@ export default function App() {
 
   async function syncEventTasks(parentEntry: Entry, taskLines: string): Promise<void> {
     const taskTitles = taskLines.split('\n').map((line) => line.trim()).filter(Boolean);
+    const parentEntryId = toBaseEntryId(parentEntry.id);
 
     for (const title of taskTitles) {
-      await fetch(apiUrl('/api/v1/entries'), {
+      const response = await fetch(apiUrl('/api/v1/entries'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -849,10 +746,14 @@ export default function App() {
           endTime: parentEntry.endTime,
           timezone: parentEntry.timezone,
           allDay: parentEntry.allDay,
-          parentEntryId: parentEntry.id,
+          parentEntryId,
           reminders: [],
         }),
       });
+
+      if (!response.ok) {
+        throw new Error('Could not create task');
+      }
     }
   }
 
@@ -1180,16 +1081,6 @@ export default function App() {
     await loadDashboard();
   }
 
-  function openEntryEditor(entry: Entry): void {
-    setEditingEntry({
-      id: entry.id.split(':')[0],
-      title: entry.title,
-      status: entry.status,
-      startTime: toDateTimeLocal(new Date(entry.startTime)),
-      endTime: toDateTimeLocal(new Date(entry.endTime)),
-    });
-  }
-
   async function saveEditedEntry(): Promise<void> {
     if (!editingEntry) {
       return;
@@ -1238,65 +1129,6 @@ export default function App() {
     setStatus('Entry deleted');
     setEditingEntry(null);
     await loadDashboard();
-  }
-
-  async function saveFoodDay(day: FoodPlanDay): Promise<void> {
-    const draft = foodEditor[day];
-    const response = await fetch(apiUrl('/api/v1/food-plan'), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        weekStart,
-        day,
-        dishName: draft.dishName,
-        groceryList: draft.groceryText.split('\n').map((item) => item.trim()).filter(Boolean),
-      }),
-    });
-
-    if (!response.ok) {
-      setStatus('Could not save food plan item');
-      return;
-    }
-
-    setStatus(`Saved ${capitalize(day)} meal`);
-    await loadFoodPlan();
-  }
-
-  async function clearFoodDay(day: FoodPlanDay): Promise<void> {
-    const response = await fetch(apiUrl('/api/v1/food-plan'), {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ weekStart, day }),
-    });
-
-    if (!response.ok && response.status !== 404) {
-      setStatus('Could not delete food plan item');
-      return;
-    }
-
-    setStatus(`${capitalize(day)} meal cleared`);
-    await loadFoodPlan();
-  }
-
-  function triggerToolsAutohide(): void {
-    setToolsOpen(true);
-    if (autohideRef.current) {
-      window.clearTimeout(autohideRef.current);
-    }
-
-    autohideRef.current = window.setTimeout(() => {
-      setToolsOpen(false);
-    }, 8000);
-  }
-
-  function updateFoodEditor(day: FoodPlanDay, patch: Partial<{ dishName: string; groceryText: string; open: boolean }>): void {
-    setFoodEditor((current) => ({
-      ...current,
-      [day]: {
-        ...current[day],
-        ...patch,
-      },
-    }));
   }
 
   return (
@@ -1988,13 +1820,33 @@ export default function App() {
                   <section className="settings-section">
                     <h3>Manage themes</h3>
                     <label>
+                      Interface style
+                      <select
+                        aria-label="Interface style"
+                        value={settings.theme.appearance ?? 'classic'}
+                        onChange={(event) => updateLocalSettings((current) => ({
+                          ...current,
+                          theme: {
+                            ...current.theme,
+                            appearance: event.target.value as ThemeAppearance,
+                          },
+                        }))}
+                      >
+                        <option value="classic">Classic</option>
+                        <option value="glass">Glass dashboard</option>
+                      </select>
+                    </label>
+                    <label>
                       Theme mode
                       <select
                         aria-label="Theme mode"
                         value={settings.theme.mode}
                         onChange={(event) => updateLocalSettings((current) => ({
                           ...current,
-                          theme: { mode: event.target.value as AppSettings['theme']['mode'] },
+                          theme: {
+                            ...current.theme,
+                            mode: event.target.value as AppSettings['theme']['mode'],
+                          },
                         }))}
                       >
                         <option value="system">System</option>

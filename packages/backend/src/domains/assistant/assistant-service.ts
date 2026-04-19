@@ -220,7 +220,7 @@ function parseDateExpression(message: string): Date | undefined {
     return result;
   }
 
-  const explicitDate = message.match(/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/);
+  const explicitDate = message.match(/(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
   if (explicitDate) {
     const [, day, month, year] = explicitDate;
     return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));

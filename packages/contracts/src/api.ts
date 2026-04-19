@@ -79,7 +79,16 @@ export interface UpdateMemberRequest {
   email?: string;
 }
 
-export type UpdateSettingsRequest = Partial<AppSettings>;
+export interface UpdateSettingsRequest {
+  id?: string;
+  theme?: Partial<AppSettings['theme']>;
+  assistant?: Partial<AppSettings['assistant']>;
+  mail?: Partial<AppSettings['mail']>;
+  sync?: Partial<AppSettings['sync']> & {
+    configJson?: Record<string, unknown>;
+  };
+  updatedAt?: string;
+}
 
 export interface TestEmailRequest {
   to?: string;

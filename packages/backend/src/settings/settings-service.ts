@@ -1,6 +1,9 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { AppSettings, SyncProvider } from '@mental-load/contracts';
+import type { AppSettings, SyncProvider, UpdateSettingsRequest } from '@mental-load/contracts';
+
+const THEME_MODES = new Set(['system', 'light', 'dark']);
+const THEME_APPEARANCES = new Set(['classic', 'glass']);
 
 export interface SyncConnectionResult {
   ok: boolean;
@@ -22,7 +25,7 @@ export class SettingsService {
     return cloneSettings(this.cache);
   }
 
-  async updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
+  async updateSettings(patch: UpdateSettingsRequest): Promise<AppSettings> {
     const current = await this.getSettings();
     const next = normalizeLoadedSettings(mergeSettings(current, patch));
 
@@ -116,7 +119,7 @@ function createDefaultSettings(): AppSettings {
 
   return {
     id: 'local-settings',
-    theme: { mode: 'light' },
+    theme: { mode: 'light', appearance: 'classic' },
     assistant: {
       id: 'assistant-default',
       enabled: true,
@@ -153,7 +156,7 @@ function createDefaultSettings(): AppSettings {
   };
 }
 
-function mergeSettings(current: AppSettings, patch: Partial<AppSettings>): AppSettings {
+function mergeSettings(current: AppSettings, patch: UpdateSettingsRequest): AppSettings {
   const updatedAt = new Date().toISOString();
 
   return {
@@ -184,6 +187,12 @@ function mergeSettings(current: AppSettings, patch: Partial<AppSettings>): AppSe
 }
 
 function normalizeLoadedSettings(settings: AppSettings): AppSettings {
+  const normalizedTheme = {
+    ...settings.theme,
+    mode: THEME_MODES.has(settings.theme.mode) ? settings.theme.mode : 'light',
+    appearance: THEME_APPEARANCES.has(settings.theme.appearance) ? settings.theme.appearance : 'classic',
+  };
+
   const envOllamaUrl = process.env.OLLAMA_URL?.trim();
   const currentUrl = settings.assistant.ollamaUrl?.trim();
   const nextAssistant = { ...settings.assistant };
@@ -196,12 +205,16 @@ function normalizeLoadedSettings(settings: AppSettings): AppSettings {
     nextAssistant.modelName = process.env.OLLAMA_MODEL.trim();
   }
 
-  if (nextAssistant === settings.assistant) {
+  const themeChanged = normalizedTheme.mode !== settings.theme.mode || normalizedTheme.appearance !== settings.theme.appearance;
+  const assistantChanged = nextAssistant.modelName !== settings.assistant.modelName || nextAssistant.ollamaUrl !== settings.assistant.ollamaUrl;
+
+  if (!themeChanged && !assistantChanged) {
     return settings;
   }
 
   return {
     ...settings,
+    theme: normalizedTheme,
     assistant: nextAssistant,
   };
 }

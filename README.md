@@ -29,6 +29,12 @@ Important values:
 - REDIS_URL for BullMQ
 - SMTP_HOST and SMTP_PORT for Mailpit or SMTP
 - OLLAMA_URL and OLLAMA_MODEL for local AI assistance
+- VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT for web push notifications
+
+Generate VAPID keys once:
+   npx web-push generate-vapid-keys
+
+Then place the generated values in your environment file.
 
 ## Local development
 
@@ -38,6 +44,11 @@ Important values:
    npm run dev
 3. Open the planner:
    http://127.0.0.1:5173
+
+Mobile-first dashboard:
+- On small screens, the app opens in the mobile dashboard by default.
+- On desktop, use the "Mobile" button in the top navigation.
+- In mobile view, use the bottom tabs for Today, Agenda, Food, and Notify.
 
 If you are using Docker instead of local dev, open:
    http://127.0.0.1:4173
@@ -74,6 +85,12 @@ Relevant endpoints:
 - GET /api/v1/entries/occurrences
 - GET /api/v1/calendars/:id/export.ics
 - POST /api/v1/entries/import/ics
+
+Push endpoints:
+- GET /api/v1/push/vapid-public-key
+- POST /api/v1/push/subscribe
+- POST /api/v1/push/unsubscribe
+- POST /api/v1/push/send
 
 ## QA
 
