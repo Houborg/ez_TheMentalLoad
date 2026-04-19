@@ -92,6 +92,15 @@ Push endpoints:
 - POST /api/v1/push/unsubscribe
 - POST /api/v1/push/send
 
+## Backend API Boundary Docs
+
+Backend isolation artifacts for frontend rewrite planning are in:
+
+- docs/backend-api/boundary.v1.md
+- docs/backend-api/inventory.v1.json
+
+These files define the frozen v1 transport boundary and the canonical endpoint inventory sourced from the backend route layer.
+
 ## QA
 
 - Build verification: npm run build

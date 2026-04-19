@@ -397,3 +397,105 @@ test('settings, member management, email preview, and manual sync endpoints work
 
   await app.close();
 });
+
+test('settings update rejects disconnected non-none sync provider', async () => {
+  const app = await createTestApp();
+
+  const response = await app.inject({
+    method: 'PUT',
+    url: '/api/v1/settings',
+    payload: {
+      sync: {
+        provider: 'google',
+        isConnected: false,
+      },
+    },
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.match(response.json().message, /Connect the selected sync provider/i);
+
+  await app.close();
+});
+
+test('entries occurrences rejects invalid date ranges', async () => {
+  const app = await createTestApp();
+
+  const response = await app.inject({
+    method: 'GET',
+    url: '/api/v1/entries/occurrences?from=not-a-date&to=also-not-a-date',
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().message, 'Invalid date range');
+
+  await app.close();
+});
+
+test('delete endpoints return 404 when entities do not exist', async () => {
+  const app = await createTestApp();
+
+  const entryDelete = await app.inject({
+    method: 'DELETE',
+    url: '/api/v1/entries/does-not-exist',
+  });
+
+  assert.equal(entryDelete.statusCode, 404);
+  assert.equal(entryDelete.json().message, 'Entry not found');
+
+  const foodDelete = await app.inject({
+    method: 'DELETE',
+    url: '/api/v1/food-plan',
+    payload: {
+      weekStart: '2026-04-20',
+      day: 'monday',
+    },
+  });
+
+  assert.equal(foodDelete.statusCode, 404);
+  assert.equal(foodDelete.json().message, 'Food plan item not found');
+
+  await app.close();
+});
+
+test('member patch validates empty name and returns 400', async () => {
+  const app = await createTestApp();
+
+  const response = await app.inject({
+    method: 'PATCH',
+    url: `/api/v1/members/${DEMO_MEMBER_IDS.mom}`,
+    payload: {
+      name: '   ',
+    },
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().message, 'Name cannot be empty');
+
+  await app.close();
+});
+
+test('assistant confirm validates missing date fields with 400', async () => {
+  const app = await createTestApp();
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/assistant/confirm',
+    payload: {
+      draft: {
+        type: 'event',
+        title: 'Incomplete draft',
+        ownerMemberId: DEMO_MEMBER_IDS.mom,
+        calendarId: DEMO_CALENDAR_IDS.family,
+        timezone: 'Europe/Copenhagen',
+        allDay: false,
+        reminders: [{ minutesBefore: 30 }],
+      },
+    },
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.match(response.json().message, /missing a start or end time/i);
+
+  await app.close();
+});
