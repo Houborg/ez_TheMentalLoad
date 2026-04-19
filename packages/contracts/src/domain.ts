@@ -4,6 +4,7 @@ export type EntryStatus = 'active' | 'completed' | 'cancelled';
 export type SupportedLanguage = 'en' | 'da';
 export type SyncProvider = 'none' | 'apple' | 'invite-mail' | 'google' | 'outlook';
 export type ThemeMode = 'system' | 'light' | 'dark';
+export type ThemeAppearance = 'classic' | 'glass';
 
 export interface Member {
   id: string;
@@ -84,6 +85,7 @@ export interface AssistantConfig {
 
 export interface ThemeSettings {
   mode: ThemeMode;
+  appearance: ThemeAppearance;
 }
 
 export interface MailSettings {

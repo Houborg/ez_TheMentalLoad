@@ -11,6 +11,8 @@
     "dev:frontend": "npm --workspace @mental-load/frontend run dev",
     "dev:worker": "npm --workspace @mental-load/backend run worker",
     "build": "npm run build --workspaces --if-present",
+    "lint": "eslint . --cache",
+    "lint:fix": "npm run lint -- --fix",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:integration": "npm --workspace @mental-load/backend run test",
     "test:e2e": "npm --workspace @mental-load/e2e run test",
@@ -18,7 +20,11 @@
     "qa:full": "npm-run-all build typecheck qa"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "globals": "^16.4.0",
     "npm-run-all": "^4.1.5",
+    "typescript-eslint": "^8.46.2",
     "typescript": "^5.6.3"
   }
 }
