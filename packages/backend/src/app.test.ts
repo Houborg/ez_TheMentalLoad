@@ -105,6 +105,53 @@ test('entry can be updated and deleted', async () => {
   await app.close();
 });
 
+test('entry create and update persist checklist tasks and multiple reminders', async () => {
+  const app = await createTestApp();
+
+  const createResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/entries',
+    payload: {
+      title: 'Family trip',
+      type: 'event',
+      ownerMemberId: DEMO_MEMBER_IDS.mom,
+      calendarId: DEMO_CALENDAR_IDS.family,
+      startTime: '2026-04-25T09:00:00.000Z',
+      endTime: '2026-04-25T10:00:00.000Z',
+      timezone: 'Europe/Copenhagen',
+      allDay: false,
+      reminders: [{ minutesBefore: 5 }, { minutesBefore: 2880 }],
+      checklist: [{ text: 'Pack snacks' }, { text: 'Charge camera' }],
+    },
+  });
+
+  assert.equal(createResponse.statusCode, 201);
+  assert.equal(createResponse.json().reminders.length, 2);
+  assert.equal(createResponse.json().checklist.length, 2);
+
+  const created = createResponse.json() as { id: string };
+  const updateResponse = await app.inject({
+    method: 'PATCH',
+    url: `/api/v1/entries/${created.id}`,
+    payload: {
+      reminders: [{ minutesBefore: 10 }, { minutesBefore: 60 }],
+      checklist: [{ text: 'Pack swimsuits' }],
+    },
+  });
+
+  assert.equal(updateResponse.statusCode, 200);
+  assert.deepEqual(
+    updateResponse.json().reminders.map((item: { minutesBefore: number }) => item.minutesBefore).sort((left: number, right: number) => left - right),
+    [10, 60],
+  );
+  assert.deepEqual(
+    updateResponse.json().checklist.map((item: { text: string }) => item.text),
+    ['Pack swimsuits'],
+  );
+
+  await app.close();
+});
+
 test('recurring entries expand into occurrences inside a requested date range', async () => {
   const app = await createTestApp();
 

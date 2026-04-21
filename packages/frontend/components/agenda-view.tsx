@@ -6,12 +6,13 @@ type AgendaViewProps = {
   entries: Entry[];
   memberColorById: Record<string, string>;
   onSelectEntry?: (entry: Entry) => void;
+  onSelectDate?: (date: Date, ownerMemberId?: string) => void;
   dayWeatherByDate?: Record<string, { temp: number; unitLabel: string; icon: string }>;
 };
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-export function AgendaView({ members, entries, memberColorById, onSelectEntry, dayWeatherByDate }: AgendaViewProps) {
+export function AgendaView({ members, entries, memberColorById, onSelectEntry, onSelectDate, dayWeatherByDate }: AgendaViewProps) {
   const weekDays = getNextSevenDays();
 
   return (
@@ -30,7 +31,18 @@ export function AgendaView({ members, entries, memberColorById, onSelectEntry, d
         <tbody>
           {weekDays.map((day) => (
             <tr key={day.toISOString()}>
-              <td className="border border-border/60 bg-card/55 p-2 align-top">
+              <td
+                className="cursor-pointer border border-border/60 bg-card/55 p-2 align-top transition hover:bg-accent/45"
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelectDate?.(day)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSelectDate?.(day);
+                  }
+                }}
+              >
                 <div className="text-xs font-semibold">{DAY_LABELS[getWeekdayIndex(day)]}</div>
                 <div className="text-xs text-muted-foreground">{day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
                 {dayWeatherByDate?.[toDateKey(day)] ? (
@@ -44,13 +56,28 @@ export function AgendaView({ members, entries, memberColorById, onSelectEntry, d
                 const cellEntries = entries.filter((entry) => entry.ownerMemberId === member.id && isSameCalendarDate(new Date(entry.startTime), day));
 
                 return (
-                  <td key={`${day.toISOString()}-${member.id}`} className="min-w-[150px] border border-border/60 bg-card/40 p-2 align-top">
+                  <td
+                    key={`${day.toISOString()}-${member.id}`}
+                    className="min-w-[150px] cursor-pointer border border-border/60 bg-card/40 p-2 align-top transition hover:bg-accent/35"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onSelectDate?.(day, member.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onSelectDate?.(day, member.id);
+                      }
+                    }}
+                  >
                     <div className="space-y-1">
                       {cellEntries.map((entry) => (
                         <button
                           key={entry.id}
                           type="button"
-                          onClick={() => onSelectEntry?.(entry)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onSelectEntry?.(entry);
+                          }}
                           className={cn(
                             'w-full rounded px-2 py-1 text-left text-[11px] font-medium text-primary-foreground',
                             memberColorById[member.id] ?? 'bg-primary',
