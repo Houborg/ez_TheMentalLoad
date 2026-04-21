@@ -9,4 +9,4 @@ RUN npm install
 COPY . .
 RUN npm --workspace @mental-load/frontend run build
 EXPOSE 4173
-CMD ["npm", "--workspace", "@mental-load/frontend", "run", "preview", "--", "--host", "0.0.0.0", "--port", "4173"]
+CMD ["npm", "--workspace", "@mental-load/frontend", "run", "start"]

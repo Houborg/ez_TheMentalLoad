@@ -7,6 +7,7 @@ export default [
     ignores: [
       '**/node_modules/**',
       '**/dist/**',
+      '**/.next/**',
       '**/test-results/**',
       'packages/contracts/src/**/*.d.ts',
       'packages/contracts/src/**/*.js',
