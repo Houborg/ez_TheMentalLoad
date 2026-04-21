@@ -71,12 +71,14 @@ export interface CreateMemberRequest {
   name: string;
   role: MemberRole;
   email?: string;
+  avatar?: string;
 }
 
 export interface UpdateMemberRequest {
   name?: string;
   role?: MemberRole;
   email?: string;
+  avatar?: string;
 }
 
 export interface UpdateSettingsRequest {

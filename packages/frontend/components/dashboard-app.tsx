@@ -50,10 +50,10 @@ import {
   updateMember,
   type WeatherForecastResponse,
 } from '@/lib/api';
-import { AgendaView } from '@/components/agenda-view';
 import { cn } from '@/lib/utils';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
+type RecurrenceFreq = 'none' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 
 type DashboardState = {
   members: Member[];
@@ -72,7 +72,8 @@ type EventDraft = {
   endTime: string;
   allDay: boolean;
   location: string;
-  recurrenceRule: string;
+  recurrenceFreq: RecurrenceFreq;
+  recurrenceCount: string;
   tasks: string;
   reminder1Mode: ReminderDraftMode;
   reminder1CustomHours: string;
@@ -137,6 +138,7 @@ export function DashboardApp() {
   const [assistantReady, setAssistantReady] = useState(false);
   const [assistantStatusText, setAssistantStatusText] = useState('Checking assistant...');
   const [searchQuery, setSearchQuery] = useState('');
+  const [memberFilterId, setMemberFilterId] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -154,7 +156,7 @@ export function DashboardApp() {
   const [foodPlanSaving, setFoodPlanSaving] = useState(false);
   const [assistantSuggestionBusy, setAssistantSuggestionBusy] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'mail' | 'sync' | 'recurring' | 'birthdays' | 'weather'>('theme');
-  const [memberDraft, setMemberDraft] = useState<{ name: string; role: MemberRole; email: string }>({ name: '', role: 'parent', email: '' });
+  const [memberDraft, setMemberDraft] = useState<{ name: string; role: MemberRole; email: string; avatar: string }>({ name: '', role: 'parent', email: '', avatar: '' });
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [mailActionBusy, setMailActionBusy] = useState(false);
   const [syncActionBusy, setSyncActionBusy] = useState(false);
@@ -263,21 +265,25 @@ export function DashboardApp() {
   const filteredUpcoming = useMemo(() => {
     return upcomingOccurrences
       .filter((entry) => entry.type !== 'task')
+      .filter((entry) => matchesMemberFilter(entry, memberFilterId))
       .filter((entry) => matchesSearch(entry, dashboard.members, searchQuery))
       .sort((left, right) => left.startTime.localeCompare(right.startTime))
       .slice(0, 8);
-  }, [dashboard.members, searchQuery, upcomingOccurrences]);
+  }, [dashboard.members, memberFilterId, searchQuery, upcomingOccurrences]);
 
   const selectedEntries = useMemo(() => {
     return monthOccurrences
       .filter((entry) => sameDay(new Date(entry.startTime), selectedDate))
+      .filter((entry) => matchesMemberFilter(entry, memberFilterId))
       .filter((entry) => matchesSearch(entry, dashboard.members, searchQuery))
       .sort((left, right) => left.startTime.localeCompare(right.startTime));
-  }, [dashboard.members, monthOccurrences, searchQuery, selectedDate]);
+  }, [dashboard.members, memberFilterId, monthOccurrences, searchQuery, selectedDate]);
 
   const statCards = useMemo(() => {
     const today = new Date();
     const nextWeekBoundary = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const upcomingTaskCount = countTasks(upcomingOccurrences.filter((entry) => new Date(entry.startTime) <= nextWeekBoundary));
+
     return [
       {
         label: 'Monthly events',
@@ -287,28 +293,46 @@ export function DashboardApp() {
         color: 'text-primary bg-primary/12',
       },
       {
-        label: 'Family members',
-        value: String(dashboard.members.length),
-        subtext: 'Synced from backend',
-        icon: Users,
+        label: 'Tasks next 7 days',
+        value: String(upcomingTaskCount),
+        subtext: 'Upcoming task count',
+        icon: CheckCircle2,
         color: 'text-chart-2 bg-chart-2/12',
       },
       {
-        label: 'Next 7 days',
-        value: String(upcomingOccurrences.filter((entry) => new Date(entry.startTime) <= nextWeekBoundary).length),
+        label: 'Events next 7 days',
+        value: String(upcomingOccurrences.filter((entry) => entry.type === 'event' && new Date(entry.startTime) <= nextWeekBoundary).length),
         subtext: 'Recurring included',
         icon: Clock3,
         color: 'text-chart-3 bg-chart-3/12',
       },
-      {
-        label: 'Completed tasks',
-        value: String(dashboard.entries.filter((entry) => entry.status === 'completed').length),
-        subtext: 'Live task progress',
-        icon: CheckCircle2,
-        color: 'text-chart-5 bg-chart-5/12',
-      },
     ];
-  }, [currentMonth, dashboard.entries, dashboard.members.length, monthOccurrences, upcomingOccurrences]);
+  }, [currentMonth, monthOccurrences, upcomingOccurrences]);
+
+  const taskProgress = useMemo(() => {
+    const summary = summarizeTasks(dashboard.entries);
+    const done = summary.done;
+    const total = summary.total;
+    return { done, pending: total - done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 };
+  }, [dashboard.entries]);
+
+  const memberTaskProgress = useMemo(() => {
+    return dashboard.members
+      .map((member) => {
+        const memberEntries = dashboard.entries.filter((entry) => entry.ownerMemberId === member.id);
+        const summary = summarizeTasks(memberEntries);
+        const pending = summary.total - summary.done;
+        const pct = summary.total > 0 ? Math.round((summary.done / summary.total) * 100) : 0;
+        return {
+          member,
+          done: summary.done,
+          pending,
+          total: summary.total,
+          pct,
+        };
+      })
+      .sort((left, right) => right.total - left.total);
+  }, [dashboard.entries, dashboard.members]);
 
   const monthDays = useMemo(() => buildMonthGrid(currentMonth), [currentMonth]);
 
@@ -398,6 +422,21 @@ export function DashboardApp() {
     };
   }, [weatherConfig.country, weatherConfig.location, weatherConfig.state, weatherConfig.unit]);
 
+  async function handleToggleChecklistItem(entry: Entry, itemId: string) {
+    try {
+      setErrorText('');
+      const updatedChecklist = entry.checklist.map((item) =>
+        item.id === itemId ? { ...item, isCompleted: !item.isCompleted } : item,
+      );
+      await updateEntry(getEntryMutationId(entry), {
+        checklist: updatedChecklist.map((item) => ({ text: item.text, isCompleted: item.isCompleted })),
+      });
+      await handleRefresh();
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not update checklist item');
+    }
+  }
+
   async function handleRefresh() {
     setCurrentMonth((current) => new Date(current));
   }
@@ -422,7 +461,7 @@ export function DashboardApp() {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         allDay: draft.allDay,
         location: draft.location.trim() || undefined,
-        recurrenceRule: draft.recurrenceRule.trim() || undefined,
+        recurrenceRule: buildRecurrenceRule(draft.recurrenceFreq, draft.recurrenceCount) || undefined,
         reminders,
         checklist: parseChecklistDraft(draft.tasks),
       };
@@ -545,7 +584,6 @@ export function DashboardApp() {
     }
 
     if (section === 'family') {
-      document.getElementById('family-section-content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
 
@@ -578,6 +616,7 @@ export function DashboardApp() {
   function handleEditEntry(entry: Entry) {
     setEditingEntryId(getEntryMutationId(entry));
     const [firstReminder, secondReminder] = entry.reminders;
+    const { freq, count } = parseRecurrenceRule(entry.recurrenceRule);
     setDraft({
       title: entry.title,
       type: entry.type,
@@ -587,7 +626,8 @@ export function DashboardApp() {
       endTime: toLocalInputValue(new Date(entry.endTime)),
       allDay: entry.allDay,
       location: entry.location || '',
-      recurrenceRule: entry.recurrenceRule || '',
+      recurrenceFreq: freq,
+      recurrenceCount: count,
       tasks: entry.checklist.map((item) => item.text).join('\n'),
       ...toReminderDraftFields(firstReminder?.minutesBefore, secondReminder?.minutesBefore),
     });
@@ -737,17 +777,19 @@ export function DashboardApp() {
           name,
           role: memberDraft.role,
           email: memberDraft.email.trim() || undefined,
+          avatar: memberDraft.avatar.trim() || undefined,
         });
       } else {
         await createMember({
           name,
           role: memberDraft.role,
           email: memberDraft.email.trim() || undefined,
+          avatar: memberDraft.avatar.trim() || undefined,
         });
       }
 
       await refreshMembers();
-      setMemberDraft({ name: '', role: 'parent', email: '' });
+      setMemberDraft({ name: '', role: 'parent', email: '', avatar: '' });
       setEditingMemberId(null);
       setSettingsMessage(editingMemberId ? 'Member updated.' : 'Member created.');
     } catch (error) {
@@ -761,6 +803,7 @@ export function DashboardApp() {
       name: member.name,
       role: member.role,
       email: member.email ?? '',
+      avatar: member.avatar ?? '',
     });
   }
 
@@ -1038,7 +1081,7 @@ export function DashboardApp() {
                   title={isSidebarCollapsed ? `${member.name} (${member.role})` : undefined}
                 >
                   <div className={cn('flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold text-primary-foreground', memberColorById[member.id] ?? 'bg-primary')}>
-                    <Users className="h-5 w-5" />
+                    {member.avatar ? <span className="text-xl">{member.avatar}</span> : <Users className="h-5 w-5" />}
                   </div>
                   {!isSidebarCollapsed ? (
                     <div className="min-w-0 flex-1">
@@ -1088,6 +1131,20 @@ export function DashboardApp() {
                 className="h-11 w-full rounded-2xl border border-border/60 bg-background/60 pl-10 pr-4 text-sm outline-none ring-0 transition focus:border-primary/60"
               />
             </div>
+            <label className="hidden min-w-[180px] lg:block">
+              <span className="sr-only">Filter member</span>
+              <select
+                aria-label="Filter by member"
+                value={memberFilterId}
+                onChange={(event) => setMemberFilterId(event.target.value)}
+                className="h-11 w-full rounded-2xl border border-border/60 bg-background/60 px-3 text-sm outline-none transition focus:border-primary/60"
+              >
+                <option value="">All members</option>
+                {dashboard.members.map((member) => (
+                  <option key={member.id} value={member.id}>{member.name}</option>
+                ))}
+              </select>
+            </label>
             <button
               type="button"
               onClick={() => void handleRefresh()}
@@ -1116,6 +1173,7 @@ export function DashboardApp() {
           </header>
 
           <section className="flex-1 overflow-auto px-4 py-6 md:px-6">
+            {activeNav !== 'family' ? (
             <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
               <div id="hero-section" className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
@@ -1172,7 +1230,56 @@ export function DashboardApp() {
                     </div>
                   </div>
                 ))}
+                {/* Task progress card */}
+                <div className="panel-surface rounded-[28px] border border-border/60 p-5 shadow-xl shadow-black/10">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Task progress</div>
+                      <div className="mt-3 text-3xl font-semibold tracking-tight">{taskProgress.done}<span className="text-lg text-muted-foreground">/{taskProgress.total}</span></div>
+                      <div className="mt-1 text-sm text-muted-foreground">{taskProgress.pending} not finished</div>
+                      <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-chart-5 transition-all duration-500"
+                          style={{ width: `${taskProgress.pct}%` }}
+                        />
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">{taskProgress.pct}% complete</div>
+                    </div>
+                    <div className="rounded-2xl p-3 text-chart-5 bg-chart-5/12">
+                      <CheckCircle2 className="h-5 w-5" />
+                    </div>
+                  </div>
+                </div>
               </div>
+
+              <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold">Task tracking by member</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Assigned tasks and completion per member.</p>
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {memberTaskProgress.map(({ member, done, pending, total, pct }) => (
+                    <div key={member.id} className="rounded-2xl border border-border/60 bg-background/30 p-4">
+                      <div className="mb-2 flex items-center gap-2">
+                        <div className={cn('flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold text-primary-foreground', memberColorById[member.id] ?? 'bg-primary')}>
+                          {member.avatar ? <span className="text-sm">{member.avatar}</span> : <Users className="h-4 w-4" />}
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold">{member.name}</div>
+                          <div className="text-[11px] capitalize text-muted-foreground">{member.role}</div>
+                        </div>
+                      </div>
+                      <div className="text-sm text-muted-foreground">{done}/{total} complete</div>
+                      <div className="text-xs text-muted-foreground">{pending} pending</div>
+                      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-chart-2 transition-all duration-500" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
 
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
                 <section id="planner-section" className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
@@ -1202,7 +1309,7 @@ export function DashboardApp() {
                     ))}
                     {monthDays.map((day, index) => {
                       const date = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
-                      const entries = date ? getEntriesForDate(monthOccurrences, dashboard.members, date, searchQuery) : [];
+                      const entries = date ? getEntriesForDate(monthOccurrences, dashboard.members, date, searchQuery, memberFilterId) : [];
                       return (
                         <div
                           key={`${day ?? 'empty'}-${index}`}
@@ -1319,6 +1426,25 @@ export function DashboardApp() {
                                 </div>
                               </div>
                               {entry.location ? <div className="mt-2 text-xs text-muted-foreground">{entry.location}</div> : null}
+                              {entry.checklist.length > 0 ? (
+                                <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                                  {entry.checklist.map((item) => (
+                                    <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-0.5 hover:bg-accent/40">
+                                      <input
+                                        type="checkbox"
+                                        checked={item.isCompleted}
+                                        onClick={(event) => event.stopPropagation()}
+                                        onChange={(event) => {
+                                          event.stopPropagation();
+                                          void handleToggleChecklistItem(entry, item.id);
+                                        }}
+                                        className="h-3.5 w-3.5 rounded"
+                                      />
+                                      <span className={cn('text-xs', item.isCompleted && 'line-through text-muted-foreground')}>{item.text}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                         );
@@ -1488,96 +1614,79 @@ export function DashboardApp() {
                 </aside>
               </div>
             </div>
-
-            <section id="agenda-section" className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-              <div className="mb-4">
-                <h2 className="text-2xl font-semibold tracking-tight">7-Day Agenda</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Week overview with all members.</p>
-              </div>
-              <AgendaView
-                members={dashboard.members}
-                entries={monthOccurrences}
-                memberColorById={memberColorById}
-                onSelectEntry={handleEditEntry}
-                onSelectDate={(date, ownerMemberId) => openCreateEntryComposer({ date, ownerMemberId })}
-                dayWeatherByDate={dayWeatherByDate}
-              />
-            </section>
-
-            <section id="family-section-content" className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-              <div className="mb-6 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-2xl font-semibold tracking-tight">Family Members</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Create and edit members synced with backend APIs.</p>
+            ) : (
+            <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
+              {errorText ? (
+                <div className="rounded-3xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">{errorText}</div>
+              ) : null}
+              <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
+                <div className="mb-6 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-2xl font-semibold tracking-tight">Family Members</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Add and edit family members synced with the backend.</p>
+                  </div>
+                  {editingMemberId ? (
+                    <button type="button" onClick={() => { setEditingMemberId(null); setMemberDraft({ name: '', role: 'parent', email: '', avatar: '' }); }} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">
+                      Cancel edit
+                    </button>
+                  ) : null}
                 </div>
-              </div>
-
-              <div className="mb-5 grid gap-3 rounded-2xl border border-border/60 bg-background/30 p-4 md:grid-cols-[1fr_140px_1fr_auto] md:items-end">
-                <label className="grid gap-1.5">
-                  <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Name</span>
-                  <input
-                    value={memberDraft.name}
-                    onChange={(event) => setMemberDraft((current) => ({ ...current, name: event.target.value }))}
-                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60"
-                    placeholder="Member name"
-                  />
-                </label>
-                <label className="grid gap-1.5">
-                  <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Role</span>
-                  <select
-                    value={memberDraft.role}
-                    onChange={(event) => setMemberDraft((current) => ({ ...current, role: event.target.value as MemberRole }))}
-                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60"
-                  >
-                    <option value="parent">parent</option>
-                    <option value="child">child</option>
-                  </select>
-                </label>
-                <label className="grid gap-1.5">
-                  <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Email</span>
-                  <input
-                    value={memberDraft.email}
-                    onChange={(event) => setMemberDraft((current) => ({ ...current, email: event.target.value }))}
-                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60"
-                    placeholder="name@example.com"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => void handleSaveMember()}
-                  className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20"
-                >
-                  {editingMemberId ? 'Update member' : 'Add member'}
-                </button>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {dashboard.members.map((member) => (
-                  <div key={member.id} className="rounded-2xl border border-border/60 bg-card/55 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className={cn('flex h-11 w-11 items-center justify-center rounded-full text-primary-foreground', memberColorById[member.id] ?? 'bg-primary')}>
-                          <Users className="h-5 w-5" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold">{member.name}</div>
-                          <div className="text-xs text-muted-foreground">{member.role}</div>
-                          {member.email ? <div className="truncate text-xs text-muted-foreground">{member.email}</div> : null}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => startEditMember(member)}
-                        className="rounded-lg border border-border/50 p-2 hover:bg-accent/60"
-                        aria-label={`Edit ${member.name}`}
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </button>
+                <div className="mb-6 grid gap-3 rounded-2xl border border-border/60 bg-background/30 p-4 sm:grid-cols-2">
+                  <label className="grid gap-1.5">
+                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Name</span>
+                    <input value={memberDraft.name} onChange={(event) => setMemberDraft((current) => ({ ...current, name: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60" placeholder="Member name" />
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Email</span>
+                    <input type="email" value={memberDraft.email} onChange={(event) => setMemberDraft((current) => ({ ...current, email: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60" placeholder="name@example.com" />
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Role</span>
+                    <select value={memberDraft.role} onChange={(event) => setMemberDraft((current) => ({ ...current, role: event.target.value as MemberRole }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60">
+                      <option value="parent">Parent</option>
+                      <option value="child">Child</option>
+                    </select>
+                  </label>
+                  <div className="grid gap-1.5">
+                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Avatar (emoji)</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input value={memberDraft.avatar} onChange={(event) => setMemberDraft((current) => ({ ...current, avatar: event.target.value }))} className="w-16 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-center text-sm outline-none focus:border-primary/60" placeholder="👤" maxLength={4} />
+                      {['👩', '👨', '👧', '👦', '👵', '👴', '🧑', '👶'].map((emoji) => (
+                        <button key={emoji} type="button" onClick={() => setMemberDraft((current) => ({ ...current, avatar: emoji }))} className={cn('rounded-lg border px-2 py-1 text-base transition', memberDraft.avatar === emoji ? 'border-primary bg-primary/10' : 'border-border/60 hover:bg-accent/60')}>{emoji}</button>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
-            </section>
+                  <div className="flex items-end sm:col-span-2">
+                    <button type="button" onClick={() => void handleSaveMember()} className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20">
+                      {editingMemberId ? 'Update member' : 'Add member'}
+                    </button>
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {dashboard.members.map((member) => (
+                    <div key={member.id} className="rounded-2xl border border-border/60 bg-card/55 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-full', member.avatar ? 'text-2xl' : ('text-primary-foreground ' + (memberColorById[member.id] ?? 'bg-primary')))}>
+                            {member.avatar ? member.avatar : <Users className="h-5 w-5" />}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold">{member.name}</div>
+                            <div className="text-xs capitalize text-muted-foreground">{member.role}</div>
+                            {member.email ? <div className="truncate text-xs text-muted-foreground">{member.email}</div> : null}
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => startEditMember(member)} className="rounded-lg border border-border/50 p-2 hover:bg-accent/60" aria-label={`Edit ${member.name}`}>
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {settingsMessage ? <div className="mt-4 rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm">{settingsMessage}</div> : null}
+              </section>
+            </div>
+            )}
           </section>
         </main>
       </div>
@@ -1637,10 +1746,36 @@ export function DashboardApp() {
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Location</span>
                 <input aria-label="Location" value={draft.location} onChange={(event) => setDraft((current) => ({ ...current, location: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60" />
               </label>
-              <label className="grid gap-1.5">
+              <div className="grid gap-1.5">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recurrence</span>
-                <input aria-label="Recurrence rule" value={draft.recurrenceRule} onChange={(event) => setDraft((current) => ({ ...current, recurrenceRule: event.target.value }))} placeholder="FREQ=WEEKLY;COUNT=6" className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60" />
-              </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    aria-label="Recurrence frequency"
+                    value={draft.recurrenceFreq}
+                    onChange={(event) => setDraft((current) => ({ ...current, recurrenceFreq: event.target.value as RecurrenceFreq }))}
+                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60"
+                  >
+                    <option value="none">No repeat</option>
+                    <option value="DAILY">Daily</option>
+                    <option value="WEEKLY">Weekly</option>
+                    <option value="MONTHLY">Monthly</option>
+                    <option value="YEARLY">Yearly</option>
+                  </select>
+                  {draft.recurrenceFreq !== 'none' ? (
+                    <select
+                      aria-label="Recurrence count"
+                      value={draft.recurrenceCount}
+                      onChange={(event) => setDraft((current) => ({ ...current, recurrenceCount: event.target.value }))}
+                      className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60"
+                    >
+                      <option value="">Forever</option>
+                      {[2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 26, 52].map((n) => (
+                        <option key={n} value={String(n)}>×{n} times</option>
+                      ))}
+                    </select>
+                  ) : null}
+                </div>
+              </div>
               <label className="grid gap-1.5 md:col-span-2">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Tasks (one per line)</span>
                 <textarea
@@ -1860,24 +1995,56 @@ export function DashboardApp() {
             ) : null}
 
             {settingsTab === 'members' ? (
-              <div className="space-y-3">
-                <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm text-muted-foreground">
-                  Manage members from this panel. The backend currently supports create and update routes.
+              <div className="space-y-4">
+                <div className="grid gap-3 rounded-2xl border border-border/60 bg-background/30 p-4 sm:grid-cols-2">
+                  <label className="grid gap-1.5">
+                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Name</span>
+                    <input value={memberDraft.name} onChange={(event) => setMemberDraft((current) => ({ ...current, name: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60" placeholder="Member name" />
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Email</span>
+                    <input type="email" value={memberDraft.email} onChange={(event) => setMemberDraft((current) => ({ ...current, email: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60" placeholder="name@example.com" />
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Role</span>
+                    <select value={memberDraft.role} onChange={(event) => setMemberDraft((current) => ({ ...current, role: event.target.value as MemberRole }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60">
+                      <option value="parent">Parent</option>
+                      <option value="child">Child</option>
+                    </select>
+                  </label>
+                  <div className="grid gap-1.5">
+                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Avatar (emoji)</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input value={memberDraft.avatar} onChange={(event) => setMemberDraft((current) => ({ ...current, avatar: event.target.value }))} className="w-16 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-center text-sm outline-none focus:border-primary/60" placeholder="👤" maxLength={4} />
+                      {['👩', '👨', '👧', '👦', '👵', '👴', '🧑', '👶'].map((emoji) => (
+                        <button key={emoji} type="button" onClick={() => setMemberDraft((current) => ({ ...current, avatar: emoji }))} className={cn('rounded-lg border px-2 py-1 text-base transition', memberDraft.avatar === emoji ? 'border-primary bg-primary/10' : 'border-border/60 hover:bg-accent/60')}>{emoji}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 sm:col-span-2">
+                    <button type="button" onClick={() => void handleSaveMember()} className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20">
+                      {editingMemberId ? 'Update member' : 'Add member'}
+                    </button>
+                    {editingMemberId ? (
+                      <button type="button" onClick={() => { setEditingMemberId(null); setMemberDraft({ name: '', role: 'parent', email: '', avatar: '' }); }} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">
+                        Cancel
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   {dashboard.members.map((member) => (
                     <div key={member.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/30 px-4 py-3">
-                      <div>
-                        <div className="text-sm font-semibold">{member.name}</div>
-                        <div className="text-xs text-muted-foreground">{member.role} {member.email ? `· ${member.email}` : ''}</div>
+                      <div className="flex items-center gap-3">
+                        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', member.avatar ? 'text-xl' : ('text-primary-foreground ' + (memberColorById[member.id] ?? 'bg-primary')))}>
+                          {member.avatar ? member.avatar : <Users className="h-4 w-4" />}
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold">{member.name}</div>
+                          <div className="text-xs text-muted-foreground capitalize">{member.role}{member.email ? ` · ${member.email}` : ''}</div>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => startEditMember(member)}
-                        className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60"
-                      >
-                        Edit
-                      </button>
+                      <button type="button" onClick={() => startEditMember(member)} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">Edit</button>
                     </div>
                   ))}
                 </div>
@@ -1886,20 +2053,36 @@ export function DashboardApp() {
 
             {settingsTab === 'mail' ? (
               <div className="space-y-3">
-                <label className="grid gap-2">
-                  <span className="text-sm font-medium">IMAP host</span>
-                  <input
-                    value={settings.mail.imapHost}
-                    onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, imapHost: event.target.value } } : current)}
-                    className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                  />
-                </label>
+                <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm text-muted-foreground">
+                  Configure SMTP for sending reminders/invites and IMAP for inbox sync.
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-2">
+                  <label className="grid gap-2 sm:col-span-2">
                     <span className="text-sm font-medium">SMTP host</span>
                     <input
                       value={settings.mail.smtpHost}
                       onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, smtpHost: event.target.value } } : current)}
+                      placeholder="smtp.example.com"
+                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                    />
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium">SMTP port</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={settings.mail.smtpPort}
+                      onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, smtpPort: Number(event.target.value) || 0 } } : current)}
+                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                    />
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium">SMTP from address</span>
+                    <input
+                      type="email"
+                      value={settings.mail.smtpFrom}
+                      onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, smtpFrom: event.target.value } } : current)}
+                      placeholder="mental-load@example.com"
                       className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
                     />
                   </label>
@@ -1911,6 +2094,64 @@ export function DashboardApp() {
                       className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
                     />
                   </label>
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium">SMTP password</span>
+                    <input
+                      type="password"
+                      value={settings.mail.smtpPass}
+                      onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, smtpPass: event.target.value } } : current)}
+                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                    />
+                  </label>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-2 sm:col-span-2">
+                    <span className="text-sm font-medium">IMAP host</span>
+                    <input
+                      value={settings.mail.imapHost}
+                      onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, imapHost: event.target.value } } : current)}
+                      placeholder="imap.example.com"
+                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                    />
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium">IMAP port</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={settings.mail.imapPort}
+                      onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, imapPort: Number(event.target.value) || 0 } } : current)}
+                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                    />
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium">IMAP secure</span>
+                    <select
+                      value={settings.mail.imapSecure ? 'yes' : 'no'}
+                      onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, imapSecure: event.target.value === 'yes' } } : current)}
+                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                    >
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium">IMAP user</span>
+                    <input
+                      value={settings.mail.imapUser}
+                      onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, imapUser: event.target.value } } : current)}
+                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                    />
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium">IMAP password</span>
+                    <input
+                      type="password"
+                      value={settings.mail.imapPass}
+                      onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, imapPass: event.target.value } } : current)}
+                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                    />
+                  </label>
                 </div>
                 <label className="grid gap-2">
                   <span className="text-sm font-medium">Test recipient</span>
@@ -1919,6 +2160,17 @@ export function DashboardApp() {
                     onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, testRecipient: event.target.value } } : current)}
                     className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
                   />
+                </label>
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium">Preview mode</span>
+                  <select
+                    value={settings.mail.previewMode ? 'yes' : 'no'}
+                    onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, previewMode: event.target.value === 'yes' } } : current)}
+                    className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                  >
+                    <option value="yes">Yes (log only)</option>
+                    <option value="no">No (send via SMTP)</option>
+                  </select>
                 </label>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -2325,6 +2577,36 @@ function parseBirthdays(value: unknown): BirthdaySetting[] {
   return parsed;
 }
 
+function countTasks(entries: Entry[]) {
+  return entries.reduce((total, entry) => {
+    const checklistCount = entry.checklist.length;
+    const standaloneTaskCount = entry.type === 'task' && checklistCount === 0 ? 1 : 0;
+    return total + checklistCount + standaloneTaskCount;
+  }, 0);
+}
+
+function summarizeTasks(entries: Entry[]) {
+  return entries.reduce(
+    (accumulator, entry) => {
+      if (entry.checklist.length > 0) {
+        accumulator.total += entry.checklist.length;
+        accumulator.done += entry.checklist.filter((item) => item.isCompleted).length;
+        return accumulator;
+      }
+
+      if (entry.type === 'task') {
+        accumulator.total += 1;
+        if (entry.status === 'completed') {
+          accumulator.done += 1;
+        }
+      }
+
+      return accumulator;
+    },
+    { done: 0, total: 0 },
+  );
+}
+
 function createDefaultDraft(ownerMemberId = '', calendarId = '', date = new Date()): EventDraft {
   const { start, end } = buildDefaultTimeRange(date);
   return {
@@ -2336,7 +2618,8 @@ function createDefaultDraft(ownerMemberId = '', calendarId = '', date = new Date
     endTime: toLocalInputValue(end),
     allDay: false,
     location: '',
-    recurrenceRule: '',
+    recurrenceFreq: 'none',
+    recurrenceCount: '',
     tasks: '',
     reminder1Mode: 'none',
     reminder1CustomHours: '',
@@ -2348,11 +2631,34 @@ function createDefaultDraft(ownerMemberId = '', calendarId = '', date = new Date
 function buildDefaultTimeRange(date = new Date()) {
   const now = new Date();
   const start = new Date(date);
-  start.setHours(now.getHours() + 1, now.getMinutes(), 0, 0);
+  start.setHours(now.getHours(), now.getMinutes(), 0, 0);
 
   const end = new Date(start);
   end.setHours(start.getHours() + 1, start.getMinutes(), 0, 0);
   return { start, end };
+}
+
+function buildRecurrenceRule(freq: RecurrenceFreq, count: string): string | undefined {
+  if (freq === 'none') {
+    return undefined;
+  }
+
+  const countNum = Number(count);
+  const countPart = Number.isFinite(countNum) && countNum > 0 ? `;COUNT=${countNum}` : '';
+  return `FREQ=${freq}${countPart}`;
+}
+
+function parseRecurrenceRule(rule?: string): { freq: RecurrenceFreq; count: string } {
+  if (!rule) {
+    return { freq: 'none', count: '' };
+  }
+
+  const freqMatch = rule.match(/FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)/);
+  const countMatch = rule.match(/COUNT=(\d+)/);
+  return {
+    freq: (freqMatch?.[1] as RecurrenceFreq | undefined) ?? 'none',
+    count: countMatch?.[1] ?? '',
+  };
 }
 
 function parseChecklistDraft(value: string) {
@@ -2446,10 +2752,6 @@ function nextMonth(date: Date) {
 }
 
 function getEntryMutationId(entry: Entry): string {
-  if (entry.parentEntryId) {
-    return entry.parentEntryId;
-  }
-
   const separatorIndex = entry.id.indexOf(':');
   return separatorIndex >= 0 ? entry.id.slice(0, separatorIndex) : entry.id;
 }
@@ -2473,8 +2775,20 @@ function buildMonthGrid(date: Date) {
   return days;
 }
 
-function getEntriesForDate(entries: Entry[], members: Member[], date: Date, searchQuery: string) {
-  return entries.filter((entry) => sameDay(new Date(entry.startTime), date) && matchesSearch(entry, members, searchQuery));
+function getEntriesForDate(entries: Entry[], members: Member[], date: Date, searchQuery: string, memberFilterId: string) {
+  return entries.filter((entry) =>
+    sameDay(new Date(entry.startTime), date)
+    && matchesMemberFilter(entry, memberFilterId)
+    && matchesSearch(entry, members, searchQuery),
+  );
+}
+
+function matchesMemberFilter(entry: Entry, memberFilterId: string) {
+  if (!memberFilterId) {
+    return true;
+  }
+
+  return entry.ownerMemberId === memberFilterId;
 }
 
 function matchesSearch(entry: Entry, members: Member[], query: string) {
