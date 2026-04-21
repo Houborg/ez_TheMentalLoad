@@ -142,6 +142,7 @@ export async function buildApp() {
       name,
       role: request.body.role,
       email: request.body.email?.trim() || undefined,
+      avatar: typeof request.body.avatar === 'string' ? request.body.avatar.trim() || undefined : undefined,
       createdAt: new Date().toISOString(),
     };
 
@@ -169,6 +170,10 @@ export async function buildApp() {
     if (typeof request.body.email === 'string') {
       const trimmedEmail = request.body.email.trim();
       patch.email = trimmedEmail || undefined;
+    }
+
+    if (typeof request.body.avatar === 'string') {
+      patch.avatar = request.body.avatar.trim() || undefined;
     }
 
     const updated = await memberRepository.update(request.params.id, patch);

@@ -11,6 +11,7 @@ export interface Member {
   name: string;
   role: MemberRole;
   email?: string;
+  avatar?: string;
   createdAt: string;
 }
 

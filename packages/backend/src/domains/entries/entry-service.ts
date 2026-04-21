@@ -85,12 +85,22 @@ export class EntryService {
   async updateEntry(id: string, patch: UpdateEntryRequest): Promise<Entry | undefined> {
     validateRecurrence(patch.recurrenceRule);
 
+    const { reminders, checklist, invitees, ...rest } = patch;
     const normalizedPatch: Partial<Entry> = {
-      ...patch,
-      reminders: patch.reminders ? normalizeReminderConfigs(patch.reminders) : undefined,
-      checklist: patch.checklist ? normalizeChecklistItems(patch.checklist) : undefined,
-      invitees: patch.invitees ? normalizeInvitees(patch.invitees) : undefined,
+      ...rest,
     };
+
+    if (reminders !== undefined) {
+      normalizedPatch.reminders = normalizeReminderConfigs(reminders);
+    }
+
+    if (checklist !== undefined) {
+      normalizedPatch.checklist = normalizeChecklistItems(checklist);
+    }
+
+    if (invitees !== undefined) {
+      normalizedPatch.invitees = normalizeInvitees(invitees);
+    }
 
     const updated = await this.entryRepository.update(id, normalizedPatch);
     if (updated) {
@@ -267,12 +277,11 @@ function normalizeReminderConfigs(reminders?: Array<{ minutesBefore: number }>):
 
 function normalizeChecklistItems(items?: Array<{ text: string; isCompleted?: boolean }>): ChecklistItem[] {
   return (items ?? [])
-    .map((item) => item.text.trim())
-    .filter(Boolean)
-    .map((text) => ({
+    .filter((item) => item.text.trim())
+    .map((item) => ({
       id: uuid(),
-      text,
-      isCompleted: false,
+      text: item.text.trim(),
+      isCompleted: item.isCompleted ?? false,
     }));
 }
 
