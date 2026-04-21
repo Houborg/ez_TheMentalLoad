@@ -38,6 +38,12 @@ export class AssistantService {
       return interpreted;
     }
 
+    // Keep draft completion deterministic when the user did not provide any temporal clue.
+    // This avoids an LLM from inventing dates/times for prompts like "add task: ...".
+    if (interpreted.missingFields.includes('date/time') && !hasTemporalHint(input.message)) {
+      return interpreted;
+    }
+
     const runtimeConfig = await this.getAssistantRuntimeConfig?.();
     const ollamaDraft = await tryOllamaFallback(input, initialDraft, runtimeConfig);
     if (ollamaDraft && ollamaDraft.missingFields.length < interpreted.missingFields.length) {
@@ -87,6 +93,13 @@ export class AssistantService {
     const runtimeConfig = await this.getAssistantRuntimeConfig?.();
     return checkOllamaStatus(runtimeConfig);
   }
+}
+
+function hasTemporalHint(message: string): boolean {
+  const lower = message.toLowerCase();
+  return /(today|tomorrow|i dag|i morgen|monday|tuesday|wednesday|thursday|friday|saturday|sunday|søndag|mandag|tirsdag|onsdag|torsdag|fredag|lørdag)/i.test(lower)
+    || /(\d{1,2})[./-](\d{1,2})([./-](\d{2,4}))?/i.test(lower)
+    || /(?:at|kl\.?|@)\s*\d{1,2}(?::|\.)?\d{0,2}/i.test(lower);
 }
 
 function createBaseDraft(input: AssistantParseRequest, timezone: string): AssistantDraft {

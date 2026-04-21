@@ -271,5 +271,5 @@ function resolveSettingsPath(): string {
     return path.resolve(process.env.SETTINGS_FILE);
   }
 
-  return path.resolve(process.cwd(), 'packages', 'backend', 'data', 'app-settings.json');
+  return path.resolve(process.cwd(), 'data', 'app-settings.json');
 }

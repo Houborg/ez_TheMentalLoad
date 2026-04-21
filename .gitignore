@@ -1,8 +1,18 @@
 node_modules/
 dist/
+.next/
 coverage/
 playwright-report/
 blob-report/
+test-results/
 .env
 .env.local
 npm-debug.log*
+
+# Compiled contract artifacts (source-of-truth is .ts files)
+packages/contracts/src/*.js
+packages/contracts/src/*.js.map
+packages/contracts/src/*.d.ts
+
+# Runtime data
+packages/backend/data/app-settings.json

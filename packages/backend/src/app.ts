@@ -215,14 +215,17 @@ export async function buildApp() {
     return item;
   });
 
-  app.delete<{ Body: DeleteFoodPlanItemRequest }>('/api/v1/food-plan', async (request, reply) => {
-    const weekStart = normalizeWeekStart(request.body.weekStart);
-    if (!weekStart || !isFoodPlanDay(request.body.day)) {
+  app.delete<{ Body?: DeleteFoodPlanItemRequest; Querystring: { weekStart?: string; day?: string } }>('/api/v1/food-plan', async (request, reply) => {
+    const rawWeekStart = request.body?.weekStart ?? request.query.weekStart;
+    const rawDay = (request.body?.day ?? request.query.day)?.toLowerCase();
+    const weekStart = normalizeWeekStart(rawWeekStart);
+
+    if (!weekStart || !rawDay || !isFoodPlanDay(rawDay)) {
       reply.code(400);
       return { message: 'Invalid weekStart or day' };
     }
 
-    const deleted = await foodPlanRepository.deleteByWeekAndDay(weekStart, request.body.day);
+    const deleted = await foodPlanRepository.deleteByWeekAndDay(weekStart, rawDay);
     if (!deleted) {
       reply.code(404);
       return { message: 'Food plan item not found' };
