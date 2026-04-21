@@ -1,7 +1,7 @@
 import { v4 as uuid } from 'uuid';
 import * as ical from 'node-ical';
 import { rrulestr } from 'rrule';
-import type { CreateEntryRequest, Entry, UpdateEntryRequest } from '@mental-load/contracts';
+import type { ChecklistItem, CreateEntryRequest, Entry, Invitee, ReminderConfig, UpdateEntryRequest } from '@mental-load/contracts';
 import { DomainEventBus } from '../../events/domain-event-bus';
 import type { ReminderJobRecord, ReminderScheduler } from '../../reminders/reminder-scheduler';
 import type { EntryRepository } from '../../repositories/entry-repository';
@@ -63,20 +63,13 @@ export class EntryService {
       endTime: input.endTime,
       timezone: input.timezone,
       allDay: input.allDay,
-      reminders: (input.reminders ?? []).map((reminder) => ({
-        id: uuid(),
-        minutesBefore: reminder.minutesBefore,
-      })),
-      checklist: [],
+      reminders: normalizeReminderConfigs(input.reminders),
+      checklist: normalizeChecklistItems(input.checklist),
       status: 'active',
       location: input.location,
       recurrenceRule: input.recurrenceRule,
       parentEntryId: input.parentEntryId,
-      invitees: (input.invitees ?? []).map((invitee) => ({
-        id: uuid(),
-        email: invitee.email,
-        status: 'pending',
-      })),
+      invitees: normalizeInvitees(input.invitees),
       linkedEntryIds: [],
       createdAt: now,
       updatedAt: now,
@@ -92,7 +85,14 @@ export class EntryService {
   async updateEntry(id: string, patch: UpdateEntryRequest): Promise<Entry | undefined> {
     validateRecurrence(patch.recurrenceRule);
 
-    const updated = await this.entryRepository.update(id, patch as Partial<Entry>);
+    const normalizedPatch: Partial<Entry> = {
+      ...patch,
+      reminders: patch.reminders ? normalizeReminderConfigs(patch.reminders) : undefined,
+      checklist: patch.checklist ? normalizeChecklistItems(patch.checklist) : undefined,
+      invitees: patch.invitees ? normalizeInvitees(patch.invitees) : undefined,
+    };
+
+    const updated = await this.entryRepository.update(id, normalizedPatch);
     if (updated) {
       await this.scheduleReminders(updated);
       this.publish('entry.updated', { entry: updated });
@@ -254,6 +254,34 @@ function validateRecurrence(recurrenceRule?: string): void {
   }
 
   rrulestr(recurrenceRule);
+}
+
+function normalizeReminderConfigs(reminders?: Array<{ minutesBefore: number }>): ReminderConfig[] {
+  return (reminders ?? [])
+    .filter((reminder) => Number.isFinite(reminder.minutesBefore) && reminder.minutesBefore > 0)
+    .map((reminder) => ({
+      id: uuid(),
+      minutesBefore: Math.round(reminder.minutesBefore),
+    }));
+}
+
+function normalizeChecklistItems(items?: Array<{ text: string; isCompleted?: boolean }>): ChecklistItem[] {
+  return (items ?? [])
+    .map((item) => item.text.trim())
+    .filter(Boolean)
+    .map((text) => ({
+      id: uuid(),
+      text,
+      isCompleted: false,
+    }));
+}
+
+function normalizeInvitees(invitees?: Array<{ email: string }>): Invitee[] {
+  return (invitees ?? []).map((invitee) => ({
+    id: uuid(),
+    email: invitee.email,
+    status: 'pending',
+  }));
 }
 
 function toIcsTimestamp(value: string, allDay = false): string {

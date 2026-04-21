@@ -172,6 +172,7 @@ export type CreateEntryRequest = Pick<
   | 'recurrenceRule'
 > & {
   reminders?: Array<{ minutesBefore: number }>;
+  checklist?: Array<{ text: string; isCompleted?: boolean }>;
   invitees?: Array<{ email: string }>;
   parentEntryId?: string;
 };

@@ -53,6 +53,8 @@ import {
 import { AgendaView } from '@/components/agenda-view';
 import { cn } from '@/lib/utils';
 
+type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
+
 type DashboardState = {
   members: Member[];
   calendars: Calendar[];
@@ -71,6 +73,11 @@ type EventDraft = {
   allDay: boolean;
   location: string;
   recurrenceRule: string;
+  tasks: string;
+  reminder1Mode: ReminderDraftMode;
+  reminder1CustomHours: string;
+  reminder2Mode: ReminderDraftMode;
+  reminder2CustomHours: string;
 };
 
 type FoodPlanDraft = {
@@ -98,6 +105,15 @@ const MONTHS = [
   'December',
 ];
 const MEMBER_COLOR_CLASSES = ['bg-primary', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5'];
+const REMINDER_OPTIONS: Array<{ value: Exclude<ReminderDraftMode, 'custom'>; label: string }> = [
+  { value: 'none', label: 'No reminder' },
+  { value: '5', label: '5 min before' },
+  { value: '10', label: '10 min before' },
+  { value: '60', label: '1 hour before' },
+  { value: '120', label: '2 hours before' },
+  { value: '1440', label: '1 day before' },
+  { value: '2880', label: '2 days before' },
+];
 
 export function DashboardApp() {
   const router = useRouter();
@@ -388,6 +404,12 @@ export function DashboardApp() {
 
   async function handleCreateEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const reminders = buildReminderPayload(draft);
+    if (reminders instanceof Error) {
+      setErrorText(reminders.message);
+      return;
+    }
+
     try {
       setErrorText('');
       const payload = {
@@ -401,7 +423,8 @@ export function DashboardApp() {
         allDay: draft.allDay,
         location: draft.location.trim() || undefined,
         recurrenceRule: draft.recurrenceRule.trim() || undefined,
-        reminders: [{ minutesBefore: draft.type === 'task' ? 1440 : 30 }],
+        reminders,
+        checklist: parseChecklistDraft(draft.tasks),
       };
 
       if (editingEntryId) {
@@ -410,9 +433,7 @@ export function DashboardApp() {
         await createEntry(payload);
       }
 
-      setIsComposerOpen(false);
-      setEditingEntryId(null);
-      setDraft(createDefaultDraft(dashboard.members[0]?.id, dashboard.calendars[0]?.id));
+      closeEntryComposer();
       await handleRefresh();
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : `Could not ${editingEntryId ? 'update' : 'create'} entry`);
@@ -551,13 +572,12 @@ export function DashboardApp() {
     }
 
     await handleDeleteEntry(editingEntryId);
-    setIsComposerOpen(false);
-    setEditingEntryId(null);
-    setDraft(createDefaultDraft(dashboard.members[0]?.id, dashboard.calendars[0]?.id));
+    closeEntryComposer();
   }
 
   function handleEditEntry(entry: Entry) {
     setEditingEntryId(getEntryMutationId(entry));
+    const [firstReminder, secondReminder] = entry.reminders;
     setDraft({
       title: entry.title,
       type: entry.type,
@@ -568,8 +588,35 @@ export function DashboardApp() {
       allDay: entry.allDay,
       location: entry.location || '',
       recurrenceRule: entry.recurrenceRule || '',
+      tasks: entry.checklist.map((item) => item.text).join('\n'),
+      ...toReminderDraftFields(firstReminder?.minutesBefore, secondReminder?.minutesBefore),
     });
+    setSelectedDate(new Date(entry.startTime));
     setIsComposerOpen(true);
+  }
+
+  function openCreateEntryComposer(input?: { date?: Date; ownerMemberId?: string }) {
+    const nextDate = input?.date ?? new Date();
+    const nextDraft = hydrateDraft(
+      createDefaultDraft(
+        input?.ownerMemberId ?? dashboard.members[0]?.id ?? '',
+        dashboard.calendars[0]?.id ?? '',
+        nextDate,
+      ),
+      dashboard.members,
+      dashboard.calendars,
+    );
+
+    setSelectedDate(nextDate);
+    setEditingEntryId(null);
+    setDraft(nextDraft);
+    setIsComposerOpen(true);
+  }
+
+  function closeEntryComposer() {
+    setIsComposerOpen(false);
+    setEditingEntryId(null);
+    setDraft(createDefaultDraft(dashboard.members[0]?.id, dashboard.calendars[0]?.id));
   }
 
   async function handleDeleteFoodPlan(weekStart: string, day: FoodPlanDay) {
@@ -1060,7 +1107,7 @@ export function DashboardApp() {
             </button>
             <button
               type="button"
-              onClick={() => setIsComposerOpen(true)}
+              onClick={() => openCreateEntryComposer()}
               className="flex h-10 items-center gap-2 rounded-2xl bg-primary px-4 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 transition hover:brightness-110"
             >
               <Plus className="h-4 w-4" />
@@ -1161,7 +1208,11 @@ export function DashboardApp() {
                           key={`${day ?? 'empty'}-${index}`}
                           role={day ? 'button' : undefined}
                           tabIndex={day ? 0 : -1}
-                          onClick={() => date && setSelectedDate(date)}
+                          onClick={() => {
+                            if (date) {
+                              openCreateEntryComposer({ date });
+                            }
+                          }}
                           onKeyDown={(event) => {
                             if (!day) {
                               return;
@@ -1169,7 +1220,7 @@ export function DashboardApp() {
 
                             if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault();
-                              setSelectedDate(date as Date);
+                              openCreateEntryComposer({ date: date as Date });
                             }
                           }}
                           className={cn(
@@ -1448,6 +1499,7 @@ export function DashboardApp() {
                 entries={monthOccurrences}
                 memberColorById={memberColorById}
                 onSelectEntry={handleEditEntry}
+                onSelectDate={(date, ownerMemberId) => openCreateEntryComposer({ date, ownerMemberId })}
                 dayWeatherByDate={dayWeatherByDate}
               />
             </section>
@@ -1531,85 +1583,146 @@ export function DashboardApp() {
       </div>
 
       {isComposerOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 py-10 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-[32px] border border-border/60 bg-card/95 p-6 shadow-2xl shadow-black/30">
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-semibold tracking-tight">{editingEntryId ? 'Edit entry' : 'Create new entry'}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">This writes directly to the existing backend entry API using the public contract.</p>
-              </div>
-              <button type="button" onClick={() => { setIsComposerOpen(false); setEditingEntryId(null); }} className="rounded-xl border border-border/60 px-3 py-2 text-sm text-muted-foreground hover:text-foreground">
-                Close
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 backdrop-blur-sm sm:items-center sm:px-4 sm:py-4">
+          <div className="flex w-full max-w-2xl flex-col rounded-t-[28px] border border-border/60 bg-card/97 shadow-2xl shadow-black/30 sm:max-h-[92vh] sm:rounded-[28px]" style={{ maxHeight: '92dvh' }}>
+            {/* sticky header */}
+            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/50 px-5 py-3">
+              <h2 className="text-base font-semibold tracking-tight">{editingEntryId ? 'Edit entry' : 'New entry'}</h2>
+              <button type="button" onClick={closeEntryComposer} className="rounded-lg border border-border/60 p-1.5 text-muted-foreground hover:text-foreground" aria-label="Close">
+                <X className="h-4 w-4" />
               </button>
             </div>
-            <form className="grid gap-4 md:grid-cols-2" onSubmit={handleCreateEntry}>
-              <label className="grid gap-2 md:col-span-2">
-                <span className="text-sm font-medium">Title</span>
-                <input aria-label="Title" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60" required />
+            {/* scrollable body */}
+            <div className="overflow-y-auto">
+            <form className="grid gap-3 p-5 md:grid-cols-2" onSubmit={handleCreateEntry}>
+              <label className="grid gap-1.5 md:col-span-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Title</span>
+                <input aria-label="Title" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60" required />
               </label>
-              <label className="grid gap-2">
-                <span className="text-sm font-medium">Type</span>
-                <select aria-label="Type" value={draft.type} onChange={(event) => setDraft((current) => ({ ...current, type: event.target.value as Entry['type'] }))} className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60">
+              <label className="grid gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Type</span>
+                <select aria-label="Type" value={draft.type} onChange={(event) => setDraft((current) => ({ ...current, type: event.target.value as Entry['type'] }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60">
                   <option value="event">Event</option>
                   <option value="task">Task</option>
                 </select>
               </label>
-              <label className="grid gap-2">
-                <span className="text-sm font-medium">All day</span>
-                <select aria-label="All day" value={draft.allDay ? 'yes' : 'no'} onChange={(event) => setDraft((current) => ({ ...current, allDay: event.target.value === 'yes' }))} className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60">
+              <label className="grid gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">All day</span>
+                <select aria-label="All day" value={draft.allDay ? 'yes' : 'no'} onChange={(event) => setDraft((current) => ({ ...current, allDay: event.target.value === 'yes' }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60">
                   <option value="no">Timed</option>
                   <option value="yes">All day</option>
                 </select>
               </label>
-              <label className="grid gap-2">
-                <span className="text-sm font-medium">Member</span>
-                <select aria-label="Member" value={draft.ownerMemberId} onChange={(event) => setDraft((current) => ({ ...current, ownerMemberId: event.target.value }))} className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60">
+              <label className="grid gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Member</span>
+                <select aria-label="Member" value={draft.ownerMemberId} onChange={(event) => setDraft((current) => ({ ...current, ownerMemberId: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60">
                   {dashboard.members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
                 </select>
               </label>
-              <label className="grid gap-2">
-                <span className="text-sm font-medium">Calendar</span>
-                <select aria-label="Calendar" value={draft.calendarId} onChange={(event) => setDraft((current) => ({ ...current, calendarId: event.target.value }))} className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60">
+              <label className="grid gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Calendar</span>
+                <select aria-label="Calendar" value={draft.calendarId} onChange={(event) => setDraft((current) => ({ ...current, calendarId: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60">
                   {dashboard.calendars.map((calendar) => <option key={calendar.id} value={calendar.id}>{calendar.name}</option>)}
                 </select>
               </label>
-              <label className="grid gap-2">
-                <span className="text-sm font-medium">Start</span>
-                <input aria-label="Start" type="datetime-local" value={draft.startTime} onChange={(event) => setDraft((current) => ({ ...current, startTime: event.target.value }))} className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60" required />
+              <label className="grid gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Start</span>
+                <input aria-label="Start" type="datetime-local" value={draft.startTime} onChange={(event) => setDraft((current) => ({ ...current, startTime: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60" required />
               </label>
-              <label className="grid gap-2">
-                <span className="text-sm font-medium">End</span>
-                <input aria-label="End" type="datetime-local" value={draft.endTime} onChange={(event) => setDraft((current) => ({ ...current, endTime: event.target.value }))} className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60" required />
+              <label className="grid gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">End</span>
+                <input aria-label="End" type="datetime-local" value={draft.endTime} onChange={(event) => setDraft((current) => ({ ...current, endTime: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60" required />
               </label>
-              <label className="grid gap-2">
-                <span className="text-sm font-medium">Location</span>
-                <input aria-label="Location" value={draft.location} onChange={(event) => setDraft((current) => ({ ...current, location: event.target.value }))} className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60" />
+              <label className="grid gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Location</span>
+                <input aria-label="Location" value={draft.location} onChange={(event) => setDraft((current) => ({ ...current, location: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60" />
               </label>
-              <label className="grid gap-2">
-                <span className="text-sm font-medium">Recurrence rule</span>
-                <input aria-label="Recurrence rule" value={draft.recurrenceRule} onChange={(event) => setDraft((current) => ({ ...current, recurrenceRule: event.target.value }))} placeholder="FREQ=WEEKLY;COUNT=6" className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60" />
+              <label className="grid gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recurrence</span>
+                <input aria-label="Recurrence rule" value={draft.recurrenceRule} onChange={(event) => setDraft((current) => ({ ...current, recurrenceRule: event.target.value }))} placeholder="FREQ=WEEKLY;COUNT=6" className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60" />
               </label>
-              <div className="md:col-span-2 flex items-center justify-between pt-2">
-                <div className="text-xs text-muted-foreground">Writes to entry APIs and refreshes live dashboard data.</div>
+              <label className="grid gap-1.5 md:col-span-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Tasks (one per line)</span>
+                <textarea
+                  aria-label="Tasks"
+                  value={draft.tasks}
+                  onChange={(event) => setDraft((current) => ({ ...current, tasks: event.target.value }))}
+                  placeholder="One task per line"
+                  className="min-h-[72px] rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60"
+                />
+              </label>
+              <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reminder 1</span>
+                  <select
+                    aria-label="Reminder 1"
+                    value={draft.reminder1Mode}
+                    onChange={(event) => setDraft((current) => ({ ...current, reminder1Mode: event.target.value as ReminderDraftMode }))}
+                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60"
+                  >
+                    {REMINDER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    <option value="custom">Custom hours before</option>
+                  </select>
+                  {draft.reminder1Mode === 'custom' ? (
+                    <input
+                      aria-label="Reminder 1 custom hours"
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      value={draft.reminder1CustomHours}
+                      onChange={(event) => setDraft((current) => ({ ...current, reminder1CustomHours: event.target.value }))}
+                      placeholder="Hours before"
+                      className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60"
+                    />
+                  ) : null}
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reminder 2</span>
+                  <select
+                    aria-label="Reminder 2"
+                    value={draft.reminder2Mode}
+                    onChange={(event) => setDraft((current) => ({ ...current, reminder2Mode: event.target.value as ReminderDraftMode }))}
+                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60"
+                  >
+                    {REMINDER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    <option value="custom">Custom hours before</option>
+                  </select>
+                  {draft.reminder2Mode === 'custom' ? (
+                    <input
+                      aria-label="Reminder 2 custom hours"
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      value={draft.reminder2CustomHours}
+                      onChange={(event) => setDraft((current) => ({ ...current, reminder2CustomHours: event.target.value }))}
+                      placeholder="Hours before"
+                      className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60"
+                    />
+                  ) : null}
+                </label>
+              </div>
+              {/* sticky footer */}
+              <div className="md:col-span-2 flex items-center justify-end gap-2 border-t border-border/50 pt-3">
                 <div className="flex items-center gap-2">
                   {editingEntryId ? (
                     <button
                       type="button"
                       onClick={() => void handleDeleteEntryFromComposer()}
                       disabled={deletingEntryId === editingEntryId}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive hover:bg-destructive/15 disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/15 disabled:opacity-60"
                     >
                       {deletingEntryId === editingEntryId ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                      Delete entry
+                      Delete
                     </button>
                   ) : null}
-                  <button type="submit" className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:brightness-110">
+                  <button type="submit" className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:brightness-110">
                     <Plus className="h-4 w-4" />
-                    {editingEntryId ? 'Update entry' : 'Save entry'}
+                    {editingEntryId ? 'Update' : 'Save'}
                   </button>
                 </div>
               </div>
             </form>
+            </div>{/* end scrollable body */}
           </div>
         </div>
       ) : null}
@@ -2212,19 +2325,102 @@ function parseBirthdays(value: unknown): BirthdaySetting[] {
   return parsed;
 }
 
-function createDefaultDraft(ownerMemberId = '', calendarId = ''): EventDraft {
-  const start = toLocalInputValue(new Date(Date.now() + 60 * 60 * 1000));
-  const end = toLocalInputValue(new Date(Date.now() + 2 * 60 * 60 * 1000));
+function createDefaultDraft(ownerMemberId = '', calendarId = '', date = new Date()): EventDraft {
+  const { start, end } = buildDefaultTimeRange(date);
   return {
     title: '',
     type: 'event',
     ownerMemberId,
     calendarId,
-    startTime: start,
-    endTime: end,
+    startTime: toLocalInputValue(start),
+    endTime: toLocalInputValue(end),
     allDay: false,
     location: '',
     recurrenceRule: '',
+    tasks: '',
+    reminder1Mode: 'none',
+    reminder1CustomHours: '',
+    reminder2Mode: 'none',
+    reminder2CustomHours: '',
+  };
+}
+
+function buildDefaultTimeRange(date = new Date()) {
+  const now = new Date();
+  const start = new Date(date);
+  start.setHours(now.getHours() + 1, now.getMinutes(), 0, 0);
+
+  const end = new Date(start);
+  end.setHours(start.getHours() + 1, start.getMinutes(), 0, 0);
+  return { start, end };
+}
+
+function parseChecklistDraft(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((text) => ({ text, isCompleted: false }));
+}
+
+function buildReminderPayload(draft: EventDraft) {
+  const reminders = [
+    toReminderPayload(draft.reminder1Mode, draft.reminder1CustomHours),
+    toReminderPayload(draft.reminder2Mode, draft.reminder2CustomHours),
+  ];
+
+  const error = reminders.find((value): value is Error => value instanceof Error);
+  if (error) {
+    return error;
+  }
+
+  return reminders
+    .filter((value): value is { minutesBefore: number } => value !== null)
+    .filter((value, index, items) => items.findIndex((candidate) => candidate.minutesBefore === value.minutesBefore) === index);
+}
+
+function toReminderPayload(mode: ReminderDraftMode, customHours: string) {
+  if (mode === 'none') {
+    return null;
+  }
+
+  if (mode === 'custom') {
+    const hours = Number(customHours);
+    if (!Number.isFinite(hours) || hours <= 0) {
+      return new Error('Custom reminder hours must be greater than 0');
+    }
+
+    return { minutesBefore: Math.round(hours * 60) };
+  }
+
+  return { minutesBefore: Number(mode) };
+}
+
+function toReminderDraftFields(first?: number, second?: number) {
+  const reminder1 = toReminderDraft(first);
+  const reminder2 = toReminderDraft(second);
+
+  return {
+    reminder1Mode: reminder1.mode,
+    reminder1CustomHours: reminder1.customHours,
+    reminder2Mode: reminder2.mode,
+    reminder2CustomHours: reminder2.customHours,
+  };
+}
+
+function toReminderDraft(minutesBefore?: number): { mode: ReminderDraftMode; customHours: string } {
+  if (!minutesBefore) {
+    return { mode: 'none', customHours: '' };
+  }
+
+  const preset = REMINDER_OPTIONS.find((option) => option.value !== 'none' && Number(option.value) === minutesBefore);
+  if (preset) {
+    return { mode: preset.value, customHours: '' };
+  }
+
+  return {
+    mode: 'custom',
+    customHours: String(Number((minutesBefore / 60).toFixed(2))),
   };
 }
 
