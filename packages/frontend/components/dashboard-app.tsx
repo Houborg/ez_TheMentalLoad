@@ -262,32 +262,56 @@ export function DashboardApp() {
     }, {});
   }, [dashboard.members]);
 
+  const birthdays = useMemo(() => parseBirthdays(settings?.sync.configJson.birthdays), [settings?.sync.configJson.birthdays]);
+  const recurringDefaults = useMemo(() => parseRecurringDefaults(settings?.sync.configJson.recurringDefaults), [settings?.sync.configJson.recurringDefaults]);
+
+  const birthdayMonthOccurrences = useMemo(
+    () => buildBirthdayOccurrencesInRange(birthdays, startOfMonth(currentMonth), endOfMonth(currentMonth), dashboard.calendars[0]?.id, dashboard.members[0]?.id),
+    [birthdays, currentMonth, dashboard.calendars, dashboard.members],
+  );
+
+  const birthdayUpcomingOccurrences = useMemo(() => {
+    const from = new Date();
+    const to = new Date(from.getTime() + 30 * 24 * 60 * 60 * 1000);
+    return buildBirthdayOccurrencesInRange(birthdays, from, to, dashboard.calendars[0]?.id, dashboard.members[0]?.id);
+  }, [birthdays, dashboard.calendars, dashboard.members]);
+
+  const monthEntriesForView = useMemo(
+    () => [...monthOccurrences, ...birthdayMonthOccurrences].sort((left, right) => left.startTime.localeCompare(right.startTime)),
+    [birthdayMonthOccurrences, monthOccurrences],
+  );
+
+  const upcomingEntriesForView = useMemo(
+    () => [...upcomingOccurrences, ...birthdayUpcomingOccurrences].sort((left, right) => left.startTime.localeCompare(right.startTime)),
+    [birthdayUpcomingOccurrences, upcomingOccurrences],
+  );
+
   const filteredUpcoming = useMemo(() => {
-    return upcomingOccurrences
+    return upcomingEntriesForView
       .filter((entry) => entry.type !== 'task')
       .filter((entry) => matchesMemberFilter(entry, memberFilterId))
       .filter((entry) => matchesSearch(entry, dashboard.members, searchQuery))
       .sort((left, right) => left.startTime.localeCompare(right.startTime))
       .slice(0, 8);
-  }, [dashboard.members, memberFilterId, searchQuery, upcomingOccurrences]);
+  }, [dashboard.members, memberFilterId, searchQuery, upcomingEntriesForView]);
 
   const selectedEntries = useMemo(() => {
-    return monthOccurrences
+    return monthEntriesForView
       .filter((entry) => sameDay(new Date(entry.startTime), selectedDate))
       .filter((entry) => matchesMemberFilter(entry, memberFilterId))
       .filter((entry) => matchesSearch(entry, dashboard.members, searchQuery))
       .sort((left, right) => left.startTime.localeCompare(right.startTime));
-  }, [dashboard.members, memberFilterId, monthOccurrences, searchQuery, selectedDate]);
+  }, [dashboard.members, memberFilterId, monthEntriesForView, searchQuery, selectedDate]);
 
   const statCards = useMemo(() => {
     const today = new Date();
     const nextWeekBoundary = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const upcomingTaskCount = countTasks(upcomingOccurrences.filter((entry) => new Date(entry.startTime) <= nextWeekBoundary));
+    const upcomingTaskCount = countTasks(upcomingEntriesForView.filter((entry) => new Date(entry.startTime) <= nextWeekBoundary));
 
     return [
       {
         label: 'Monthly events',
-        value: String(monthOccurrences.filter((entry) => entry.type === 'event').length),
+        value: String(monthEntriesForView.filter((entry) => entry.type === 'event').length),
         subtext: `${MONTHS[currentMonth.getMonth()]} overview`,
         icon: CalendarDays,
         color: 'text-primary bg-primary/12',
@@ -301,13 +325,13 @@ export function DashboardApp() {
       },
       {
         label: 'Events next 7 days',
-        value: String(upcomingOccurrences.filter((entry) => entry.type === 'event' && new Date(entry.startTime) <= nextWeekBoundary).length),
+        value: String(upcomingEntriesForView.filter((entry) => entry.type === 'event' && new Date(entry.startTime) <= nextWeekBoundary).length),
         subtext: 'Recurring included',
         icon: Clock3,
         color: 'text-chart-3 bg-chart-3/12',
       },
     ];
-  }, [currentMonth, monthOccurrences, upcomingOccurrences]);
+  }, [currentMonth, monthEntriesForView, upcomingEntriesForView]);
 
   const taskProgress = useMemo(() => {
     const summary = summarizeTasks(dashboard.entries);
@@ -337,11 +361,9 @@ export function DashboardApp() {
   const monthDays = useMemo(() => buildMonthGrid(currentMonth), [currentMonth]);
 
   const recurringEntries = useMemo(
-    () => monthOccurrences.filter((entry) => Boolean(entry.recurrenceRule)).sort((left, right) => left.startTime.localeCompare(right.startTime)),
-    [monthOccurrences],
+    () => monthEntriesForView.filter((entry) => Boolean(entry.recurrenceRule) && !isVirtualBirthdayEntry(entry)).sort((left, right) => left.startTime.localeCompare(right.startTime)),
+    [monthEntriesForView],
   );
-
-  const birthdays = useMemo(() => parseBirthdays(settings?.sync.configJson.birthdays), [settings?.sync.configJson.birthdays]);
 
   const weatherConfig = useMemo<{ location: string; state: string; country: string; unit: 'C' | 'F'; updateFrequencyMinutes: number }>(() => {
     const raw = settings?.sync.configJson.weather;
@@ -614,6 +636,13 @@ export function DashboardApp() {
   }
 
   function handleEditEntry(entry: Entry) {
+    if (isVirtualBirthdayEntry(entry)) {
+      setSettingsOpen(true);
+      setSettingsTab('birthdays');
+      setSettingsMessage('Birthday entries are managed in Settings > Birthdays.');
+      return;
+    }
+
     setEditingEntryId(getEntryMutationId(entry));
     const [firstReminder, secondReminder] = entry.reminders;
     const { freq, count } = parseRecurrenceRule(entry.recurrenceRule);
@@ -637,12 +666,16 @@ export function DashboardApp() {
 
   function openCreateEntryComposer(input?: { date?: Date; ownerMemberId?: string }) {
     const nextDate = input?.date ?? new Date();
-    const nextDraft = hydrateDraft(
+    const seededDraft = applyRecurringDefaultsToDraft(
       createDefaultDraft(
         input?.ownerMemberId ?? dashboard.members[0]?.id ?? '',
         dashboard.calendars[0]?.id ?? '',
         nextDate,
       ),
+      recurringDefaults,
+    );
+    const nextDraft = hydrateDraft(
+      seededDraft,
       dashboard.members,
       dashboard.calendars,
     );
@@ -656,7 +689,7 @@ export function DashboardApp() {
   function closeEntryComposer() {
     setIsComposerOpen(false);
     setEditingEntryId(null);
-    setDraft(createDefaultDraft(dashboard.members[0]?.id, dashboard.calendars[0]?.id));
+    setDraft(applyRecurringDefaultsToDraft(createDefaultDraft(dashboard.members[0]?.id, dashboard.calendars[0]?.id), recurringDefaults));
   }
 
   async function handleDeleteFoodPlan(weekStart: string, day: FoodPlanDay) {
@@ -918,6 +951,20 @@ export function DashboardApp() {
     }
   }
 
+  async function handleSaveRecurringDefaults(defaults: { enabled: boolean; freq: RecurrenceFreq; count: string }) {
+    const parsedCount = Number(defaults.count);
+    const nextDefaults = {
+      enabled: defaults.enabled,
+      freq: defaults.enabled ? defaults.freq : 'none',
+      count: defaults.enabled && Number.isFinite(parsedCount) && parsedCount > 0 ? parsedCount : undefined,
+    };
+
+    await persistSyncConfig({
+      ...(settings?.sync.configJson ?? {}),
+      recurringDefaults: nextDefaults,
+    }, 'Recurring creation defaults saved.');
+  }
+
   async function persistSyncConfig(configJson: Record<string, unknown>, message: string) {
     if (!settings) {
       return;
@@ -956,7 +1003,7 @@ export function DashboardApp() {
         id: nextId,
         name: birthdaysDraft.name.trim(),
         date: birthdaysDraft.date,
-        memberId: birthdaysDraft.memberId || undefined,
+        memberId: undefined,
         notifyDaysBefore: birthdaysDraft.notifyDaysBefore,
       },
     ].sort((left, right) => left.date.localeCompare(right.date));
@@ -1309,7 +1356,7 @@ export function DashboardApp() {
                     ))}
                     {monthDays.map((day, index) => {
                       const date = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
-                      const entries = date ? getEntriesForDate(monthOccurrences, dashboard.members, date, searchQuery, memberFilterId) : [];
+                      const entries = date ? getEntriesForDate(monthEntriesForView, dashboard.members, date, searchQuery, memberFilterId) : [];
                       return (
                         <div
                           key={`${day ?? 'empty'}-${index}`}
@@ -1353,7 +1400,7 @@ export function DashboardApp() {
                                       event.stopPropagation();
                                       handleEditEntry(entry);
                                     }}
-                                    className={cn('w-full truncate rounded-xl px-2 py-1 text-left text-xs font-medium text-primary-foreground', memberColorById[entry.ownerMemberId] ?? 'bg-primary')}
+                                    className={cn('w-full truncate rounded-xl px-2 py-1 text-left text-xs font-medium text-primary-foreground', isVirtualBirthdayEntry(entry) ? 'bg-chart-4' : (memberColorById[entry.ownerMemberId] ?? 'bg-primary'))}
                                   >
                                     {entry.title}
                                   </button>
@@ -1400,29 +1447,35 @@ export function DashboardApp() {
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <div className="rounded-full border border-border/60 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{entry.status}</div>
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      handleEditEntry(entry);
-                                    }}
-                                    className="rounded-lg border border-border/40 p-1.5 hover:bg-accent/60"
-                                    aria-label={`Edit ${entry.title}`}
-                                  >
-                                    <Edit2 className="h-4 w-4" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      void handleDeleteEntry(getEntryMutationId(entry));
-                                    }}
-                                    disabled={deletingEntryId === getEntryMutationId(entry)}
-                                    className="rounded-lg border border-border/40 p-1.5 hover:bg-destructive/10 disabled:opacity-60"
-                                    aria-label={`Delete ${entry.title}`}
-                                  >
-                                    {deletingEntryId === getEntryMutationId(entry) ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                                  </button>
+                                  {isVirtualBirthdayEntry(entry) ? (
+                                    <div className="rounded-full border border-border/60 px-2 py-1 text-[11px] text-muted-foreground">Birthday</div>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleEditEntry(entry);
+                                        }}
+                                        className="rounded-lg border border-border/40 p-1.5 hover:bg-accent/60"
+                                        aria-label={`Edit ${entry.title}`}
+                                      >
+                                        <Edit2 className="h-4 w-4" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void handleDeleteEntry(getEntryMutationId(entry));
+                                        }}
+                                        disabled={deletingEntryId === getEntryMutationId(entry)}
+                                        className="rounded-lg border border-border/40 p-1.5 hover:bg-destructive/10 disabled:opacity-60"
+                                        aria-label={`Delete ${entry.title}`}
+                                      >
+                                        {deletingEntryId === getEntryMutationId(entry) ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                      </button>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                               {entry.location ? <div className="mt-2 text-xs text-muted-foreground">{entry.location}</div> : null}
@@ -1469,7 +1522,11 @@ export function DashboardApp() {
                           <button
                             key={entry.id}
                             type="button"
-                            onClick={() => handleEditEntry(entry)}
+                            onClick={() => {
+                              if (!isVirtualBirthdayEntry(entry)) {
+                                handleEditEntry(entry);
+                              }
+                            }}
                             className="w-full rounded-2xl border border-border/60 bg-card/55 p-4 text-left transition hover:bg-accent/45"
                           >
                             <div className="flex items-start gap-3">
@@ -2301,40 +2358,100 @@ export function DashboardApp() {
             ) : null}
 
             {settingsTab === 'recurring' ? (
-              <div className="space-y-2">
-                {recurringEntries.length === 0 ? (
-                  <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm text-muted-foreground">No recurring entries were found in the current month feed.</div>
-                ) : (
-                  recurringEntries.map((entry) => (
-                    <div key={entry.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/30 px-4 py-3">
-                      <div>
-                        <div className="text-sm font-semibold">{entry.title}</div>
-                        <div className="text-xs text-muted-foreground">{entry.recurrenceRule}</div>
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-border/60 bg-background/30 p-4">
+                  <div className="mb-3 text-sm font-medium">Creation parameters</div>
+                  <p className="mb-4 text-xs text-muted-foreground">These defaults are used when creating a new event.</p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="grid gap-2">
+                      <span className="text-sm font-medium">Enable default recurring</span>
+                      <select
+                        value={recurringDefaults.enabled ? 'yes' : 'no'}
+                        onChange={(event) => void handleSaveRecurringDefaults({
+                          enabled: event.target.value === 'yes',
+                          freq: recurringDefaults.freq,
+                          count: recurringDefaults.count,
+                        })}
+                        className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                      >
+                        <option value="no">No</option>
+                        <option value="yes">Yes</option>
+                      </select>
+                    </label>
+                    <label className="grid gap-2">
+                      <span className="text-sm font-medium">Default frequency</span>
+                      <select
+                        value={recurringDefaults.freq}
+                        onChange={(event) => void handleSaveRecurringDefaults({
+                          enabled: recurringDefaults.enabled,
+                          freq: event.target.value as RecurrenceFreq,
+                          count: recurringDefaults.count,
+                        })}
+                        className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                      >
+                        <option value="none">No repeat</option>
+                        <option value="DAILY">Daily</option>
+                        <option value="WEEKLY">Weekly</option>
+                        <option value="MONTHLY">Monthly</option>
+                        <option value="YEARLY">Yearly</option>
+                      </select>
+                    </label>
+                    <label className="grid gap-2">
+                      <span className="text-sm font-medium">Default count</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={recurringDefaults.count}
+                        onChange={(event) => void handleSaveRecurringDefaults({
+                          enabled: recurringDefaults.enabled,
+                          freq: recurringDefaults.freq,
+                          count: event.target.value,
+                        })}
+                        className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                        placeholder="Blank = forever"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {recurringEntries.length === 0 ? (
+                    <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm text-muted-foreground">No recurring entries were found in the current month feed.</div>
+                  ) : (
+                    recurringEntries.map((entry) => (
+                      <div key={entry.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/30 px-4 py-3">
+                        <div>
+                          <div className="text-sm font-semibold">{entry.title}</div>
+                          <div className="text-xs text-muted-foreground">{entry.recurrenceRule}</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleUpdateRecurringRule(entry)}
+                            className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60"
+                          >
+                            Edit rule
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleToggleRecurring(entry)}
+                            className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60"
+                          >
+                            Remove rule
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void handleUpdateRecurringRule(entry)}
-                          className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60"
-                        >
-                          Edit rule
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleToggleRecurring(entry)}
-                          className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60"
-                        >
-                          Remove rule
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
               </div>
             ) : null}
 
             {settingsTab === 'birthdays' ? (
               <div className="space-y-3">
+                <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm text-muted-foreground">
+                  Birthdays are standalone and will appear in the calendar even when no member is attached.
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-2">
                     <span className="text-sm font-medium">Name</span>
@@ -2354,20 +2471,7 @@ export function DashboardApp() {
                     />
                   </label>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-2">
-                    <span className="text-sm font-medium">Member</span>
-                    <select
-                      value={birthdaysDraft.memberId}
-                      onChange={(event) => setBirthdaysDraft((current) => ({ ...current, memberId: event.target.value }))}
-                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                    >
-                      <option value="">None</option>
-                      {dashboard.members.map((member) => (
-                        <option key={member.id} value={member.id}>{member.name}</option>
-                      ))}
-                    </select>
-                  </label>
+                <div className="grid gap-3 sm:grid-cols-1">
                   <label className="grid gap-2">
                     <span className="text-sm font-medium">Notify days before</span>
                     <input
@@ -2575,6 +2679,111 @@ function parseBirthdays(value: unknown): BirthdaySetting[] {
   });
 
   return parsed;
+}
+
+function parseRecurringDefaults(value: unknown): { enabled: boolean; freq: RecurrenceFreq; count: string } {
+  if (!value || typeof value !== 'object') {
+    return { enabled: false, freq: 'none', count: '' };
+  }
+
+  const source = value as Record<string, unknown>;
+  const enabled = source.enabled === true;
+  const freqCandidate = typeof source.freq === 'string' ? source.freq : 'none';
+  const freq = (['none', 'DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as const).includes(freqCandidate as RecurrenceFreq)
+    ? (freqCandidate as RecurrenceFreq)
+    : 'none';
+  const countRaw = Number(source.count);
+  const count = Number.isFinite(countRaw) && countRaw > 0 ? String(Math.floor(countRaw)) : '';
+
+  return {
+    enabled,
+    freq,
+    count,
+  };
+}
+
+function applyRecurringDefaultsToDraft(
+  draft: EventDraft,
+  defaults: { enabled: boolean; freq: RecurrenceFreq; count: string },
+): EventDraft {
+  if (!defaults.enabled || defaults.freq === 'none') {
+    return {
+      ...draft,
+      recurrenceFreq: 'none',
+      recurrenceCount: '',
+    };
+  }
+
+  return {
+    ...draft,
+    recurrenceFreq: defaults.freq,
+    recurrenceCount: defaults.count,
+  };
+}
+
+function buildBirthdayOccurrencesInRange(
+  birthdays: BirthdaySetting[],
+  from: Date,
+  to: Date,
+  fallbackCalendarId?: string,
+  fallbackOwnerMemberId?: string,
+): Entry[] {
+  const occurrences: Entry[] = [];
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  birthdays.forEach((birthday) => {
+    const parts = birthday.date.split('-').map((part) => Number(part));
+    if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) {
+      return;
+    }
+
+    const [, month, day] = parts;
+    for (let year = from.getFullYear(); year <= to.getFullYear(); year += 1) {
+      const start = new Date(year, month - 1, day, 12, 0, 0, 0);
+      if (Number.isNaN(start.getTime()) || start < from || start > to) {
+        continue;
+      }
+
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      const now = new Date().toISOString();
+      const baseId = `birthday:${birthday.id}:${year}`;
+
+      occurrences.push({
+        id: baseId,
+        title: `${birthday.name} birthday`,
+        type: 'event',
+        ownerMemberId: birthday.memberId ?? fallbackOwnerMemberId ?? 'birthday-unassigned',
+        calendarId: fallbackCalendarId ?? 'birthday-calendar',
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        timezone,
+        allDay: true,
+        reminders: birthday.notifyDaysBefore > 0 ? [{ id: `${baseId}:reminder`, minutesBefore: birthday.notifyDaysBefore * 24 * 60 }] : [],
+        checklist: [],
+        status: 'active',
+        recurrenceRule: 'FREQ=YEARLY',
+        invitees: [],
+        linkedEntryIds: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  });
+
+  return occurrences;
+}
+
+function isVirtualBirthdayEntry(entry: Entry): boolean {
+  return entry.id.startsWith('birthday:');
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function endOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
 }
 
 function countTasks(entries: Entry[]) {
