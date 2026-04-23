@@ -3,10 +3,12 @@ import type { Calendar, Member } from '@mental-load/contracts';
 import { runMigrations } from '../database/migrations';
 import { InMemoryReminderScheduler, RedisReminderScheduler, type ReminderScheduler } from '../reminders/reminder-scheduler';
 import { InMemoryCalendarRepository, type CalendarRepository } from './calendar-repository';
+import { InMemoryDailyTimelineRepository, type DailyTimelineRepository } from './daily-timeline-repository';
 import { InMemoryEntryRepository, type EntryRepository } from './entry-repository';
 import { InMemoryFoodPlanRepository, type FoodPlanRepository } from './food-plan-repository';
 import { InMemoryMemberRepository, type MemberRepository } from './member-repository';
 import { PostgresCalendarRepository } from './postgres/calendar-repository';
+import { PostgresDailyTimelineRepository } from './postgres/daily-timeline-repository';
 import { PostgresEntryRepository } from './postgres/entry-repository';
 import { PostgresFoodPlanRepository } from './postgres/food-plan-repository';
 import { PostgresMemberRepository } from './postgres/member-repository';
@@ -24,6 +26,7 @@ export interface RepositoryBundle {
   calendarRepository: CalendarRepository;
   entryRepository: EntryRepository;
   foodPlanRepository: FoodPlanRepository;
+  dailyTimelineRepository: DailyTimelineRepository;
   reminderScheduler: ReminderScheduler;
   persistence: 'memory' | 'postgres';
   close(): Promise<void>;
@@ -45,6 +48,7 @@ export async function createRepositoryBundle(): Promise<RepositoryBundle> {
         calendarRepository: new PostgresCalendarRepository(pool),
         entryRepository: new PostgresEntryRepository(pool),
         foodPlanRepository: new PostgresFoodPlanRepository(pool),
+        dailyTimelineRepository: new PostgresDailyTimelineRepository(pool),
         reminderScheduler: scheduler,
         persistence: 'postgres',
         close: async () => {
@@ -73,6 +77,7 @@ export async function createRepositoryBundle(): Promise<RepositoryBundle> {
     calendarRepository: new InMemoryCalendarRepository(seedCalendars),
     entryRepository: new InMemoryEntryRepository(),
     foodPlanRepository: new InMemoryFoodPlanRepository(),
+    dailyTimelineRepository: new InMemoryDailyTimelineRepository(),
     reminderScheduler: scheduler,
     persistence: 'memory',
     close: async () => undefined,

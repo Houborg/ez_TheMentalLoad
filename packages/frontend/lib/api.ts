@@ -26,6 +26,15 @@ import type {
   TestEmailRequest,
   DeleteFoodPlanItemRequest,
   UpsertFoodPlanItemRequest,
+  ConfirmTimelineTaskCompletionRequest,
+  ConfirmTimelineTaskCompletionResponse,
+  CreateMemberTimelineTemplateRequest,
+  ListMemberTimelineTemplatesResponse,
+  ListTodayMemberTimelineResponse,
+  MemberTimelineSettings,
+  UpdateMemberTimelineSettingsRequest,
+  UpdateMemberTimelineTemplateRequest,
+  UpsertOneOffTimelineTaskRequest,
 } from '@mental-load/contracts';
 
 export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
@@ -231,6 +240,88 @@ export async function runSync(payload: SyncRunRequest) {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export async function loadMemberTimelineSettings(memberId: string) {
+  return fetchJson<MemberTimelineSettings>(`/api/v1/members/${memberId}/timeline-settings`);
+}
+
+export async function updateMemberTimelineSettings(memberId: string, payload: UpdateMemberTimelineSettingsRequest) {
+  return fetchJson<MemberTimelineSettings>(`/api/v1/members/${memberId}/timeline-settings`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listMemberTimelineTemplates(memberId: string) {
+  return fetchJson<ListMemberTimelineTemplatesResponse>(`/api/v1/members/${memberId}/timeline-templates`);
+}
+
+export async function createMemberTimelineTemplate(memberId: string, payload: CreateMemberTimelineTemplateRequest) {
+  return fetchJson(`/api/v1/members/${memberId}/timeline-templates`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateMemberTimelineTemplate(memberId: string, templateId: string, payload: UpdateMemberTimelineTemplateRequest) {
+  return fetchJson(`/api/v1/members/${memberId}/timeline-templates/${templateId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteMemberTimelineTemplate(memberId: string, templateId: string) {
+  return fetchJson<void>(`/api/v1/members/${memberId}/timeline-templates/${templateId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function loadTodayTimeline(memberId: string, input?: { date?: string; timezone?: string }) {
+  const params = new URLSearchParams();
+  if (input?.date) {
+    params.set('date', input.date);
+  }
+  if (input?.timezone) {
+    params.set('timezone', input.timezone);
+  }
+  const query = params.toString();
+  const path = query ? `/api/v1/members/${memberId}/today-timeline?${query}` : `/api/v1/members/${memberId}/today-timeline`;
+  return fetchJson<ListTodayMemberTimelineResponse>(path);
+}
+
+export async function addOneOffTodayTimelineTask(memberId: string, payload: UpsertOneOffTimelineTaskRequest, input?: { date?: string; timezone?: string }) {
+  const params = new URLSearchParams();
+  if (input?.date) {
+    params.set('date', input.date);
+  }
+  if (input?.timezone) {
+    params.set('timezone', input.timezone);
+  }
+  const query = params.toString();
+  const path = query ? `/api/v1/members/${memberId}/today-timeline/one-off?${query}` : `/api/v1/members/${memberId}/today-timeline/one-off`;
+  return fetchJson(path, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function confirmTodayTimelineTask(memberId: string, payload: ConfirmTimelineTaskCompletionRequest) {
+  return fetchJson<ConfirmTimelineTaskCompletionResponse>(`/api/v1/members/${memberId}/today-timeline/confirm`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function respondToInvitation(entryId: string, email: string, status: 'accepted' | 'declined') {
+  return fetchJson<Entry>(`/api/v1/entries/${entryId}/invitees/${encodeURIComponent(email)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function listInvitationsForMember(memberId: string) {
+  return fetchJson<Array<{ entry: Entry; invitee: { email: string; status: 'pending' | 'accepted' | 'declined' } }>>(`/api/v1/members/${memberId}/invitations`);
 }
 
 export type WeatherDailyPoint = {

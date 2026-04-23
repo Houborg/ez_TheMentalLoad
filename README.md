@@ -238,5 +238,3 @@ This repository now includes:
 - recurring entries and reminder job scheduling
 - ICS import and export
 - assistant draft and confirm workflow
-½QEY
-LLJGS

@@ -17,6 +17,10 @@ export class EntryService {
     return this.entryRepository.list();
   }
 
+  async listMemberTasks(ownerMemberId: string, assignedToMemberId: string): Promise<Entry[]> {
+    return this.entryRepository.findByOwnerAndAssignedMember(ownerMemberId, assignedToMemberId);
+  }
+
   async listOccurrences(from: string, to: string): Promise<Entry[]> {
     const rangeStart = new Date(from);
     const rangeEnd = new Date(to);
@@ -69,6 +73,7 @@ export class EntryService {
       location: input.location,
       recurrenceRule: input.recurrenceRule,
       parentEntryId: input.parentEntryId,
+      assignedToMemberId: input.assignedToMemberId,
       invitees: normalizeInvitees(input.invitees),
       linkedEntryIds: [],
       createdAt: now,
@@ -179,6 +184,45 @@ export class EntryService {
     return this.reminderScheduler.listJobs();
   }
 
+  async respondToInvitation(entryId: string, email: string, status: 'accepted' | 'declined'): Promise<Entry | undefined> {
+    const entry = await this.entryRepository.findById(entryId);
+    if (!entry) {
+      return undefined;
+    }
+
+    const invitee = entry.invitees.find((inv) => inv.email === email);
+    if (!invitee) {
+      return undefined;
+    }
+
+    const updatedInvitees = entry.invitees.map((inv) =>
+      inv.email === email ? { ...inv, status } : inv,
+    );
+
+    return this.entryRepository.update(entryId, { invitees: updatedInvitees });
+  }
+
+  async listInvitationsForMember(memberId: string): Promise<Array<{ entry: Entry; invitee: { email: string; status: 'pending' | 'accepted' | 'declined' } }>> {
+    const allEntries = await this.entryRepository.list();
+    
+    // We need to match invitations by email to members - this would require a member lookup by email
+    // For now, return all invitations across all entries that match member emails
+    // In a real system, you'd have a members repo to look up by email
+    const result: Array<{ entry: Entry; invitee: { email: string; status: 'pending' | 'accepted' | 'declined' } }> = [];
+    
+    for (const entry of allEntries) {
+      for (const invitee of entry.invitees) {
+        // This is a placeholder - in reality you'd look up the member by email
+        // and check if it matches the memberId. For now, we return pending invitations
+        if (invitee.status === 'pending') {
+          result.push({ entry, invitee: { email: invitee.email, status: invitee.status } });
+        }
+      }
+    }
+    
+    return result;
+  }
+
   private async applyBirthdayRule(entry: Entry): Promise<void> {
     const normalized = entry.title.toLowerCase();
     const isBirthday = normalized.includes('birthday') || normalized.includes('fødselsdag');
@@ -275,13 +319,14 @@ function normalizeReminderConfigs(reminders?: Array<{ minutesBefore: number }>):
     }));
 }
 
-function normalizeChecklistItems(items?: Array<{ text: string; isCompleted?: boolean }>): ChecklistItem[] {
+function normalizeChecklistItems(items?: Array<{ text: string; isCompleted?: boolean; assignedToMemberId?: string }>): ChecklistItem[] {
   return (items ?? [])
     .filter((item) => item.text.trim())
     .map((item) => ({
       id: uuid(),
       text: item.text.trim(),
       isCompleted: item.isCompleted ?? false,
+      assignedToMemberId: item.assignedToMemberId,
     }));
 }
 

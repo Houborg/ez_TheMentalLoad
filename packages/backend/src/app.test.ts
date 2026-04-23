@@ -152,6 +152,67 @@ test('entry create and update persist checklist tasks and multiple reminders', a
   await app.close();
 });
 
+test('entry create and update persist checklist task assignees', async () => {
+  const app = await createTestApp();
+
+  const createResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/entries',
+    payload: {
+      title: 'Birthday prep',
+      type: 'event',
+      ownerMemberId: DEMO_MEMBER_IDS.dad,
+      calendarId: DEMO_CALENDAR_IDS.family,
+      startTime: '2026-04-25T09:00:00.000Z',
+      endTime: '2026-04-25T10:00:00.000Z',
+      timezone: 'Europe/Copenhagen',
+      allDay: false,
+      reminders: [],
+      checklist: [
+        { text: 'Buy flowers', assignedToMemberId: DEMO_MEMBER_IDS.mom },
+        { text: 'Buy cake', assignedToMemberId: DEMO_MEMBER_IDS.dad },
+      ],
+    },
+  });
+
+  assert.equal(createResponse.statusCode, 201);
+  assert.deepEqual(
+    createResponse.json().checklist.map((item: { text: string; assignedToMemberId?: string }) => ({
+      text: item.text,
+      assignedToMemberId: item.assignedToMemberId,
+    })),
+    [
+      { text: 'Buy flowers', assignedToMemberId: DEMO_MEMBER_IDS.mom },
+      { text: 'Buy cake', assignedToMemberId: DEMO_MEMBER_IDS.dad },
+    ],
+  );
+
+  const created = createResponse.json() as { id: string };
+  const updateResponse = await app.inject({
+    method: 'PATCH',
+    url: `/api/v1/entries/${created.id}`,
+    payload: {
+      checklist: [
+        { text: 'Buy flowers', isCompleted: true, assignedToMemberId: DEMO_MEMBER_IDS.mom },
+      ],
+    },
+  });
+
+  assert.equal(updateResponse.statusCode, 200);
+  assert.deepEqual(
+    updateResponse.json().checklist.map((item: { text: string; isCompleted: boolean; assignedToMemberId?: string }) => ({
+      text: item.text,
+      isCompleted: item.isCompleted,
+      assignedToMemberId: item.assignedToMemberId,
+    })),
+    [
+      { text: 'Buy flowers', isCompleted: true, assignedToMemberId: DEMO_MEMBER_IDS.mom },
+    ],
+  );
+
+  await app.close();
+});
+
 test('recurring entries expand into occurrences inside a requested date range', async () => {
   const app = await createTestApp();
 

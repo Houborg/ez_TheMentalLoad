@@ -21,7 +21,7 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
-import type { AppSettings, AssistantDraft, Entry, FoodPlanDay, FoodPlanItem, Member, Calendar, MemberRole, SyncProvider } from '@mental-load/contracts';
+import type { AppSettings, AssistantDraft, DailyTimelineTemplateTask, Entry, FoodPlanDay, FoodPlanItem, Member, Calendar, MemberRole, MemberTimelineSettings, SyncProvider } from '@mental-load/contracts';
 import {
   askAssistant,
   connectSync,
@@ -31,7 +31,9 @@ import {
   deleteEntry,
   deleteFoodPlan,
   getWeekStart,
+  listInvitationsForMember,
   loadAssistantStatus,
+  loadMemberTimelineSettings,
   loadDashboardSnapshot,
   loadFoodPlan,
   loadHealth,
@@ -42,18 +44,35 @@ import {
   loadUpcomingOccurrences,
   parseAssistant,
   pullInboxToMailpit,
+  respondToInvitation,
   runSync,
   saveSettings,
   sendTestEmail,
   updateEntry,
   updateFoodPlan,
   updateMember,
+  updateMemberTimelineSettings,
+  listMemberTimelineTemplates,
+  createMemberTimelineTemplate,
+  updateMemberTimelineTemplate,
+  deleteMemberTimelineTemplate,
   type WeatherForecastResponse,
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
 type RecurrenceFreq = 'none' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+
+type TaskDraftItem = {
+  text: string;
+  assignedToMemberId?: string;
+};
+
+type InviteeDraft = {
+  type: 'member' | 'email';
+  id?: string;
+  email: string;
+};
 
 type DashboardState = {
   members: Member[];
@@ -74,7 +93,8 @@ type EventDraft = {
   location: string;
   recurrenceFreq: RecurrenceFreq;
   recurrenceCount: string;
-  tasks: string;
+  tasks: TaskDraftItem[];
+  invitees: InviteeDraft[];
   reminder1Mode: ReminderDraftMode;
   reminder1CustomHours: string;
   reminder2Mode: ReminderDraftMode;
@@ -161,10 +181,20 @@ export function DashboardApp() {
   const [mailActionBusy, setMailActionBusy] = useState(false);
   const [syncActionBusy, setSyncActionBusy] = useState(false);
   const [syncRunDraft, setSyncRunDraft] = useState({ calendarId: '', ownerMemberId: '', icsUrl: '', rawContent: '' });
-  const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string; date: string; memberId: string; notifyDaysBefore: number }>({ name: '', date: '', memberId: '', notifyDaysBefore: 7 });
+  const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string; date: string; memberId: string; notifyDaysBefore: number; wishes: string }>({ name: '', date: '', memberId: '', notifyDaysBefore: 7, wishes: '' });
+  const [birthdayDetailEntry, setBirthdayDetailEntry] = useState<Entry | null>(null);
+  const [birthdayWishesText, setBirthdayWishesText] = useState('');
   const [settingsMessage, setSettingsMessage] = useState('');
   const [weatherForecast, setWeatherForecast] = useState<WeatherForecastResponse | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
+  const [pendingInvitations, setPendingInvitations] = useState<Array<{ entry: Entry; invitee: { email: string; status: 'pending' | 'accepted' | 'declined' } }>>([]);
+  const [respondingToInvitation, setRespondingToInvitation] = useState<{ entryId: string; email: string } | null>(null);
+  const [timelineSettingsByMemberId, setTimelineSettingsByMemberId] = useState<Record<string, MemberTimelineSettings>>({});
+  const [templatesByMemberId, setTemplatesByMemberId] = useState<Record<string, DailyTimelineTemplateTask[]>>({});
+  const [expandedTemplatesMemberId, setExpandedTemplatesMemberId] = useState<string | null>(null);
+  const [newTemplateDraft, setNewTemplateDraft] = useState<{ title: string; position: string; expectedTime: string }>({ title: '', position: '', expectedTime: '' });
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editingTemplateDraft, setEditingTemplateDraft] = useState<{ title: string; position: string; expectedTime: string }>({ title: '', position: '', expectedTime: '' });
   const [draft, setDraft] = useState<EventDraft>(() => createDefaultDraft());
 
   useEffect(() => {
@@ -184,6 +214,17 @@ export function DashboardApp() {
           loadSettings(),
         ]);
 
+        const timelinePairs = await Promise.all(
+          dashboardSnapshot.members.map(async (member) => {
+            try {
+              const config = await loadMemberTimelineSettings(member.id);
+              return [member.id, config] as const;
+            } catch {
+              return [member.id, { memberId: member.id, enabled: false, maxTasksPerDay: 10, updatedAt: new Date().toISOString() }] as const;
+            }
+          }),
+        );
+
         if (!active) {
           return;
         }
@@ -201,6 +242,7 @@ export function DashboardApp() {
         setHealthNow(health.now);
         setAssistantReady(assistantStatus.ok);
         setAssistantStatusText(assistantStatus.message);
+        setTimelineSettingsByMemberId(Object.fromEntries(timelinePairs));
         setSettings(settingsSnapshot);
         setSyncRunDraft((current) => ({
           ...current,
@@ -208,6 +250,14 @@ export function DashboardApp() {
           ownerMemberId: current.ownerMemberId || dashboardSnapshot.members[0]?.id || '',
         }));
         setDraft((currentDraft) => hydrateDraft(currentDraft, dashboardSnapshot.members, dashboardSnapshot.calendars));
+
+        // Load pending invitations for the first member (in a real auth system, this would be the current user)
+        if (dashboardSnapshot.members.length > 0) {
+          const invitations = await listInvitationsForMember(dashboardSnapshot.members[0].id);
+          if (active) {
+            setPendingInvitations(invitations);
+          }
+        }
       } catch (error) {
         if (!active) {
           return;
@@ -343,8 +393,7 @@ export function DashboardApp() {
   const memberTaskProgress = useMemo(() => {
     return dashboard.members
       .map((member) => {
-        const memberEntries = dashboard.entries.filter((entry) => entry.ownerMemberId === member.id);
-        const summary = summarizeTasks(memberEntries);
+        const summary = summarizeTasks(dashboard.entries, member.id);
         const pending = summary.total - summary.done;
         const pct = summary.total > 0 ? Math.round((summary.done / summary.total) * 100) : 0;
         return {
@@ -451,7 +500,11 @@ export function DashboardApp() {
         item.id === itemId ? { ...item, isCompleted: !item.isCompleted } : item,
       );
       await updateEntry(getEntryMutationId(entry), {
-        checklist: updatedChecklist.map((item) => ({ text: item.text, isCompleted: item.isCompleted })),
+        checklist: updatedChecklist.map((item) => ({
+          text: item.text,
+          isCompleted: item.isCompleted,
+          assignedToMemberId: item.assignedToMemberId,
+        })),
       });
       await handleRefresh();
     } catch (error) {
@@ -485,7 +538,11 @@ export function DashboardApp() {
         location: draft.location.trim() || undefined,
         recurrenceRule: buildRecurrenceRule(draft.recurrenceFreq, draft.recurrenceCount) || undefined,
         reminders,
-        checklist: parseChecklistDraft(draft.tasks),
+        checklist: draft.tasks
+          .map((task) => ({ text: task.text, isCompleted: false, assignedToMemberId: task.assignedToMemberId }))
+          .filter((item) => item.text.trim()),
+        invitees: draft.invitees.map((inv) => ({ email: inv.email })),
+        assignedToMemberId: undefined,
       };
 
       if (editingEntryId) {
@@ -635,11 +692,24 @@ export function DashboardApp() {
     closeEntryComposer();
   }
 
+  async function handleRespondToInvitation(entryId: string, email: string, status: 'accepted' | 'declined') {
+    try {
+      setRespondingToInvitation({ entryId, email });
+      await respondToInvitation(entryId, email, status);
+      setPendingInvitations((current) => current.filter((inv) => !(inv.entry.id === entryId && inv.invitee.email === email)));
+      setErrorText('');
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not respond to invitation');
+    } finally {
+      setRespondingToInvitation(null);
+    }
+  }
+
   function handleEditEntry(entry: Entry) {
     if (isVirtualBirthdayEntry(entry)) {
-      setSettingsOpen(true);
-      setSettingsTab('birthdays');
-      setSettingsMessage('Birthday entries are managed in Settings > Birthdays.');
+      const info = getBirthdayInfo(entry, birthdays);
+      setBirthdayDetailEntry(entry);
+      setBirthdayWishesText(info?.birthday.wishes ?? '');
       return;
     }
 
@@ -657,7 +727,15 @@ export function DashboardApp() {
       location: entry.location || '',
       recurrenceFreq: freq,
       recurrenceCount: count,
-      tasks: entry.checklist.map((item) => item.text).join('\n'),
+      tasks: entry.checklist.map((item) => ({ text: item.text, assignedToMemberId: item.assignedToMemberId })),
+      invitees: entry.invitees.map((inv) => {
+        const knownMember = dashboard.members.find((m) => m.email?.toLowerCase() === inv.email.toLowerCase());
+        return {
+          type: knownMember ? 'member' : 'email',
+          id: knownMember?.id,
+          email: inv.email,
+        } as InviteeDraft;
+      }),
       ...toReminderDraftFields(firstReminder?.minutesBefore, secondReminder?.minutesBefore),
     });
     setSelectedDate(new Date(entry.startTime));
@@ -697,7 +775,7 @@ export function DashboardApp() {
       setErrorText('');
       setDeletingFoodPlan({ weekStart, day });
       await deleteFoodPlan({ weekStart, day });
-      const weekFoodPlan = await loadFoodPlan(getWeekStart());
+      const weekFoodPlan = await loadFoodPlan(weekStart);
       setFoodPlan(weekFoodPlan.items);
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Could not delete food plan item');
@@ -794,6 +872,32 @@ export function DashboardApp() {
       ...current,
       ownerMemberId: current.ownerMemberId || members[0]?.id || '',
     }));
+
+    const timelinePairs = await Promise.all(
+      members.map(async (member) => {
+        try {
+          const config = await loadMemberTimelineSettings(member.id);
+          return [member.id, config] as const;
+        } catch {
+          return [member.id, { memberId: member.id, enabled: false, maxTasksPerDay: 10, updatedAt: new Date().toISOString() }] as const;
+        }
+      }),
+    );
+    setTimelineSettingsByMemberId(Object.fromEntries(timelinePairs));
+  }
+
+  async function handleUpdateTimelineSettings(memberId: string, patch: { enabled?: boolean; maxTasksPerDay?: number }) {
+    try {
+      setErrorText('');
+      const updated = await updateMemberTimelineSettings(memberId, patch);
+      setTimelineSettingsByMemberId((current) => ({
+        ...current,
+        [memberId]: updated,
+      }));
+      setSettingsMessage('Timeline settings updated.');
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not update timeline settings');
+    }
   }
 
   async function handleSaveMember() {
@@ -838,6 +942,132 @@ export function DashboardApp() {
       email: member.email ?? '',
       avatar: member.avatar ?? '',
     });
+  }
+
+  async function handleToggleMemberTimeline(memberId: string) {
+    const current = timelineSettingsByMemberId[memberId];
+    const nextEnabled = !current?.enabled;
+    try {
+      const updated = await updateMemberTimelineSettings(memberId, { enabled: nextEnabled });
+      setTimelineSettingsByMemberId((prev) => ({ ...prev, [memberId]: updated }));
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not update timeline settings');
+    }
+  }
+
+  async function loadTemplatesForMember(memberId: string) {
+    try {
+      const result = await listMemberTimelineTemplates(memberId);
+      setTemplatesByMemberId((prev) => ({ ...prev, [memberId]: result.templates }));
+    } catch {
+      // silently ignore
+    }
+  }
+
+  async function handleExpandTemplates(memberId: string) {
+    if (expandedTemplatesMemberId === memberId) {
+      setExpandedTemplatesMemberId(null);
+      return;
+    }
+    setExpandedTemplatesMemberId(memberId);
+    if (!templatesByMemberId[memberId]) {
+      await loadTemplatesForMember(memberId);
+    }
+  }
+
+  async function handleAddTemplate(memberId: string) {
+    const pos = Number(newTemplateDraft.position) || ((templatesByMemberId[memberId]?.length ?? 0) + 1);
+    const expTime = normalizeTemplateExpectedTime(newTemplateDraft.expectedTime);
+    if (!newTemplateDraft.title.trim()) return;
+    if (newTemplateDraft.expectedTime.trim() && !expTime) {
+      setErrorText('Task time must be in HH:MM format');
+      return;
+    }
+    try {
+      await createMemberTimelineTemplate(memberId, { title: newTemplateDraft.title.trim(), position: pos, expectedTime: expTime, isActive: true });
+      setNewTemplateDraft({ title: '', position: '', expectedTime: '' });
+      await loadTemplatesForMember(memberId);
+      setSettingsMessage('Template task created.');
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not create template task');
+    }
+  }
+
+  async function handleDeleteTemplate(memberId: string, templateId: string) {
+    try {
+      await deleteMemberTimelineTemplate(memberId, templateId);
+      setTemplatesByMemberId((prev) => ({ ...prev, [memberId]: (prev[memberId] ?? []).filter((t) => t.id !== templateId) }));
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not delete template task');
+    }
+  }
+
+  async function handleToggleTemplateActive(memberId: string, templateId: string, isActive: boolean) {
+    try {
+      await updateMemberTimelineTemplate(memberId, templateId, { isActive: !isActive });
+      setTemplatesByMemberId((prev) => ({
+        ...prev,
+        [memberId]: (prev[memberId] ?? []).map((t) => t.id === templateId ? { ...t, isActive: !isActive } : t),
+      }));
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not update template task');
+    }
+  }
+
+  function handleStartEditTemplate(template: DailyTimelineTemplateTask) {
+    setEditingTemplateId(template.id);
+    setEditingTemplateDraft({
+      title: template.title,
+      position: String(template.position),
+      expectedTime: template.expectedTime || '',
+    });
+  }
+
+  function handleCancelEditTemplate() {
+    setEditingTemplateId(null);
+    setEditingTemplateDraft({ title: '', position: '', expectedTime: '' });
+  }
+
+  async function handleSaveEditTemplate(memberId: string, templateId: string) {
+    const title = editingTemplateDraft.title.trim();
+    if (!title) {
+      setErrorText('Task title is required');
+      return;
+    }
+    const pos = Number(editingTemplateDraft.position) || 1;
+    const expTime = editingTemplateDraft.expectedTime.trim() ? normalizeTemplateExpectedTime(editingTemplateDraft.expectedTime) : undefined;
+    if (editingTemplateDraft.expectedTime.trim() && !expTime) {
+      setErrorText('Task time must be in HH:MM format');
+      return;
+    }
+    try {
+      await updateMemberTimelineTemplate(memberId, templateId, { title, position: pos, expectedTime: expTime });
+      setTemplatesByMemberId((prev) => ({
+        ...prev,
+        [memberId]: (prev[memberId] ?? []).map((t) =>
+          t.id === templateId ? { ...t, title, position: pos, expectedTime: expTime } : t
+        ),
+      }));
+      handleCancelEditTemplate();
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not update template task');
+    }
+  }
+
+  const DEFAULT_TEMPLATE_TASKS = [
+    'Wake up', 'Brush teeth', 'Get dressed', 'Eat breakfast', 'School / work',
+    'Empty bag', 'Do homework', 'Do chores', 'Get ready for bed', 'Brush teeth & sleep',
+  ];
+
+  async function handleSeedDefaultTemplates(memberId: string) {
+    try {
+      for (let i = 0; i < DEFAULT_TEMPLATE_TASKS.length; i++) {
+        await createMemberTimelineTemplate(memberId, { title: DEFAULT_TEMPLATE_TASKS[i]!, position: i + 1, isActive: true });
+      }
+      await loadTemplatesForMember(memberId);
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not seed template tasks');
+    }
   }
 
   async function handleTestMail() {
@@ -1005,6 +1235,7 @@ export function DashboardApp() {
         date: birthdaysDraft.date,
         memberId: undefined,
         notifyDaysBefore: birthdaysDraft.notifyDaysBefore,
+        wishes: birthdaysDraft.wishes.trim() || undefined,
       },
     ].sort((left, right) => left.date.localeCompare(right.date));
 
@@ -1013,7 +1244,7 @@ export function DashboardApp() {
       birthdays: nextBirthdays,
     }, birthdaysDraft.id ? 'Birthday updated.' : 'Birthday added.');
 
-    setBirthdaysDraft({ name: '', date: '', memberId: '', notifyDaysBefore: 7 });
+    setBirthdaysDraft({ name: '', date: '', memberId: '', notifyDaysBefore: 7, wishes: '' });
   }
 
   async function handleDeleteBirthday(id: string) {
@@ -1022,6 +1253,17 @@ export function DashboardApp() {
       ...(settings?.sync.configJson ?? {}),
       birthdays: nextBirthdays,
     }, 'Birthday removed.');
+  }
+
+  async function handleSaveBirthdayWishes() {
+    if (!birthdayDetailEntry) return;
+    const info = getBirthdayInfo(birthdayDetailEntry, birthdays);
+    if (!info) return;
+    const nextBirthdays = birthdays.map((b) =>
+      b.id === info.birthday.id ? { ...b, wishes: birthdayWishesText.trim() || undefined } : b,
+    );
+    await persistSyncConfig({ ...(settings?.sync.configJson ?? {}), birthdays: nextBirthdays }, 'Wishes saved.');
+    setBirthdayDetailEntry(null);
   }
 
   function handleEditBirthday(id: string) {
@@ -1036,6 +1278,7 @@ export function DashboardApp() {
       date: item.date,
       memberId: item.memberId ?? '',
       notifyDaysBefore: item.notifyDaysBefore,
+      wishes: item.wishes ?? '',
     });
   }
 
@@ -1328,6 +1571,51 @@ export function DashboardApp() {
                 </div>
               </section>
 
+              {pendingInvitations.length > 0 ? (
+                <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-semibold">Pending invitations</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">You have {pendingInvitations.length} pending event invitation{pendingInvitations.length === 1 ? '' : 's'}.</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {pendingInvitations.map(({ entry, invitee }) => (
+                      <div key={`${entry.id}-${invitee.email}`} className="rounded-2xl border border-border/60 bg-background/30 p-4">
+                        <div className="mb-3 flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <div className="font-semibold">{entry.title}</div>
+                            <div className="mt-1 text-sm text-muted-foreground">
+                              {new Date(entry.startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                              {!entry.allDay ? ` at ${new Date(entry.startTime).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : ' (all day)'}
+                            </div>
+                            {entry.location ? <div className="mt-1 text-sm text-muted-foreground">📍 {entry.location}</div> : null}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleRespondToInvitation(entry.id, invitee.email, 'accepted')}
+                            disabled={respondingToInvitation?.entryId === entry.id}
+                            className="rounded-lg bg-primary/15 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/25 disabled:opacity-60"
+                          >
+                            {respondingToInvitation?.entryId === entry.id ? <LoaderCircle className="h-3 w-3 animate-spin" /> : 'Accept'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleRespondToInvitation(entry.id, invitee.email, 'declined')}
+                            disabled={respondingToInvitation?.entryId === entry.id}
+                            className="rounded-lg border border-border/60 px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent/60 disabled:opacity-60"
+                          >
+                            {respondingToInvitation?.entryId === entry.id ? <LoaderCircle className="h-3 w-3 animate-spin" /> : 'Decline'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
                 <section id="planner-section" className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
                   <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -1392,19 +1680,39 @@ export function DashboardApp() {
                                 {entries.length ? <span className="text-[11px] text-muted-foreground">{entries.length}</span> : null}
                               </div>
                               <div className="space-y-1.5">
-                                {entries.slice(0, 3).map((entry) => (
-                                  <button
-                                    key={entry.id}
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      handleEditEntry(entry);
-                                    }}
-                                    className={cn('w-full truncate rounded-xl px-2 py-1 text-left text-xs font-medium text-primary-foreground', isVirtualBirthdayEntry(entry) ? 'bg-chart-4' : (memberColorById[entry.ownerMemberId] ?? 'bg-primary'))}
-                                  >
-                                    {entry.title}
-                                  </button>
-                                ))}
+                                {entries.slice(0, 3).map((entry) => {
+                                  const isBirthdayEntry = isVirtualBirthdayEntry(entry);
+                                  const birthdayInfo = isBirthdayEntry ? getBirthdayInfo(entry, birthdays) : null;
+                                  return (
+                                    <button
+                                      key={entry.id}
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleEditEntry(entry);
+                                      }}
+                                      className={cn(
+                                        isBirthdayEntry
+                                          ? 'w-full bg-transparent px-0 py-0.5 text-left text-[10px] font-medium text-foreground hover:bg-transparent'
+                                          : `w-full truncate rounded-xl px-2 py-1 text-left text-xs font-medium text-primary-foreground ${memberColorById[entry.ownerMemberId] ?? 'bg-primary'}`,
+                                      )}
+                                    >
+                                      {isBirthdayEntry ? (
+                                        <span className="flex min-w-0 items-center gap-1.5">
+                                          <span
+                                            aria-hidden="true"
+                                            className="h-3.5 w-5 shrink-0 bg-contain bg-center bg-no-repeat"
+                                            style={{ backgroundImage: 'url(/birthday-pill.png)' }}
+                                          />
+                                          <span className="truncate">{birthdayInfo?.name ?? entry.title}</span>
+                                          {birthdayInfo ? <span className="shrink-0 text-[10px] text-muted-foreground">{birthdayInfo.age}yr</span> : null}
+                                        </span>
+                                      ) : (
+                                        entry.title
+                                      )}
+                                    </button>
+                                  );
+                                })}
                                 {entries.length > 3 ? <div className="px-2 text-[11px] text-muted-foreground">+{entries.length - 3} more</div> : null}
                               </div>
                             </>
@@ -1438,12 +1746,16 @@ export function DashboardApp() {
                             }}
                             className="flex w-full items-start gap-3 rounded-2xl border border-border/60 bg-card/60 px-4 py-3 text-left"
                           >
-                            <div className={cn('mt-1 h-10 w-1 rounded-full', memberColorById[entry.ownerMemberId] ?? 'bg-primary')} />
+                            <div className={cn('mt-1 h-10 w-1 rounded-full', isVirtualBirthdayEntry(entry) ? 'bg-[#C60C30]' : (memberColorById[entry.ownerMemberId] ?? 'bg-primary'))} />
                             <div className="min-w-0 flex-1">
                               <div className="flex items-start justify-between gap-3">
                                 <div>
-                                  <div className="text-sm font-semibold">{entry.title}</div>
-                                  <div className="mt-1 text-xs text-muted-foreground">{owner?.name ?? 'Unknown member'} · {entry.type} · {formatTimeRange(entry)}</div>
+                                  <div className="text-sm font-semibold">{(() => {
+                                    if (!isVirtualBirthdayEntry(entry)) return entry.title;
+                                    const bi = getBirthdayInfo(entry, birthdays);
+                                    return bi ? `${bi.name}, ${bi.age}` : entry.title;
+                                  })()}</div>
+                                  <div className="mt-1 text-xs text-muted-foreground">{isVirtualBirthdayEntry(entry) ? (() => { const bi = getBirthdayInfo(entry, birthdays); return bi ? `🎂 Turns ${bi.age} years old` : 'Birthday'; })() : `${owner?.name ?? 'Unknown member'} · ${entry.type} · ${formatTimeRange(entry)}`}</div>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <div className="rounded-full border border-border/60 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{entry.status}</div>
@@ -1742,6 +2054,179 @@ export function DashboardApp() {
                 </div>
                 {settingsMessage ? <div className="mt-4 rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm">{settingsMessage}</div> : null}
               </section>
+
+              <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-2xl font-semibold tracking-tight">Daily Timeline Templates</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Configure the ordered task list for each member&apos;s daily timeline.</p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {dashboard.members.map((member) => {
+                    const isExpanded = expandedTemplatesMemberId === member.id;
+                    const templates = templatesByMemberId[member.id] ?? [];
+                    const timelineEnabled = timelineSettingsByMemberId[member.id]?.enabled ?? false;
+                    return (
+                      <div key={member.id} className="rounded-2xl border border-border/60 bg-card/55">
+                        <button
+                          type="button"
+                          onClick={() => void handleExpandTemplates(member.id)}
+                          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-accent/40 rounded-2xl"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', member.avatar ? 'text-xl' : ('text-primary-foreground ' + (memberColorById[member.id] ?? 'bg-primary')))}>
+                              {member.avatar ? member.avatar : <Users className="h-4 w-4" />}
+                            </div>
+                            <div>
+                              <div className="text-sm font-semibold">{member.name}</div>
+                              <div className="text-xs text-muted-foreground">{timelineEnabled ? `${templates.length} template tasks` : 'Timeline disabled'}</div>
+                            </div>
+                          </div>
+                          <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform', isExpanded && 'rotate-90')} />
+                        </button>
+                        {isExpanded && (
+                          <div className="border-t border-border/60 px-4 pb-4 pt-3 space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Template tasks (in order)</span>
+                              {templates.length === 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleSeedDefaultTemplates(member.id)}
+                                  className="rounded-lg border border-border/60 px-3 py-1.5 text-xs hover:bg-accent/60"
+                                >
+                                  Seed 10 defaults
+                                </button>
+                              )}
+                            </div>
+                            {templates.length === 0 ? (
+                              <div className="rounded-xl border border-dashed border-border/70 px-4 py-4 text-sm text-muted-foreground">No template tasks yet. Add one below or seed the 10 defaults.</div>
+                            ) : (
+                              <div className="space-y-2">
+                                {[...templates].sort((a, b) => a.position - b.position).map((task) => {
+                                  const isEditing = editingTemplateId === task.id;
+                                  return (
+                                    <div key={task.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-background/40 px-3 py-2">
+                                      {isEditing ? (
+                                        <>
+                                          <input
+                                            type="number"
+                                            min="1"
+                                            value={editingTemplateDraft.position}
+                                            onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, position: e.target.value }))}
+                                            className="w-12 rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
+                                            placeholder="Pos"
+                                          />
+                                          <input
+                                            type="text"
+                                            value={editingTemplateDraft.title}
+                                            onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, title: e.target.value }))}
+                                            className="flex-1 rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-sm outline-none focus:border-primary/60"
+                                            placeholder="Task title"
+                                          />
+                                          <input
+                                            type="time"
+                                            value={editingTemplateDraft.expectedTime}
+                                            onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, expectedTime: e.target.value }))}
+                                            step={60}
+                                            className="rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => void handleSaveEditTemplate(member.id, task.id)}
+                                            className="rounded-lg bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
+                                          >
+                                            Save
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleCancelEditTemplate()}
+                                            className="rounded-lg border border-border/40 px-2 py-1 text-xs hover:bg-accent/60"
+                                          >
+                                            Cancel
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <span className="w-6 shrink-0 text-center text-xs text-muted-foreground">{task.position}</span>
+                                          <span className={cn('flex-1 text-sm', !task.isActive && 'text-muted-foreground line-through')}>{task.title}</span>
+                                          {task.expectedTime ? <span className="text-xs text-muted-foreground">{formatTemplateExpectedTime(task.expectedTime)}</span> : null}
+                                          <button
+                                            type="button"
+                                            onClick={() => handleStartEditTemplate(task)}
+                                            className="rounded-lg border border-border/40 p-1.5 hover:bg-accent/60"
+                                            aria-label="Edit template task"
+                                          >
+                                            <Edit2 className="h-3.5 w-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => void handleToggleTemplateActive(member.id, task.id, task.isActive)}
+                                            className={cn('rounded-lg px-2 py-1 text-xs', task.isActive ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-muted text-muted-foreground hover:bg-accent')}
+                                          >
+                                            {task.isActive ? 'On' : 'Off'}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => void handleDeleteTemplate(member.id, task.id)}
+                                            className="rounded-lg border border-border/40 p-1.5 hover:bg-destructive/10"
+                                            aria-label="Delete template task"
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            <div className="flex flex-wrap items-end gap-2 border-t border-border/40 pt-3">
+                              <label className="grid gap-1">
+                                <span className="text-xs text-muted-foreground">Title</span>
+                                <input
+                                  value={newTemplateDraft.title}
+                                  onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, title: e.target.value }))}
+                                  placeholder="Task title"
+                                  className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
+                                />
+                              </label>
+                              <label className="grid gap-1 w-20">
+                                <span className="text-xs text-muted-foreground">Position</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={newTemplateDraft.position}
+                                  onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, position: e.target.value }))}
+                                  placeholder={String((templates.length) + 1)}
+                                  className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
+                                />
+                              </label>
+                              <label className="grid gap-1 w-28">
+                                <span className="text-xs text-muted-foreground">Time</span>
+                                <input
+                                  type="time"
+                                  step={60}
+                                  value={newTemplateDraft.expectedTime}
+                                  onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, expectedTime: e.target.value }))}
+                                  className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => void handleAddTemplate(member.id)}
+                                className="rounded-xl bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20"
+                              >
+                                Add task
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
             </div>
             )}
           </section>
@@ -1834,14 +2319,121 @@ export function DashboardApp() {
                 </div>
               </div>
               <label className="grid gap-1.5 md:col-span-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Tasks (one per line)</span>
-                <textarea
-                  aria-label="Tasks"
-                  value={draft.tasks}
-                  onChange={(event) => setDraft((current) => ({ ...current, tasks: event.target.value }))}
-                  placeholder="One task per line"
-                  className="min-h-[72px] rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60"
-                />
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Invitees</span>
+                <div className="space-y-2">
+                  {draft.invitees.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {draft.invitees.map((invitee, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={invitee.email}
+                            disabled
+                            className="rounded-lg border border-border/60 bg-background/40 px-3 py-1.5 text-sm outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setDraft((current) => ({ ...current, invitees: current.invitees.filter((_, i) => i !== idx) }))}
+                            className="rounded-lg border border-border/60 p-1 text-muted-foreground hover:bg-accent/60"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="flex gap-2">
+                    <select
+                      className="flex-1 rounded-lg border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
+                      onChange={(event) => {
+                        if (event.target.value) {
+                          const member = dashboard.members.find((m) => m.id === event.target.value);
+                          if (member && member.email && !draft.invitees.some((inv) => inv.email === member.email)) {
+                            setDraft((current) => ({
+                              ...current,
+                              invitees: [...current.invitees, { type: 'member' as const, id: member.id, email: member.email as string }],
+                            }));
+                          }
+                          event.target.value = '';
+                        }
+                      }}
+                    >
+                      <option value="">Add member by email...</option>
+                      {dashboard.members
+                        .filter((m) => m.email && !draft.invitees.some((inv) => inv.id === m.id))
+                        .map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.name} ({member.email})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+              </label>
+              <label className="grid gap-1.5 md:col-span-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Tasks</span>
+                <div className="space-y-2">
+                  {draft.tasks.length > 0 ? (
+                    <div className="space-y-2">
+                      {draft.tasks.map((task, idx) => (
+                        <div key={idx} className="flex gap-2">
+                          <input
+                            type="text"
+                            value={task.text}
+                            onChange={(event) =>
+                              setDraft((current) => ({
+                                ...current,
+                                tasks: current.tasks.map((t, i) => (i === idx ? { ...t, text: event.target.value } : t)),
+                              }))
+                            }
+                            placeholder="Task text"
+                            className="flex-1 rounded-lg border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
+                          />
+                          <select
+                            value={task.assignedToMemberId || ''}
+                            onChange={(event) =>
+                              setDraft((current) => ({
+                                ...current,
+                                tasks: current.tasks.map((t, i) => (i === idx ? { ...t, assignedToMemberId: event.target.value || undefined } : t)),
+                              }))
+                            }
+                            className="rounded-lg border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
+                          >
+                            <option value="">Assign to...</option>
+                            <option value={draft.ownerMemberId}>{dashboard.members.find((m) => m.id === draft.ownerMemberId)?.name}</option>
+                            {draft.invitees.map((inv) => {
+                              if (inv.type === 'member' && inv.id) {
+                                const member = dashboard.members.find((m) => m.id === inv.id);
+                                return member ? (
+                                  <option key={inv.id} value={inv.id}>
+                                    {member.name}
+                                  </option>
+                                ) : null;
+                              }
+                              return null;
+                            })}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setDraft((current) => ({ ...current, tasks: current.tasks.filter((_, i) => i !== idx) }))}
+                            className="rounded-lg border border-border/60 p-1.5 text-muted-foreground hover:bg-accent/60"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraft((current) => ({ ...current, tasks: [...current.tasks, { text: '', assignedToMemberId: undefined }] }));
+                    }}
+                    className="rounded-lg border border-border/60 bg-background/40 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60"
+                  >
+                    + Add task
+                  </button>
+                </div>
               </label>
               <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
                 <label className="grid gap-1.5">
@@ -1918,6 +2510,71 @@ export function DashboardApp() {
           </div>
         </div>
       ) : null}
+
+      {birthdayDetailEntry ? (() => {
+        const bi = getBirthdayInfo(birthdayDetailEntry, birthdays);
+        const birthdayDate = new Date(birthdayDetailEntry.startTime).toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-3xl border border-border/60 bg-card p-6 shadow-2xl">
+              <div className="mb-5 flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl" style={{ backgroundImage: 'url(/birthday-pill.png)', backgroundSize: '200% 100%', backgroundPosition: 'center' }}>🎂</div>
+                  <div>
+                    <h2 className="text-xl font-bold">{bi?.name ?? birthdayDetailEntry.title}</h2>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {bi ? `Turns ${bi.age} years old` : 'Birthday'} · {birthdayDate}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBirthdayDetailEntry(null)}
+                  className="rounded-lg border border-border/40 p-1.5 text-muted-foreground hover:bg-accent/60"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <label className="grid gap-2">
+                <span className="text-sm font-medium">Wishes &amp; gift ideas</span>
+                <textarea
+                  value={birthdayWishesText}
+                  onChange={(event) => setBirthdayWishesText(event.target.value)}
+                  placeholder="Note down wishes, gift ideas or hints..."
+                  className="min-h-[100px] rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                />
+              </label>
+              <div className="mt-3 flex items-center gap-3 rounded-2xl border border-border/60 bg-background/40 px-4 py-3">
+                <span className="text-sm text-muted-foreground">🔗 Ønskeskyen integration</span>
+                <a
+                  href="https://onskeskyen.dk/da"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-auto rounded-lg border border-border/60 px-3 py-1.5 text-xs text-primary hover:bg-accent/60"
+                >
+                  Open Ønskeskyen ↗
+                </a>
+              </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBirthdayDetailEntry(null)}
+                  className="rounded-xl border border-border/60 px-4 py-2 text-sm hover:bg-accent/60"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveBirthdayWishes()}
+                  className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:brightness-110"
+                >
+                  Save wishes
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
 
       {foodPlanComposerOpen && foodPlanDraft ? (
         <OverlayPanel title={foodPlanEditingKey ? 'Edit dish' : 'Create dish'} onClose={closeFoodPlanComposer}>
@@ -2091,17 +2748,51 @@ export function DashboardApp() {
                 </div>
                 <div className="space-y-2">
                   {dashboard.members.map((member) => (
-                    <div key={member.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/30 px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', member.avatar ? 'text-xl' : ('text-primary-foreground ' + (memberColorById[member.id] ?? 'bg-primary')))}>
-                          {member.avatar ? member.avatar : <Users className="h-4 w-4" />}
+                    <div key={member.id} className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', member.avatar ? 'text-xl' : ('text-primary-foreground ' + (memberColorById[member.id] ?? 'bg-primary')))}>
+                            {member.avatar ? member.avatar : <Users className="h-4 w-4" />}
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold">{member.name}</div>
+                            <div className="text-xs text-muted-foreground capitalize">{member.role}{member.email ? ` · ${member.email}` : ''}</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-sm font-semibold">{member.name}</div>
-                          <div className="text-xs text-muted-foreground capitalize">{member.role}{member.email ? ` · ${member.email}` : ''}</div>
-                        </div>
+                        <button type="button" onClick={() => startEditMember(member)} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">Edit</button>
                       </div>
-                      <button type="button" onClick={() => startEditMember(member)} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">Edit</button>
+                      <div className="flex flex-wrap items-center gap-4 border-t border-border/40 pt-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={timelineSettingsByMemberId[member.id]?.enabled ?? false}
+                            onClick={() => void handleToggleMemberTimeline(member.id)}
+                            className={cn('relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none', (timelineSettingsByMemberId[member.id]?.enabled ?? false) ? 'bg-primary' : 'bg-muted')}
+                          >
+                            <span className={cn('inline-block h-4 w-4 transform rounded-full bg-white shadow transition', (timelineSettingsByMemberId[member.id]?.enabled ?? false) ? 'translate-x-4' : 'translate-x-0')} />
+                          </button>
+                          <span className="text-xs text-muted-foreground">Daily timeline</span>
+                        </div>
+                        {(timelineSettingsByMemberId[member.id]?.enabled ?? false) && (
+                          <label className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Max tasks/day</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={50}
+                              defaultValue={timelineSettingsByMemberId[member.id]?.maxTasksPerDay ?? 10}
+                              onBlur={(event) => {
+                                const val = Math.min(50, Math.max(1, Number(event.target.value) || 10));
+                                void updateMemberTimelineSettings(member.id, { maxTasksPerDay: val }).then((updated) => {
+                                  setTimelineSettingsByMemberId((prev) => ({ ...prev, [member.id]: updated }));
+                                });
+                              }}
+                              className="w-16 rounded-xl border border-border/60 bg-background/60 px-2 py-1 text-sm outline-none focus:border-primary/60"
+                            />
+                          </label>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2482,6 +3173,15 @@ export function DashboardApp() {
                       className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
                     />
                   </label>
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium">Wishes &amp; gift ideas</span>
+                    <textarea
+                      value={birthdaysDraft.wishes}
+                      onChange={(event) => setBirthdaysDraft((current) => ({ ...current, wishes: event.target.value }))}
+                      placeholder="Note down wishes or gift ideas..."
+                      className="min-h-[80px] rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                    />
+                  </label>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -2494,7 +3194,7 @@ export function DashboardApp() {
                   {birthdaysDraft.id ? (
                     <button
                       type="button"
-                      onClick={() => setBirthdaysDraft({ name: '', date: '', memberId: '', notifyDaysBefore: 7 })}
+                      onClick={() => setBirthdaysDraft({ name: '', date: '', memberId: '', notifyDaysBefore: 7, wishes: '' })}
                       className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60"
                     >
                       Cancel edit
@@ -2645,7 +3345,7 @@ function WeatherSettingsPanel({
   );
 }
 
-type BirthdaySetting = { id: string; name: string; date: string; memberId?: string; notifyDaysBefore: number };
+type BirthdaySetting = { id: string; name: string; date: string; memberId?: string; notifyDaysBefore: number; wishes?: string };
 
 function parseBirthdays(value: unknown): BirthdaySetting[] {
   if (!Array.isArray(value)) {
@@ -2668,6 +3368,7 @@ function parseBirthdays(value: unknown): BirthdaySetting[] {
     const id = typeof source.id === 'string' ? source.id : `birthday-${index}-${date}`;
     const memberId = typeof source.memberId === 'string' ? source.memberId : undefined;
     const notifyDaysBefore = Number(source.notifyDaysBefore ?? 7);
+    const wishes = typeof source.wishes === 'string' ? source.wishes : undefined;
 
     parsed.push({
       id,
@@ -2675,6 +3376,7 @@ function parseBirthdays(value: unknown): BirthdaySetting[] {
       date,
       memberId,
       notifyDaysBefore: Number.isFinite(notifyDaysBefore) ? notifyDaysBefore : 7,
+      wishes,
     });
   });
 
@@ -2778,6 +3480,18 @@ function isVirtualBirthdayEntry(entry: Entry): boolean {
   return entry.id.startsWith('birthday:');
 }
 
+function getBirthdayInfo(entry: Entry, allBirthdays: BirthdaySetting[]): { name: string; age: number; birthday: BirthdaySetting } | null {
+  const match = entry.id.match(/^birthday:(.+):(\d{4})$/);
+  if (!match) return null;
+  const birthdayId = match[1];
+  const occurrenceYear = parseInt(match[2], 10);
+  const birthday = allBirthdays.find((b) => b.id === birthdayId);
+  if (!birthday) return null;
+  const birthYear = parseInt(birthday.date.split('-')[0], 10);
+  if (!Number.isFinite(birthYear) || !Number.isFinite(occurrenceYear)) return null;
+  return { name: birthday.name, age: occurrenceYear - birthYear, birthday };
+}
+
 function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
 }
@@ -2794,16 +3508,19 @@ function countTasks(entries: Entry[]) {
   }, 0);
 }
 
-function summarizeTasks(entries: Entry[]) {
+function summarizeTasks(entries: Entry[], memberId?: string) {
   return entries.reduce(
     (accumulator, entry) => {
       if (entry.checklist.length > 0) {
-        accumulator.total += entry.checklist.length;
-        accumulator.done += entry.checklist.filter((item) => item.isCompleted).length;
+        const relevantItems = memberId
+          ? entry.checklist.filter((item) => (item.assignedToMemberId ?? entry.ownerMemberId) === memberId)
+          : entry.checklist;
+        accumulator.total += relevantItems.length;
+        accumulator.done += relevantItems.filter((item) => item.isCompleted).length;
         return accumulator;
       }
 
-      if (entry.type === 'task') {
+      if (entry.type === 'task' && (!memberId || (entry.assignedToMemberId ?? entry.ownerMemberId) === memberId)) {
         accumulator.total += 1;
         if (entry.status === 'completed') {
           accumulator.done += 1;
@@ -2829,7 +3546,8 @@ function createDefaultDraft(ownerMemberId = '', calendarId = '', date = new Date
     location: '',
     recurrenceFreq: 'none',
     recurrenceCount: '',
-    tasks: '',
+    tasks: [],
+    invitees: [],
     reminder1Mode: 'none',
     reminder1CustomHours: '',
     reminder2Mode: 'none',
@@ -2868,6 +3586,31 @@ function parseRecurrenceRule(rule?: string): { freq: RecurrenceFreq; count: stri
     freq: (freqMatch?.[1] as RecurrenceFreq | undefined) ?? 'none',
     count: countMatch?.[1] ?? '',
   };
+}
+
+function normalizeTemplateExpectedTime(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const match = trimmed.match(/^(\d{2}):(\d{2})(?::\d{2})?$/);
+  if (!match) {
+    return undefined;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours > 23 || minutes > 59) {
+    return undefined;
+  }
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function formatTemplateExpectedTime(value: string): string {
+  const normalized = normalizeTemplateExpectedTime(value);
+  return normalized ?? value;
 }
 
 function parseChecklistDraft(value: string) {

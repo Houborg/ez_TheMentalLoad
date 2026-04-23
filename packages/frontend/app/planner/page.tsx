@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CalendarDays, LoaderCircle } from 'lucide-react';
-import type { Entry, Member } from '@mental-load/contracts';
+import { ArrowLeft, CalendarDays, LoaderCircle, RefreshCcw } from 'lucide-react';
+import type { Entry, ListTodayMemberTimelineResponse, Member } from '@mental-load/contracts';
 import { AgendaView } from '@/components/agenda-view';
-import { loadDashboardSnapshot, loadSettings, loadUpcomingOccurrences, loadWeatherForecast, type WeatherForecastResponse } from '@/lib/api';
+import { TodayTimelineBoard } from '@/components/today-timeline-board';
+import { confirmTodayTimelineTask, loadDashboardSnapshot, loadSettings, loadTodayTimeline, loadUpcomingOccurrences, loadWeatherForecast, type WeatherForecastResponse } from '@/lib/api';
 
 const MEMBER_COLOR_CLASSES = ['bg-primary', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5'];
 
@@ -16,6 +17,34 @@ export default function PlannerPage() {
   const [errorText, setErrorText] = useState('');
   const [weatherForecast, setWeatherForecast] = useState<WeatherForecastResponse | null>(null);
   const [weatherConfig, setWeatherConfig] = useState({ location: '', state: '', country: '', unit: 'C' as 'C' | 'F' });
+  const [timelinesByMemberId, setTimelinesByMemberId] = useState<Record<string, ListTodayMemberTimelineResponse>>({});
+  const [celebrationTaskId, setCelebrationTaskId] = useState<string | undefined>();
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function refetchTimelines() {
+    try {
+      setRefreshing(true);
+      const snapshot = await loadDashboardSnapshot();
+      const timelineResponses = await Promise.all(
+        snapshot.members.map(async (member) => {
+          try {
+            const timeline = await loadTodayTimeline(member.id);
+            return [member.id, timeline] as const;
+          } catch {
+            return [member.id, {
+              settings: { memberId: member.id, enabled: false, maxTasksPerDay: 10, updatedAt: new Date().toISOString() },
+              timeline: { memberId: member.id, date: new Date().toISOString().slice(0, 10), timezone: 'UTC', tasks: [] },
+            }] as const;
+          }
+        }),
+      );
+      setTimelinesByMemberId(Object.fromEntries(timelineResponses));
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not refresh timelines');
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -55,9 +84,28 @@ export default function PlannerPage() {
           return;
         }
 
+        const timelineResponses = await Promise.all(
+          snapshot.members.map(async (member) => {
+            try {
+              const timeline = await loadTodayTimeline(member.id);
+              return [member.id, timeline] as const;
+            } catch {
+              return [member.id, {
+                settings: { memberId: member.id, enabled: false, maxTasksPerDay: 10, updatedAt: new Date().toISOString() },
+                timeline: { memberId: member.id, date: new Date().toISOString().slice(0, 10), timezone: 'UTC', tasks: [] },
+              }] as const;
+            }
+          }),
+        );
+
+        if (!active) {
+          return;
+        }
+
         setMembers(snapshot.members);
         setEntries(upcoming);
         setWeatherConfig(resolvedWeather);
+        setTimelinesByMemberId(Object.fromEntries(timelineResponses));
       } catch (error) {
         if (!active) {
           return;
@@ -73,6 +121,16 @@ export default function PlannerPage() {
     void loadPlanner();
     return () => {
       active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const pollInterval = setInterval(() => {
+      void refetchTimelines();
+    }, 5000);
+
+    return () => {
+      clearInterval(pollInterval);
     };
   }, []);
 
@@ -98,6 +156,23 @@ export default function PlannerPage() {
     }, {});
   }, [weatherForecast]);
 
+  async function handleConfirmTimelineTask(memberId: string, taskId: string) {
+    try {
+      const result = await confirmTodayTimelineTask(memberId, { taskId });
+      setTimelinesByMemberId((current) => ({
+        ...current,
+        [memberId]: {
+          ...(current[memberId] ?? { settings: { memberId, enabled: true, maxTasksPerDay: 10, updatedAt: new Date().toISOString() } }),
+          timeline: result.timeline,
+        },
+      }));
+      setCelebrationTaskId(taskId);
+      setTimeout(() => setCelebrationTaskId(undefined), 1400);
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not confirm timeline task');
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background px-4 py-6 text-foreground md:px-6">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5">
@@ -112,10 +187,21 @@ export default function PlannerPage() {
               Always starts from today. {weatherForecast?.resolvedLocation ? `Weather: ${weatherForecast.resolvedLocation.name}${weatherForecast.resolvedLocation.admin1 ? `, ${weatherForecast.resolvedLocation.admin1}` : ''}${weatherForecast.resolvedLocation.country ? `, ${weatherForecast.resolvedLocation.country}` : ''}.` : weatherConfig.location ? 'Loading configured weather location...' : 'Set weather location in Settings to show live forecast.'}
             </p>
           </div>
-          <Link href="/" className="inline-flex items-center gap-2 rounded-2xl border border-border/60 bg-card/60 px-4 py-2 text-sm font-medium hover:bg-accent/60">
-            <ArrowLeft className="h-4 w-4" />
-            Back to dashboard
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void refetchTimelines()}
+              disabled={refreshing}
+              className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/60 bg-card/60 text-muted-foreground transition hover:text-foreground disabled:opacity-60"
+              aria-label="Refresh timelines"
+            >
+              {refreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+            </button>
+            <Link href="/" className="inline-flex items-center gap-2 rounded-2xl border border-border/60 bg-card/60 px-4 py-2 text-sm font-medium hover:bg-accent/60">
+              <ArrowLeft className="h-4 w-4" />
+              Back to dashboard
+            </Link>
+          </div>
         </div>
 
         {loading ? (
@@ -129,12 +215,20 @@ export default function PlannerPage() {
                 {errorText}
               </div>
             ) : null}
-            <AgendaView
-              members={members}
-              entries={entries}
-              memberColorById={memberColorById}
-              dayWeatherByDate={dayWeatherByDate}
-            />
+            <div className="space-y-4">
+              <TodayTimelineBoard
+                members={members}
+                timelinesByMemberId={timelinesByMemberId}
+                celebrationTaskId={celebrationTaskId}
+                onConfirmTask={handleConfirmTimelineTask}
+              />
+              <AgendaView
+                members={members}
+                entries={entries}
+                memberColorById={memberColorById}
+                dayWeatherByDate={dayWeatherByDate}
+              />
+            </div>
           </section>
         )}
       </div>

@@ -2,13 +2,16 @@ import type {
   AppSettings,
   AssistantDraft,
   Calendar,
+  DailyTimelineTemplateTask,
   Entry,
   FoodPlanDay,
   FoodPlanItem,
   Member,
+  MemberTimelineSettings,
   MemberRole,
   SupportedLanguage,
   SyncProvider,
+  TodayMemberTimeline,
 } from './domain';
 
 export interface ApiHealth {
@@ -172,9 +175,10 @@ export type CreateEntryRequest = Pick<
   | 'allDay'
   | 'location'
   | 'recurrenceRule'
+  | 'assignedToMemberId'
 > & {
   reminders?: Array<{ minutesBefore: number }>;
-  checklist?: Array<{ text: string; isCompleted?: boolean }>;
+  checklist?: Array<{ text: string; isCompleted?: boolean; assignedToMemberId?: string }>;
   invitees?: Array<{ email: string }>;
   parentEntryId?: string;
 };
@@ -182,3 +186,46 @@ export type CreateEntryRequest = Pick<
 export type UpdateEntryRequest = Partial<CreateEntryRequest> & {
   status?: Entry['status'];
 };
+
+export interface UpdateMemberTimelineSettingsRequest {
+  enabled?: boolean;
+  maxTasksPerDay?: number;
+}
+
+export interface ListMemberTimelineTemplatesResponse {
+  memberId: string;
+  templates: DailyTimelineTemplateTask[];
+}
+
+export interface CreateMemberTimelineTemplateRequest {
+  title: string;
+  position: number;
+  expectedTime?: string;
+  isActive?: boolean;
+  appliesToEntryTask?: boolean;
+  appliesToEventDerivedTask?: boolean;
+}
+
+export type UpdateMemberTimelineTemplateRequest = Partial<CreateMemberTimelineTemplateRequest>;
+
+export interface UpsertOneOffTimelineTaskRequest {
+  title: string;
+  dueAt?: string;
+  position?: number;
+  linkedEntryId?: string;
+}
+
+export interface ListTodayMemberTimelineResponse {
+  settings: MemberTimelineSettings;
+  timeline: TodayMemberTimeline;
+}
+
+export interface ConfirmTimelineTaskCompletionRequest {
+  taskId: string;
+  confirmedAt?: string;
+}
+
+export interface ConfirmTimelineTaskCompletionResponse {
+  ok: boolean;
+  timeline: TodayMemberTimeline;
+}
