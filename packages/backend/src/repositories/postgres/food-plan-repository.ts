@@ -17,7 +17,7 @@ export class PostgresFoodPlanRepository implements FoodPlanRepository {
   async upsert(input: { weekStart: string; day: FoodPlanDay; dishName: string; groceryList: string[] }): Promise<FoodPlanItem> {
     const result = await this.pool.query(
       `insert into food_plan_items (week_start, day, dish_name, grocery_list)
-       values ($1, $2, $3, $4::jsonb)
+       values ($1, lower($2), $3, $4::jsonb)
        on conflict (week_start, day)
        do update set dish_name = excluded.dish_name, grocery_list = excluded.grocery_list, updated_at = now()
        returning id, week_start, day, dish_name, grocery_list, created_at, updated_at`,
@@ -28,7 +28,7 @@ export class PostgresFoodPlanRepository implements FoodPlanRepository {
   }
 
   async deleteByWeekAndDay(weekStart: string, day: FoodPlanDay): Promise<boolean> {
-    const result = await this.pool.query('delete from food_plan_items where week_start = $1 and day = $2', [weekStart, day]);
+    const result = await this.pool.query('delete from food_plan_items where week_start = $1 and lower(day) = lower($2)', [weekStart, day]);
     return (result.rowCount ?? 0) > 0;
   }
 
@@ -36,7 +36,7 @@ export class PostgresFoodPlanRepository implements FoodPlanRepository {
     return {
       id: String(row.id),
       weekStart: String(row.week_start),
-      day: row.day as FoodPlanDay,
+      day: String(row.day).toLowerCase() as FoodPlanDay,
       dishName: String(row.dish_name),
       groceryList: Array.isArray(row.grocery_list)
         ? row.grocery_list.map((value) => String(value))

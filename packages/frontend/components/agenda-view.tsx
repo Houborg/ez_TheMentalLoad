@@ -23,7 +23,12 @@ export function AgendaView({ members, entries, memberColorById, onSelectEntry, o
             <th className="border border-border/60 bg-card/70 p-2 text-left text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Day</th>
             {members.map((member) => (
               <th key={member.id} className="border border-border/60 bg-card/70 p-2 text-left text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                {member.name}
+                <span className="inline-flex items-center gap-2">
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/80 text-[13px] normal-case text-foreground">
+                    {member.avatar || '👤'}
+                  </span>
+                  <span>{member.name}</span>
+                </span>
               </th>
             ))}
           </tr>

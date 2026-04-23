@@ -10,13 +10,36 @@ export interface ReminderJobRecord {
   transport: 'memory' | 'redis';
 }
 
+export interface TimelinePromptJobRecord {
+  id: string;
+  taskId: string;
+  memberId: string;
+  runAt: string;
+  transport: 'memory' | 'redis';
+}
+
+export interface TimelineResetJobRecord {
+  id: string;
+  memberId: string;
+  date: string;
+  timezone: string;
+  runAt: string;
+  transport: 'memory' | 'redis';
+}
+
 export interface ReminderScheduler {
   scheduleForEntry(entry: Entry): Promise<ReminderJobRecord[]>;
+  scheduleTimelinePrompt(taskId: string, memberId: string, runAt: string): Promise<TimelinePromptJobRecord>;
+  scheduleTimelineReset(memberId: string, date: string, timezone: string, runAt: string): Promise<TimelineResetJobRecord>;
   listJobs(): Promise<ReminderJobRecord[]>;
+  listTimelinePromptJobs(): Promise<TimelinePromptJobRecord[]>;
+  listTimelineResetJobs(): Promise<TimelineResetJobRecord[]>;
 }
 
 export class InMemoryReminderScheduler implements ReminderScheduler {
   private readonly jobs = new Map<string, ReminderJobRecord>();
+  private readonly timelinePromptJobs = new Map<string, TimelinePromptJobRecord>();
+  private readonly timelineResetJobs = new Map<string, TimelineResetJobRecord>();
 
   async scheduleForEntry(entry: Entry): Promise<ReminderJobRecord[]> {
     for (const [key, job] of this.jobs.entries()) {
@@ -45,11 +68,46 @@ export class InMemoryReminderScheduler implements ReminderScheduler {
   async listJobs(): Promise<ReminderJobRecord[]> {
     return [...this.jobs.values()].sort((left, right) => left.runAt.localeCompare(right.runAt));
   }
+
+  async scheduleTimelinePrompt(taskId: string, memberId: string, runAt: string): Promise<TimelinePromptJobRecord> {
+    const job: TimelinePromptJobRecord = {
+      id: `${taskId}:${memberId}:timeline-prompt`,
+      taskId,
+      memberId,
+      runAt,
+      transport: 'memory',
+    };
+    this.timelinePromptJobs.set(job.id, job);
+    return job;
+  }
+
+  async scheduleTimelineReset(memberId: string, date: string, timezone: string, runAt: string): Promise<TimelineResetJobRecord> {
+    const job: TimelineResetJobRecord = {
+      id: `${memberId}:${date}:timeline-reset`,
+      memberId,
+      date,
+      timezone,
+      runAt,
+      transport: 'memory',
+    };
+    this.timelineResetJobs.set(job.id, job);
+    return job;
+  }
+
+  async listTimelinePromptJobs(): Promise<TimelinePromptJobRecord[]> {
+    return [...this.timelinePromptJobs.values()].sort((left, right) => left.runAt.localeCompare(right.runAt));
+  }
+
+  async listTimelineResetJobs(): Promise<TimelineResetJobRecord[]> {
+    return [...this.timelineResetJobs.values()].sort((left, right) => left.runAt.localeCompare(right.runAt));
+  }
 }
 
 export class RedisReminderScheduler implements ReminderScheduler {
   private readonly queue: Queue;
   private readonly jobs = new Map<string, ReminderJobRecord>();
+  private readonly timelinePromptJobs = new Map<string, TimelinePromptJobRecord>();
+  private readonly timelineResetJobs = new Map<string, TimelineResetJobRecord>();
 
   constructor(redisUrl: string) {
     const url = new URL(redisUrl);
@@ -94,5 +152,62 @@ export class RedisReminderScheduler implements ReminderScheduler {
 
   async listJobs(): Promise<ReminderJobRecord[]> {
     return [...this.jobs.values()].sort((left, right) => left.runAt.localeCompare(right.runAt));
+  }
+
+  async scheduleTimelinePrompt(taskId: string, memberId: string, runAt: string): Promise<TimelinePromptJobRecord> {
+    const job: TimelinePromptJobRecord = {
+      id: `${taskId}:${memberId}:timeline-prompt`,
+      taskId,
+      memberId,
+      runAt,
+      transport: 'redis',
+    };
+    this.timelinePromptJobs.set(job.id, job);
+
+    const delay = Math.max(new Date(runAt).getTime() - Date.now(), 0);
+    try {
+      await this.queue.add(
+        'timeline.step.reached',
+        { taskId, memberId, runAt },
+        { delay, removeOnComplete: 100, removeOnFail: 100 },
+      );
+    } catch {
+      // keep the app responsive even if Redis is unavailable
+    }
+
+    return job;
+  }
+
+  async scheduleTimelineReset(memberId: string, date: string, timezone: string, runAt: string): Promise<TimelineResetJobRecord> {
+    const job: TimelineResetJobRecord = {
+      id: `${memberId}:${date}:timeline-reset`,
+      memberId,
+      date,
+      timezone,
+      runAt,
+      transport: 'redis',
+    };
+    this.timelineResetJobs.set(job.id, job);
+
+    const delay = Math.max(new Date(runAt).getTime() - Date.now(), 0);
+    try {
+      await this.queue.add(
+        'timeline.day.reset',
+        { memberId, date, timezone, runAt },
+        { delay, removeOnComplete: 100, removeOnFail: 100 },
+      );
+    } catch {
+      // keep the app responsive even if Redis is unavailable
+    }
+
+    return job;
+  }
+
+  async listTimelinePromptJobs(): Promise<TimelinePromptJobRecord[]> {
+    return [...this.timelinePromptJobs.values()].sort((left, right) => left.runAt.localeCompare(right.runAt));
+  }
+
+  async listTimelineResetJobs(): Promise<TimelineResetJobRecord[]> {
+    return [...this.timelineResetJobs.values()].sort((left, right) => left.runAt.localeCompare(right.runAt));
   }
 }

@@ -5,6 +5,8 @@ export type SupportedLanguage = 'en' | 'da';
 export type SyncProvider = 'none' | 'apple' | 'invite-mail' | 'google' | 'outlook';
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type ThemeAppearance = 'classic' | 'glass';
+export type TimelineTaskStatus = 'pending' | 'waiting_confirmation' | 'completed' | 'skipped';
+export type TimelineTaskSource = 'template' | 'one_off' | 'entry_task' | 'event_derived_task';
 
 export interface Member {
   id: string;
@@ -32,6 +34,7 @@ export interface ChecklistItem {
   id: string;
   text: string;
   isCompleted: boolean;
+  assignedToMemberId?: string;
 }
 
 export interface Invitee {
@@ -58,6 +61,7 @@ export interface Entry {
   invitees: Invitee[];
   linkedEntryIds: string[];
   parentEntryId?: string;
+  assignedToMemberId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -147,4 +151,48 @@ export interface FoodPlanItem {
   groceryList: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MemberTimelineSettings {
+  memberId: string;
+  enabled: boolean;
+  maxTasksPerDay: number;
+  updatedAt: string;
+}
+
+export interface DailyTimelineTemplateTask {
+  id: string;
+  memberId: string;
+  title: string;
+  position: number;
+  expectedTime?: string;
+  isActive: boolean;
+  appliesToEntryTask: boolean;
+  appliesToEventDerivedTask: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TimelineTaskInstance {
+  id: string;
+  dayId: string;
+  memberId: string;
+  title: string;
+  position: number;
+  source: TimelineTaskSource;
+  status: TimelineTaskStatus;
+  dueAt?: string;
+  confirmedAt?: string;
+  linkedEntryId?: string;
+  templateTaskId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TodayMemberTimeline {
+  memberId: string;
+  date: string;
+  timezone: string;
+  blockedByTaskId?: string;
+  tasks: TimelineTaskInstance[];
 }

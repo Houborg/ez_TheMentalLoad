@@ -7,12 +7,17 @@ import type {
   AssistantConfirmRequest,
   AssistantFunRequest,
   AssistantParseRequest,
+  ConfirmTimelineTaskCompletionRequest,
   CreateEntryRequest,
   CreateMemberRequest,
+  CreateMemberTimelineTemplateRequest,
   DeleteFoodPlanItemRequest,
   Entry,
   FoodPlanDay,
   ListFoodPlanResponse,
+  UpdateMemberTimelineSettingsRequest,
+  UpdateMemberTimelineTemplateRequest,
+  UpsertOneOffTimelineTaskRequest,
   SyncConnectRequest,
   SyncRunRequest,
   TestEmailRequest,
@@ -28,6 +33,7 @@ import { EntryService } from './domains/entries/entry-service';
 import { MailService } from './mail/mail-service';
 import { InboxBridgeService } from './mail/inbox-bridge-service';
 import { createRepositoryBundle } from './repositories/repository-factory';
+import { DailyTimelineService } from './domains/timeline/daily-timeline-service';
 import { SettingsService } from './settings/settings-service';
 import { SyncService } from './sync/sync-service';
 
@@ -35,8 +41,9 @@ export async function buildApp() {
   const app = Fastify({ logger: false });
   const eventBus = new DomainEventBus();
   const infrastructure = await createRepositoryBundle();
-  const { memberRepository, calendarRepository, entryRepository, foodPlanRepository, reminderScheduler, persistence, close } = infrastructure;
+  const { memberRepository, calendarRepository, entryRepository, foodPlanRepository, dailyTimelineRepository, reminderScheduler, persistence, close } = infrastructure;
   const entryService = new EntryService(entryRepository, eventBus, reminderScheduler);
+  const dailyTimelineService = new DailyTimelineService(dailyTimelineRepository);
   const settingsService = new SettingsService();
   const mailService = new MailService();
   const inboxBridgeService = new InboxBridgeService();
@@ -185,6 +192,141 @@ export async function buildApp() {
     return updated;
   });
 
+  app.put<{ Params: { memberId: string }; Body: UpdateMemberTimelineSettingsRequest }>('/api/v1/members/:memberId/timeline-settings', async (request, reply) => {
+    const maxTasksPerDay = request.body.maxTasksPerDay;
+    if (typeof maxTasksPerDay === 'number' && (!Number.isInteger(maxTasksPerDay) || maxTasksPerDay < 1 || maxTasksPerDay > 50)) {
+      reply.code(400);
+      return { message: 'maxTasksPerDay must be an integer between 1 and 50' };
+    }
+
+    return dailyTimelineService.updateMemberSettings(request.params.memberId, request.body);
+  });
+
+  app.get<{ Params: { memberId: string } }>('/api/v1/members/:memberId/timeline-settings', async (request) => {
+    return dailyTimelineService.getMemberSettings(request.params.memberId);
+  });
+
+  app.get<{ Params: { memberId: string } }>('/api/v1/members/:memberId/timeline-templates', async (request) => {
+    const templates = await dailyTimelineService.listTemplates(request.params.memberId);
+    return {
+      memberId: request.params.memberId,
+      templates,
+    };
+  });
+
+  app.post<{ Params: { memberId: string }; Body: CreateMemberTimelineTemplateRequest }>('/api/v1/members/:memberId/timeline-templates', async (request, reply) => {
+    if (!request.body.title?.trim()) {
+      reply.code(400);
+      return { message: 'title is required' };
+    }
+
+    if (!Number.isInteger(request.body.position) || request.body.position < 1) {
+      reply.code(400);
+      return { message: 'position must be a positive integer' };
+    }
+
+    const created = await dailyTimelineService.createTemplate({
+      memberId: request.params.memberId,
+      title: request.body.title.trim(),
+      position: request.body.position,
+      expectedTime: request.body.expectedTime,
+      isActive: request.body.isActive,
+      appliesToEntryTask: request.body.appliesToEntryTask,
+      appliesToEventDerivedTask: request.body.appliesToEventDerivedTask,
+    });
+
+    reply.code(201);
+    return created;
+  });
+
+  app.patch<{ Params: { memberId: string; templateId: string }; Body: UpdateMemberTimelineTemplateRequest }>('/api/v1/members/:memberId/timeline-templates/:templateId', async (request, reply) => {
+    if (typeof request.body.position === 'number' && (!Number.isInteger(request.body.position) || request.body.position < 1)) {
+      reply.code(400);
+      return { message: 'position must be a positive integer' };
+    }
+
+    const updated = await dailyTimelineService.updateTemplate(request.params.memberId, request.params.templateId, {
+      ...request.body,
+      title: typeof request.body.title === 'string' ? request.body.title.trim() : undefined,
+    });
+
+    if (!updated) {
+      reply.code(404);
+      return { message: 'Template task not found' };
+    }
+
+    return updated;
+  });
+
+  app.delete<{ Params: { memberId: string; templateId: string } }>('/api/v1/members/:memberId/timeline-templates/:templateId', async (request, reply) => {
+    const deleted = await dailyTimelineService.deleteTemplate(request.params.memberId, request.params.templateId);
+    if (!deleted) {
+      reply.code(404);
+      return { message: 'Template task not found' };
+    }
+
+    reply.code(204);
+    return null;
+  });
+
+  app.get<{ Params: { memberId: string }; Querystring: { date?: string; timezone?: string } }>('/api/v1/members/:memberId/today-timeline', async (request, reply) => {
+    const date = normalizeIsoDate(request.query.date) ?? new Date().toISOString().slice(0, 10);
+    const timezone = request.query.timezone?.trim() || 'UTC';
+
+    const timeline = await dailyTimelineService.getTodayTimeline(request.params.memberId, date, timezone);
+    const settings = await dailyTimelineService.getMemberSettings(request.params.memberId);
+    reply.code(200);
+    return { settings, timeline };
+  });
+
+  app.post<{ Params: { memberId: string }; Querystring: { date?: string; timezone?: string }; Body: UpsertOneOffTimelineTaskRequest }>('/api/v1/members/:memberId/today-timeline/one-off', async (request, reply) => {
+    if (!request.body.title?.trim()) {
+      reply.code(400);
+      return { message: 'title is required' };
+    }
+
+    const date = normalizeIsoDate(request.query.date) ?? new Date().toISOString().slice(0, 10);
+    const timezone = request.query.timezone?.trim() || 'UTC';
+    const created = await dailyTimelineService.addOneOffTask({
+      memberId: request.params.memberId,
+      date,
+      timezone,
+      title: request.body.title.trim(),
+      dueAt: request.body.dueAt,
+    });
+
+    reply.code(201);
+    return created;
+  });
+
+  app.post<{ Params: { memberId: string }; Body: ConfirmTimelineTaskCompletionRequest }>('/api/v1/members/:memberId/today-timeline/confirm', async (request, reply) => {
+    if (!request.body.taskId?.trim()) {
+      reply.code(400);
+      return { message: 'taskId is required' };
+    }
+
+    const confirmed = await dailyTimelineService.confirmTaskCompletion(request.body.taskId.trim(), request.params.memberId);
+    if (!confirmed) {
+      reply.code(404);
+      return { message: 'Timeline task not found' };
+    }
+
+    eventBus.emit({
+      name: 'timeline.step.completed',
+      payload: {
+        memberId: request.params.memberId,
+        date: confirmed.createdAt.slice(0, 10),
+        task: confirmed,
+        completedByMemberId: request.params.memberId,
+      },
+      occurredAt: new Date().toISOString(),
+    });
+
+    const date = confirmed.createdAt.slice(0, 10);
+    const timeline = await dailyTimelineService.getTodayTimeline(request.params.memberId, date, 'UTC');
+    return { ok: true, timeline };
+  });
+
   app.get<{ Querystring: { weekStart?: string } }>('/api/v1/food-plan', async (request, reply): Promise<ListFoodPlanResponse | { message: string }> => {
     const weekStart = normalizeWeekStart(request.query.weekStart);
     if (!weekStart) {
@@ -241,7 +383,12 @@ export async function buildApp() {
   });
 
   app.get('/api/v1/calendars', async () => calendarRepository.list());
-  app.get('/api/v1/entries', async () => entryService.listEntries());
+  app.get<{ Querystring: { ownerMemberId?: string; assignedToMemberId?: string } }>('/api/v1/entries', async (request, reply) => {
+    if (request.query.ownerMemberId && request.query.assignedToMemberId) {
+      return entryService.listMemberTasks(request.query.ownerMemberId, request.query.assignedToMemberId);
+    }
+    return entryService.listEntries();
+  });
   app.get<{ Querystring: { from?: string; to?: string } }>('/api/v1/entries/occurrences', async (request, reply) => {
     const from = request.query.from ?? new Date().toISOString();
     const to = request.query.to ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -329,6 +476,20 @@ export async function buildApp() {
     return null;
   });
 
+  app.patch<{ Params: { id: string; email: string }; Body: { status: 'accepted' | 'declined' } }>('/api/v1/entries/:id/invitees/:email', async (request, reply) => {
+    const entry = await entryService.respondToInvitation(request.params.id, request.params.email, request.body.status);
+    if (!entry) {
+      reply.code(404);
+      return { message: 'Entry or invitee not found' };
+    }
+    return entry;
+  });
+
+  app.get<{ Params: { memberId: string } }>('/api/v1/members/:memberId/invitations', async (request, reply) => {
+    const invitations = await entryService.listInvitationsForMember(request.params.memberId);
+    return invitations;
+  });
+
   app.get('/ws', { websocket: true }, (socket) => {
     sockets.add(socket);
     socket.send(JSON.stringify({ type: 'connected', id: uuid() }));
@@ -349,6 +510,15 @@ export async function buildApp() {
 
   eventBus.on('reminder.scheduled', (event) => {
     broadcast({ type: 'reminder.scheduled', payload: event.payload, occurredAt: event.occurredAt });
+  });
+
+  eventBus.on('timeline.step.reached', (event) => {
+    broadcast({ type: 'timeline.step.reached', payload: event.payload, occurredAt: event.occurredAt });
+  });
+
+  eventBus.on<{ memberId: string; date: string; task: { title: string; confirmedAt?: string }; completedByMemberId?: string }>('timeline.step.completed', (event) => {
+    broadcast({ type: 'timeline.step.completed', payload: event.payload, occurredAt: event.occurredAt });
+    void sendTimelineCompletionEmails(event.payload);
   });
 
   function broadcast(message: unknown): void {
@@ -401,6 +571,36 @@ export async function buildApp() {
           content: ics,
           contentType: 'text/calendar; charset=utf-8; method=REQUEST',
         }],
+      }, settings.mail);
+    }));
+  }
+
+  async function sendTimelineCompletionEmails(payload: {
+    memberId: string;
+    date: string;
+    task: { title: string; confirmedAt?: string };
+    completedByMemberId?: string;
+  }): Promise<void> {
+    const [members, settings] = await Promise.all([
+      memberRepository.list(),
+      settingsService.getSettings(),
+    ]);
+    const completedByMember = members.find((member) => member.id === payload.memberId);
+    const parentRecipients = members
+      .filter((member) => member.role === 'parent' && typeof member.email === 'string' && member.email.trim().length > 0)
+      .map((member) => member.email!.trim().toLowerCase());
+    const uniqueRecipients = [...new Set(parentRecipients)];
+
+    if (uniqueRecipients.length === 0) {
+      return;
+    }
+
+    await Promise.all(uniqueRecipients.map(async (recipient) => {
+      await mailService.sendTimelineTaskCompletedNotice({
+        to: recipient,
+        memberName: completedByMember?.name ?? 'A family member',
+        taskTitle: payload.task.title,
+        completedAt: payload.task.confirmedAt ?? new Date().toISOString(),
       }, settings.mail);
     }));
   }
@@ -463,6 +663,23 @@ function normalizeWeekStart(value?: string): string | undefined {
     const diff = day === 0 ? -6 : 1 - day;
     monday.setUTCDate(monday.getUTCDate() + diff);
     return monday.toISOString().slice(0, 10);
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return undefined;
+  }
+
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+
+  return value;
+}
+
+function normalizeIsoDate(value?: string): string | undefined {
+  if (!value) {
+    return undefined;
   }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {

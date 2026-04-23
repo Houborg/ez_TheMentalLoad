@@ -150,3 +150,212 @@ textarea {
     linear-gradient(to bottom, color-mix(in oklab, var(--border) 90%, transparent) 1px, transparent 1px);
   background-size: 100% 100%, 100% 100%;
 }
+
+.timeline-shell {
+  --timeline-cyan: oklch(0.78 0.15 200);
+  --timeline-magenta: oklch(0.72 0.2 340);
+  --timeline-amber: oklch(0.78 0.16 70);
+  --timeline-muted: color-mix(in oklab, var(--foreground) 14%, transparent);
+}
+
+.timeline-scroll {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.timeline-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.timeline-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--foreground) 20%, transparent);
+  border-radius: 999px;
+}
+
+.timeline-stage {
+  position: relative;
+  height: 240px;
+  /* width is set inline per member based on task count */
+}
+
+.timeline-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.timeline-path {
+  fill: none;
+  stroke-width: 24;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.timeline-path-muted {
+  stroke: var(--timeline-muted);
+}
+
+.timeline-path-glow {
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--timeline-cyan) 65%, transparent));
+  opacity: 0.92;
+}
+
+.timeline-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.timeline-node-inner {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  border-radius: 999px;
+  border: 2px solid color-mix(in oklab, white 40%, transparent);
+  background: color-mix(in oklab, var(--card) 88%, transparent);
+  box-shadow:
+    inset 0 0 0 6px color-mix(in oklab, var(--background) 68%, transparent),
+    0 8px 16px color-mix(in oklab, black 24%, transparent);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.timeline-node-selected .timeline-node-inner {
+  box-shadow:
+    inset 0 0 0 10px color-mix(in oklab, var(--background) 70%, transparent),
+    0 0 22px color-mix(in oklab, var(--timeline-magenta) 35%, transparent),
+    0 14px 26px color-mix(in oklab, black 28%, transparent);
+}
+
+.timeline-node-done .timeline-node-inner {
+  border-color: color-mix(in oklab, var(--timeline-cyan) 40%, white 20%);
+  background: radial-gradient(circle at 30% 25%, color-mix(in oklab, var(--timeline-cyan) 28%, white 12%), color-mix(in oklab, var(--timeline-magenta) 30%, var(--card) 70%));
+  color: white;
+}
+
+.timeline-node-active .timeline-node-inner {
+  border-color: color-mix(in oklab, var(--timeline-magenta) 50%, white 14%);
+  background: radial-gradient(circle at 30% 25%, color-mix(in oklab, var(--timeline-amber) 24%, white 14%), color-mix(in oklab, var(--timeline-magenta) 38%, var(--card) 62%));
+  color: white;
+  animation: timeline-pulse 2.2s ease-in-out infinite;
+}
+
+.timeline-node-upcoming .timeline-node-inner,
+.timeline-node-skipped .timeline-node-inner {
+  border-color: color-mix(in oklab, var(--foreground) 16%, transparent);
+  background: color-mix(in oklab, var(--card) 86%, transparent);
+  color: color-mix(in oklab, var(--foreground) 55%, transparent);
+}
+
+.timeline-node-skipped .timeline-node-inner {
+  opacity: 0.72;
+}
+
+.timeline-node-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  color: oklch(0.24 0.02 22);
+  background: color-mix(in oklab, white 84%, var(--timeline-amber) 16%);
+}
+
+.timeline-node-button:hover {
+  background: color-mix(in oklab, white 72%, var(--timeline-amber) 28%);
+}
+
+.timeline-pin {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  width: 6px;
+  height: 44px;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  background: color-mix(in oklab, var(--timeline-magenta) 45%, var(--foreground) 15%);
+}
+
+.timeline-tag {
+  position: absolute;
+  left: 50%;
+  max-width: 145px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
+  background: color-mix(in oklab, var(--card) 92%, transparent);
+  padding: 0.25rem 0.45rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  line-height: 1.2;
+  transform: translateX(-50%);
+  color: var(--foreground);
+  box-shadow: 0 8px 16px color-mix(in oklab, black 18%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-node:nth-child(odd) .timeline-pin {
+  top: -26px;
+}
+
+.timeline-node:nth-child(odd) .timeline-tag {
+  top: -60px;
+}
+
+.timeline-node:nth-child(even) .timeline-pin {
+  bottom: -26px;
+}
+
+.timeline-node:nth-child(even) .timeline-tag {
+  top: 60px;
+}
+
+.timeline-callout-bar {
+  margin-top: 0.6rem;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklab, var(--border) 90%, transparent);
+  background: color-mix(in oklab, var(--card) 94%, transparent);
+  padding: 0.65rem 0.85rem;
+  box-shadow: 0 6px 14px color-mix(in oklab, black 16%, transparent);
+}
+
+@keyframes timeline-pulse {
+  0% {
+    box-shadow:
+      inset 0 0 0 10px color-mix(in oklab, var(--background) 70%, transparent),
+      0 0 14px color-mix(in oklab, var(--timeline-magenta) 22%, transparent),
+      0 14px 24px color-mix(in oklab, black 22%, transparent);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 10px color-mix(in oklab, var(--background) 68%, transparent),
+      0 0 26px color-mix(in oklab, var(--timeline-magenta) 48%, transparent),
+      0 16px 30px color-mix(in oklab, black 26%, transparent);
+  }
+  100% {
+    box-shadow:
+      inset 0 0 0 10px color-mix(in oklab, var(--background) 70%, transparent),
+      0 0 14px color-mix(in oklab, var(--timeline-magenta) 22%, transparent),
+      0 14px 24px color-mix(in oklab, black 22%, transparent);
+  }
+}
+
+@media (max-width: 900px) {
+  .timeline-node-inner {
+    width: 44px;
+    height: 44px;
+  }
+}

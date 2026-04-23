@@ -7,7 +7,7 @@ export class PostgresMemberRepository implements MemberRepository {
 
   async list(): Promise<Member[]> {
     const result = await this.pool.query(
-      'select id, name, role, email, created_at from members order by created_at asc',
+      'select id, name, role, email, avatar, created_at from members order by created_at asc',
     );
 
     return result.rows.map((row) => ({
@@ -15,26 +15,27 @@ export class PostgresMemberRepository implements MemberRepository {
       name: row.name,
       role: row.role,
       email: row.email ?? undefined,
+      avatar: row.avatar ?? undefined,
       createdAt: new Date(row.created_at).toISOString(),
     }));
   }
 
   async findById(id: string): Promise<Member | undefined> {
     const result = await this.pool.query(
-      'select id, name, role, email, created_at from members where id = $1',
+      'select id, name, role, email, avatar, created_at from members where id = $1',
       [id],
     );
 
     const row = result.rows[0];
     return row
-      ? { id: row.id, name: row.name, role: row.role, email: row.email ?? undefined, createdAt: new Date(row.created_at).toISOString() }
+        ? { id: row.id, name: row.name, role: row.role, email: row.email ?? undefined, avatar: row.avatar ?? undefined, createdAt: new Date(row.created_at).toISOString() }
       : undefined;
   }
 
   async create(member: Member): Promise<Member> {
     await this.pool.query(
-      'insert into members (id, name, role, email, created_at) values ($1, $2, $3, $4, $5)',
-      [member.id, member.name, member.role, member.email ?? null, member.createdAt],
+      'insert into members (id, name, role, email, avatar, created_at) values ($1, $2, $3, $4, $5, $6)',
+      [member.id, member.name, member.role, member.email ?? null, member.avatar ?? null, member.createdAt],
     );
 
     return member;
@@ -54,8 +55,8 @@ export class PostgresMemberRepository implements MemberRepository {
     };
 
     await this.pool.query(
-      'update members set name = $2, role = $3, email = $4 where id = $1',
-      [id, next.name, next.role, next.email ?? null],
+      'update members set name = $2, role = $3, email = $4, avatar = $5 where id = $1',
+      [id, next.name, next.role, next.email ?? null, next.avatar ?? null],
     );
 
     return next;

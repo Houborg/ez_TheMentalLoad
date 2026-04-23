@@ -36,6 +36,19 @@ export class MailService {
     }, settings);
   }
 
+  async sendTimelineTaskCompletedNotice(payload: {
+    to: string;
+    memberName: string;
+    taskTitle: string;
+    completedAt: string;
+  }, settings?: Partial<MailSettings>): Promise<MailActionResult> {
+    return this.sendMail({
+      to: payload.to,
+      subject: `Task completed: ${payload.taskTitle}`,
+      text: `${payload.memberName} completed "${payload.taskTitle}" at ${new Date(payload.completedAt).toLocaleString()}.`,
+    }, settings);
+  }
+
   private async sendMail(payload: ReminderNotificationPayload, settings?: Partial<MailSettings>): Promise<MailActionResult> {
     const smtpHost = settings?.smtpHost || process.env.SMTP_HOST;
     const smtpPort = Number(settings?.smtpPort ?? process.env.SMTP_PORT ?? 1025);
