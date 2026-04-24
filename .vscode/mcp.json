@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest",
+        "--headless",
+        "--config",
+        "${workspaceFolder}/.playwright/mcp.config.json"
+      ]
+    }
+  }
+}

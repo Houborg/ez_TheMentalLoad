@@ -167,6 +167,8 @@ export interface DailyTimelineTemplateTask {
   position: number;
   expectedTime?: string;
   isActive: boolean;
+  isMilestone: boolean;
+  rewardText?: string;
   appliesToEntryTask: boolean;
   appliesToEventDerivedTask: boolean;
   createdAt: string;
@@ -185,6 +187,8 @@ export interface TimelineTaskInstance {
   confirmedAt?: string;
   linkedEntryId?: string;
   templateTaskId?: string;
+  isMilestone: boolean;
+  rewardText?: string;
   createdAt: string;
   updatedAt: string;
 }

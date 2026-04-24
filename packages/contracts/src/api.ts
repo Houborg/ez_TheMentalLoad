@@ -202,6 +202,8 @@ export interface CreateMemberTimelineTemplateRequest {
   position: number;
   expectedTime?: string;
   isActive?: boolean;
+  isMilestone?: boolean;
+  rewardText?: string;
   appliesToEntryTask?: boolean;
   appliesToEventDerivedTask?: boolean;
 }

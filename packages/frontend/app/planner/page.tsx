@@ -174,8 +174,8 @@ export default function PlannerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background px-4 py-6 text-foreground md:px-6">
-      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5">
+    <div className="min-h-screen bg-background px-4 py-6 text-foreground md:px-8">
+      <div className="mx-auto flex w-full max-w-none flex-col gap-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted-foreground">
@@ -222,12 +222,14 @@ export default function PlannerPage() {
                 celebrationTaskId={celebrationTaskId}
                 onConfirmTask={handleConfirmTimelineTask}
               />
-              <AgendaView
-                members={members}
-                entries={entries}
-                memberColorById={memberColorById}
-                dayWeatherByDate={dayWeatherByDate}
-              />
+              <div className="rounded-[30px] border border-border/60 bg-card/35 p-3">
+                <AgendaView
+                  members={members}
+                  entries={entries}
+                  memberColorById={memberColorById}
+                  dayWeatherByDate={dayWeatherByDate}
+                />
+              </div>
             </div>
           </section>
         )}

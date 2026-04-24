@@ -56,7 +56,7 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
 
   async listTemplateTasks(memberId: string): Promise<DailyTimelineTemplateTask[]> {
     const result = await this.pool.query(
-      `select id, member_id, title, position, expected_time, is_active, applies_to_entry_task, applies_to_event_derived_task, created_at, updated_at
+      `select id, member_id, title, position, expected_time, is_active, is_milestone, reward_text, applies_to_entry_task, applies_to_event_derived_task, created_at, updated_at
        from daily_timeline_templates
        where member_id = $1
        order by position asc, created_at asc`,
@@ -69,15 +69,17 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
   async createTemplateTask(input: CreateTimelineTemplateTaskInput): Promise<DailyTimelineTemplateTask> {
     const result = await this.pool.query(
       `insert into daily_timeline_templates
-         (member_id, title, position, expected_time, is_active, applies_to_entry_task, applies_to_event_derived_task, created_at, updated_at)
-       values ($1, $2, $3, $4, $5, $6, $7, now(), now())
-       returning id, member_id, title, position, expected_time, is_active, applies_to_entry_task, applies_to_event_derived_task, created_at, updated_at`,
+         (member_id, title, position, expected_time, is_active, is_milestone, reward_text, applies_to_entry_task, applies_to_event_derived_task, created_at, updated_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now())
+       returning id, member_id, title, position, expected_time, is_active, is_milestone, reward_text, applies_to_entry_task, applies_to_event_derived_task, created_at, updated_at`,
       [
         input.memberId,
         input.title,
         input.position,
         input.expectedTime ?? null,
         input.isActive ?? true,
+        input.isMilestone ?? false,
+        input.rewardText ?? null,
         input.appliesToEntryTask ?? true,
         input.appliesToEventDerivedTask ?? true,
       ],
@@ -88,7 +90,7 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
 
   async updateTemplateTask(memberId: string, id: string, patch: UpdateTimelineTemplateTaskInput): Promise<DailyTimelineTemplateTask | undefined> {
     const currentResult = await this.pool.query(
-      `select id, member_id, title, position, expected_time, is_active, applies_to_entry_task, applies_to_event_derived_task, created_at, updated_at
+      `select id, member_id, title, position, expected_time, is_active, is_milestone, reward_text, applies_to_entry_task, applies_to_event_derived_task, created_at, updated_at
        from daily_timeline_templates
        where member_id = $1 and id = $2`,
       [memberId, id],
@@ -98,6 +100,9 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
     if (!current) {
       return undefined;
     }
+    const nextRewardText = Object.prototype.hasOwnProperty.call(patch, 'rewardText')
+      ? patch.rewardText ?? null
+      : (current.reward_text ? String(current.reward_text) : null);
 
     const result = await this.pool.query(
       `update daily_timeline_templates
@@ -105,11 +110,13 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
            position = $4,
            expected_time = $5,
            is_active = $6,
-           applies_to_entry_task = $7,
-           applies_to_event_derived_task = $8,
+           is_milestone = $7,
+           reward_text = $8,
+           applies_to_entry_task = $9,
+           applies_to_event_derived_task = $10,
            updated_at = now()
        where member_id = $1 and id = $2
-       returning id, member_id, title, position, expected_time, is_active, applies_to_entry_task, applies_to_event_derived_task, created_at, updated_at`,
+       returning id, member_id, title, position, expected_time, is_active, is_milestone, reward_text, applies_to_entry_task, applies_to_event_derived_task, created_at, updated_at`,
       [
         memberId,
         id,
@@ -117,6 +124,8 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
         patch.position ?? Number(current.position),
         patch.expectedTime ?? (current.expected_time ? String(current.expected_time) : null),
         patch.isActive ?? Boolean(current.is_active),
+        patch.isMilestone ?? Boolean(current.is_milestone),
+        nextRewardText,
         patch.appliesToEntryTask ?? Boolean(current.applies_to_entry_task),
         patch.appliesToEventDerivedTask ?? Boolean(current.applies_to_event_derived_task),
       ],
@@ -199,7 +208,7 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
 
   async listTimelineTasks(dayId: string): Promise<TimelineTaskInstance[]> {
     const result = await this.pool.query(
-      `select id, day_id, member_id, title, position, source, status, due_at, confirmed_at, linked_entry_id, template_task_id, created_at, updated_at
+      `select id, day_id, member_id, title, position, source, status, due_at, confirmed_at, linked_entry_id, template_task_id, is_milestone, reward_text, created_at, updated_at
        from daily_timeline_tasks
        where day_id = $1
        order by position asc, created_at asc`,
@@ -211,7 +220,7 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
 
   async getTimelineTaskById(id: string): Promise<TimelineTaskInstance | undefined> {
     const result = await this.pool.query(
-      `select id, day_id, member_id, title, position, source, status, due_at, confirmed_at, linked_entry_id, template_task_id, created_at, updated_at
+      `select id, day_id, member_id, title, position, source, status, due_at, confirmed_at, linked_entry_id, template_task_id, is_milestone, reward_text, created_at, updated_at
        from daily_timeline_tasks
        where id = $1`,
       [id],
@@ -224,9 +233,9 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
   async createTimelineTask(input: CreateTimelineTaskInstanceInput): Promise<TimelineTaskInstance> {
     const result = await this.pool.query(
       `insert into daily_timeline_tasks
-         (day_id, member_id, title, position, source, status, due_at, linked_entry_id, template_task_id, created_at, updated_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now())
-       returning id, day_id, member_id, title, position, source, status, due_at, confirmed_at, linked_entry_id, template_task_id, created_at, updated_at`,
+         (day_id, member_id, title, position, source, status, due_at, linked_entry_id, template_task_id, is_milestone, reward_text, created_at, updated_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), now())
+       returning id, day_id, member_id, title, position, source, status, due_at, confirmed_at, linked_entry_id, template_task_id, is_milestone, reward_text, created_at, updated_at`,
       [
         input.dayId,
         input.memberId,
@@ -237,6 +246,8 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
         input.dueAt ?? null,
         input.linkedEntryId ?? null,
         input.templateTaskId ?? null,
+        input.isMilestone ?? false,
+        input.rewardText ?? null,
       ],
     );
 
@@ -245,7 +256,7 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
 
   async updateTimelineTask(id: string, patch: UpdateTimelineTaskInstanceInput): Promise<TimelineTaskInstance | undefined> {
     const currentResult = await this.pool.query(
-      `select id, day_id, member_id, title, position, source, status, due_at, confirmed_at, linked_entry_id, template_task_id, created_at, updated_at
+      `select id, day_id, member_id, title, position, source, status, due_at, confirmed_at, linked_entry_id, template_task_id, is_milestone, reward_text, created_at, updated_at
        from daily_timeline_tasks
        where id = $1`,
       [id],
@@ -255,6 +266,9 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
     if (!current) {
       return undefined;
     }
+    const nextRewardText = Object.prototype.hasOwnProperty.call(patch, 'rewardText')
+      ? patch.rewardText ?? null
+      : (current.reward_text ? String(current.reward_text) : null);
 
     const result = await this.pool.query(
       `update daily_timeline_tasks
@@ -265,9 +279,11 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
            confirmed_at = $6,
            linked_entry_id = $7,
            template_task_id = $8,
+           is_milestone = $9,
+           reward_text = $10,
            updated_at = now()
        where id = $1
-      returning id, day_id, member_id, title, position, source, status, due_at, confirmed_at, linked_entry_id, template_task_id, created_at, updated_at`,
+      returning id, day_id, member_id, title, position, source, status, due_at, confirmed_at, linked_entry_id, template_task_id, is_milestone, reward_text, created_at, updated_at`,
       [
         id,
         patch.title ?? String(current.title),
@@ -277,6 +293,8 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
         patch.confirmedAt ?? (current.confirmed_at ? new Date(String(current.confirmed_at)).toISOString() : null),
         patch.linkedEntryId ?? (current.linked_entry_id ? String(current.linked_entry_id) : null),
         patch.templateTaskId ?? (current.template_task_id ? String(current.template_task_id) : null),
+        patch.isMilestone ?? Boolean(current.is_milestone),
+        nextRewardText,
       ],
     );
 
@@ -296,6 +314,8 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
       position: Number(row.position),
       expectedTime: row.expected_time ? String(row.expected_time) : undefined,
       isActive: Boolean(row.is_active),
+      isMilestone: Boolean(row.is_milestone),
+      rewardText: row.reward_text ? String(row.reward_text) : undefined,
       appliesToEntryTask: Boolean(row.applies_to_entry_task),
       appliesToEventDerivedTask: Boolean(row.applies_to_event_derived_task),
       createdAt: new Date(String(row.created_at)).toISOString(),
@@ -329,6 +349,8 @@ export class PostgresDailyTimelineRepository implements DailyTimelineRepository 
       confirmedAt: row.confirmed_at ? new Date(String(row.confirmed_at)).toISOString() : undefined,
       linkedEntryId: row.linked_entry_id ? String(row.linked_entry_id) : undefined,
       templateTaskId: row.template_task_id ? String(row.template_task_id) : undefined,
+      isMilestone: Boolean(row.is_milestone),
+      rewardText: row.reward_text ? String(row.reward_text) : undefined,
       createdAt: new Date(String(row.created_at)).toISOString(),
       updatedAt: new Date(String(row.updated_at)).toISOString(),
     };

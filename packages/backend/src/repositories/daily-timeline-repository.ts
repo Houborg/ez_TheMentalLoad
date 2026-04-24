@@ -23,6 +23,8 @@ export interface CreateTimelineTemplateTaskInput {
   position: number;
   expectedTime?: string;
   isActive?: boolean;
+  isMilestone?: boolean;
+  rewardText?: string;
   appliesToEntryTask?: boolean;
   appliesToEventDerivedTask?: boolean;
 }
@@ -39,9 +41,11 @@ export interface CreateTimelineTaskInstanceInput {
   dueAt?: string;
   linkedEntryId?: string;
   templateTaskId?: string;
+  isMilestone?: boolean;
+  rewardText?: string;
 }
 
-export type UpdateTimelineTaskInstanceInput = Partial<Pick<TimelineTaskInstance, 'title' | 'position' | 'status' | 'dueAt' | 'confirmedAt' | 'linkedEntryId' | 'templateTaskId'>>;
+export type UpdateTimelineTaskInstanceInput = Partial<Pick<TimelineTaskInstance, 'title' | 'position' | 'status' | 'dueAt' | 'confirmedAt' | 'linkedEntryId' | 'templateTaskId' | 'isMilestone' | 'rewardText'>>;
 
 export interface DailyTimelineRepository {
   getMemberSettings(memberId: string): Promise<MemberTimelineSettings | undefined>;
@@ -100,6 +104,8 @@ export class InMemoryDailyTimelineRepository implements DailyTimelineRepository 
       position: input.position,
       expectedTime: input.expectedTime,
       isActive: input.isActive ?? true,
+      isMilestone: input.isMilestone ?? false,
+      rewardText: input.rewardText,
       appliesToEntryTask: input.appliesToEntryTask ?? true,
       appliesToEventDerivedTask: input.appliesToEventDerivedTask ?? true,
       createdAt: now,
@@ -189,6 +195,8 @@ export class InMemoryDailyTimelineRepository implements DailyTimelineRepository 
       dueAt: input.dueAt,
       linkedEntryId: input.linkedEntryId,
       templateTaskId: input.templateTaskId,
+      isMilestone: input.isMilestone ?? false,
+      rewardText: input.rewardText,
       createdAt: now,
       updatedAt: now,
     };

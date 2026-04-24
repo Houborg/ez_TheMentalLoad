@@ -33,7 +33,7 @@ import { EntryService } from './domains/entries/entry-service';
 import { MailService } from './mail/mail-service';
 import { InboxBridgeService } from './mail/inbox-bridge-service';
 import { createRepositoryBundle } from './repositories/repository-factory';
-import { DailyTimelineService } from './domains/timeline/daily-timeline-service';
+import { DailyTimelineService, TimelineTaskConfirmationError } from './domains/timeline/daily-timeline-service';
 import { SettingsService } from './settings/settings-service';
 import { SyncService } from './sync/sync-service';
 
@@ -192,6 +192,29 @@ export async function buildApp() {
     return updated;
   });
 
+  app.delete<{ Params: { id: string }; Querystring: { actorMemberId?: string } }>('/api/v1/members/:id', async (request, reply) => {
+    const actorMemberId = request.query.actorMemberId?.trim();
+    if (actorMemberId && actorMemberId === request.params.id) {
+      reply.code(400);
+      return { message: 'You cannot delete your own member account' };
+    }
+
+    const members = await memberRepository.list();
+    if (members.length <= 1) {
+      reply.code(400);
+      return { message: 'At least one member must remain' };
+    }
+
+    const deleted = await memberRepository.delete(request.params.id);
+    if (!deleted) {
+      reply.code(404);
+      return { message: 'Member not found' };
+    }
+
+    reply.code(204);
+    return null;
+  });
+
   app.put<{ Params: { memberId: string }; Body: UpdateMemberTimelineSettingsRequest }>('/api/v1/members/:memberId/timeline-settings', async (request, reply) => {
     const maxTasksPerDay = request.body.maxTasksPerDay;
     if (typeof maxTasksPerDay === 'number' && (!Number.isInteger(maxTasksPerDay) || maxTasksPerDay < 1 || maxTasksPerDay > 50)) {
@@ -225,12 +248,16 @@ export async function buildApp() {
       return { message: 'position must be a positive integer' };
     }
 
+    const rewardText = typeof request.body.rewardText === 'string' ? request.body.rewardText.trim() || undefined : undefined;
+
     const created = await dailyTimelineService.createTemplate({
       memberId: request.params.memberId,
       title: request.body.title.trim(),
       position: request.body.position,
       expectedTime: request.body.expectedTime,
       isActive: request.body.isActive,
+      isMilestone: request.body.isMilestone ?? Boolean(rewardText),
+      rewardText,
       appliesToEntryTask: request.body.appliesToEntryTask,
       appliesToEventDerivedTask: request.body.appliesToEventDerivedTask,
     });
@@ -245,9 +272,14 @@ export async function buildApp() {
       return { message: 'position must be a positive integer' };
     }
 
+    const hasRewardText = Object.prototype.hasOwnProperty.call(request.body, 'rewardText');
+    const rewardText = typeof request.body.rewardText === 'string' ? request.body.rewardText.trim() || undefined : undefined;
+
     const updated = await dailyTimelineService.updateTemplate(request.params.memberId, request.params.templateId, {
       ...request.body,
       title: typeof request.body.title === 'string' ? request.body.title.trim() : undefined,
+      isMilestone: request.body.isMilestone ?? (rewardText ? true : undefined),
+      ...(hasRewardText ? { rewardText } : {}),
     });
 
     if (!updated) {
@@ -305,7 +337,16 @@ export async function buildApp() {
       return { message: 'taskId is required' };
     }
 
-    const confirmed = await dailyTimelineService.confirmTaskCompletion(request.body.taskId.trim(), request.params.memberId);
+    let confirmed;
+    try {
+      confirmed = await dailyTimelineService.confirmTaskCompletion(request.body.taskId.trim(), request.params.memberId);
+    } catch (error) {
+      if (error instanceof TimelineTaskConfirmationError) {
+        reply.code(400);
+        return { message: error.message };
+      }
+      throw error;
+    }
     if (!confirmed) {
       reply.code(404);
       return { message: 'Timeline task not found' };
@@ -364,7 +405,7 @@ export async function buildApp() {
 
   app.delete<{ Body?: DeleteFoodPlanItemRequest; Querystring: { weekStart?: string; day?: string } }>('/api/v1/food-plan', async (request, reply) => {
     const rawWeekStart = request.body?.weekStart ?? request.query.weekStart;
-    const rawDay = (request.body?.day ?? request.query.day)?.toLowerCase();
+    const rawDay = (request.body?.day ?? request.query.day)?.trim().toLowerCase();
     const weekStart = normalizeWeekStart(rawWeekStart);
 
     if (!weekStart || !rawDay || !isFoodPlanDay(rawDay)) {
@@ -665,16 +706,33 @@ function normalizeWeekStart(value?: string): string | undefined {
     return monday.toISOString().slice(0, 10);
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return undefined;
+  const trimmed = value.trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const parsed = new Date(`${trimmed}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime())) {
+      return undefined;
+    }
+
+    return trimmed;
   }
 
-  const parsed = new Date(`${value}T00:00:00.000Z`);
+  const isoPrefix = trimmed.match(/^(\d{4}-\d{2}-\d{2})T/);
+  if (isoPrefix) {
+    const parsed = new Date(`${isoPrefix[1]}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime())) {
+      return undefined;
+    }
+
+    return isoPrefix[1];
+  }
+
+  const parsed = new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) {
     return undefined;
   }
 
-  return value;
+  return parsed.toISOString().slice(0, 10);
 }
 
 function normalizeIsoDate(value?: string): string | undefined {

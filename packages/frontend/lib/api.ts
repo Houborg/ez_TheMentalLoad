@@ -214,6 +214,19 @@ export async function updateMember(id: string, payload: UpdateMemberRequest) {
   });
 }
 
+export async function deleteMember(id: string, input?: { actorMemberId?: string }) {
+  const params = new URLSearchParams();
+  if (input?.actorMemberId) {
+    params.set('actorMemberId', input.actorMemberId);
+  }
+  const query = params.toString();
+  const path = query ? `/api/v1/members/${id}?${query}` : `/api/v1/members/${id}`;
+
+  return fetchJson<void>(path, {
+    method: 'DELETE',
+  });
+}
+
 export async function sendTestEmail(payload: TestEmailRequest) {
   return fetchJson<MailActionResponse>('/api/v1/settings/test-email', {
     method: 'POST',

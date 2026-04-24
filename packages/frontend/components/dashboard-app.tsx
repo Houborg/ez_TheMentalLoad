@@ -21,13 +21,14 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
-import type { AppSettings, AssistantDraft, DailyTimelineTemplateTask, Entry, FoodPlanDay, FoodPlanItem, Member, Calendar, MemberRole, MemberTimelineSettings, SyncProvider } from '@mental-load/contracts';
+import type { AppSettings, AssistantDraft, DailyTimelineTemplateTask, Entry, FoodPlanDay, FoodPlanItem, Member, Calendar, ListTodayMemberTimelineResponse, MemberRole, MemberTimelineSettings, SyncProvider } from '@mental-load/contracts';
 import {
   askAssistant,
   connectSync,
   confirmAssistant,
   createMember,
   createEntry,
+  deleteMember,
   deleteEntry,
   deleteFoodPlan,
   getWeekStart,
@@ -40,6 +41,7 @@ import {
   loadMembers,
   loadMonthOccurrences,
   loadSettings,
+  loadTodayTimeline,
   loadWeatherForecast,
   loadUpcomingOccurrences,
   parseAssistant,
@@ -159,6 +161,7 @@ export function DashboardApp() {
   const [assistantStatusText, setAssistantStatusText] = useState('Checking assistant...');
   const [searchQuery, setSearchQuery] = useState('');
   const [memberFilterId, setMemberFilterId] = useState('');
+  const [activeMemberId, setActiveMemberId] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -178,6 +181,8 @@ export function DashboardApp() {
   const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'mail' | 'sync' | 'recurring' | 'birthdays' | 'weather'>('theme');
   const [memberDraft, setMemberDraft] = useState<{ name: string; role: MemberRole; email: string; avatar: string }>({ name: '', role: 'parent', email: '', avatar: '' });
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [memberDeleteTarget, setMemberDeleteTarget] = useState<Member | null>(null);
+  const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
   const [mailActionBusy, setMailActionBusy] = useState(false);
   const [syncActionBusy, setSyncActionBusy] = useState(false);
   const [syncRunDraft, setSyncRunDraft] = useState({ calendarId: '', ownerMemberId: '', icsUrl: '', rawContent: '' });
@@ -190,11 +195,25 @@ export function DashboardApp() {
   const [pendingInvitations, setPendingInvitations] = useState<Array<{ entry: Entry; invitee: { email: string; status: 'pending' | 'accepted' | 'declined' } }>>([]);
   const [respondingToInvitation, setRespondingToInvitation] = useState<{ entryId: string; email: string } | null>(null);
   const [timelineSettingsByMemberId, setTimelineSettingsByMemberId] = useState<Record<string, MemberTimelineSettings>>({});
+  const [todayTimelinesByMemberId, setTodayTimelinesByMemberId] = useState<Record<string, ListTodayMemberTimelineResponse>>({});
+  const [loadingTodayTimelineMemberId, setLoadingTodayTimelineMemberId] = useState<string | null>(null);
   const [templatesByMemberId, setTemplatesByMemberId] = useState<Record<string, DailyTimelineTemplateTask[]>>({});
   const [expandedTemplatesMemberId, setExpandedTemplatesMemberId] = useState<string | null>(null);
-  const [newTemplateDraft, setNewTemplateDraft] = useState<{ title: string; position: string; expectedTime: string }>({ title: '', position: '', expectedTime: '' });
+  const [newTemplateDraft, setNewTemplateDraft] = useState<{ title: string; position: string; expectedTime: string; isMilestone: boolean; rewardText: string }>({
+    title: '',
+    position: '',
+    expectedTime: '',
+    isMilestone: false,
+    rewardText: '',
+  });
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  const [editingTemplateDraft, setEditingTemplateDraft] = useState<{ title: string; position: string; expectedTime: string }>({ title: '', position: '', expectedTime: '' });
+  const [editingTemplateDraft, setEditingTemplateDraft] = useState<{ title: string; position: string; expectedTime: string; isMilestone: boolean; rewardText: string }>({
+    title: '',
+    position: '',
+    expectedTime: '',
+    isMilestone: false,
+    rewardText: '',
+  });
   const [draft, setDraft] = useState<EventDraft>(() => createDefaultDraft());
 
   useEffect(() => {
@@ -236,6 +255,11 @@ export function DashboardApp() {
           reminderJobs: dashboardSnapshot.reminderJobs ?? [],
           persistence: dashboardSnapshot.persistence,
         });
+        setActiveMemberId((current) => (
+          dashboardSnapshot.members.some((member) => member.id === current)
+            ? current
+            : (dashboardSnapshot.members[0]?.id ?? '')
+        ));
         setMonthOccurrences(monthEntries);
         setUpcomingOccurrences(upcoming);
         setFoodPlan(weekFoodPlan.items);
@@ -311,6 +335,8 @@ export function DashboardApp() {
       return accumulator;
     }, {});
   }, [dashboard.members]);
+  const activeMember = dashboard.members.find((member) => member.id === activeMemberId) ?? dashboard.members[0];
+  const canManageMembers = activeMember?.role === 'parent';
 
   const birthdays = useMemo(() => parseBirthdays(settings?.sync.configJson.birthdays), [settings?.sync.configJson.birthdays]);
   const recurringDefaults = useMemo(() => parseRecurringDefaults(settings?.sync.configJson.recurringDefaults), [settings?.sync.configJson.recurringDefaults]);
@@ -868,9 +894,10 @@ export function DashboardApp() {
   async function refreshMembers() {
     const members = await loadMembers();
     setDashboard((current) => ({ ...current, members }));
+    setActiveMemberId((current) => (members.some((member) => member.id === current) ? current : (members[0]?.id ?? '')));
     setSyncRunDraft((current) => ({
       ...current,
-      ownerMemberId: current.ownerMemberId || members[0]?.id || '',
+      ownerMemberId: members.some((member) => member.id === current.ownerMemberId) ? current.ownerMemberId : members[0]?.id || '',
     }));
 
     const timelinePairs = await Promise.all(
@@ -884,6 +911,85 @@ export function DashboardApp() {
       }),
     );
     setTimelineSettingsByMemberId(Object.fromEntries(timelinePairs));
+    setTodayTimelinesByMemberId((current) => {
+      const next: Record<string, ListTodayMemberTimelineResponse> = {};
+      for (const member of members) {
+        if (current[member.id]) {
+          next[member.id] = current[member.id];
+        }
+      }
+      return next;
+    });
+  }
+
+  async function loadTodayTimelineForMember(memberId: string) {
+    setLoadingTodayTimelineMemberId(memberId);
+    try {
+      const result = await loadTodayTimeline(memberId);
+      setTodayTimelinesByMemberId((prev) => ({ ...prev, [memberId]: result }));
+      return result;
+    } catch {
+      const fallback: ListTodayMemberTimelineResponse = {
+        settings: timelineSettingsByMemberId[memberId] ?? {
+          memberId,
+          enabled: false,
+          maxTasksPerDay: 10,
+          updatedAt: new Date().toISOString(),
+        },
+        timeline: {
+          memberId,
+          date: new Date().toISOString().slice(0, 10),
+          timezone: 'UTC',
+          tasks: [],
+        },
+      };
+      setTodayTimelinesByMemberId((prev) => ({ ...prev, [memberId]: fallback }));
+      return fallback;
+    } finally {
+      setLoadingTodayTimelineMemberId((current) => (current === memberId ? null : current));
+    }
+  }
+
+  async function handleConfirmDeleteMember() {
+    if (!memberDeleteTarget) {
+      return;
+    }
+    const targetMember = memberDeleteTarget;
+
+    try {
+      setErrorText('');
+      setDeletingMemberId(targetMember.id);
+      await deleteMember(targetMember.id, { actorMemberId: activeMember?.id });
+      await refreshMembers();
+      setTimelineSettingsByMemberId((current) => {
+        const next = { ...current };
+        delete next[targetMember.id];
+        return next;
+      });
+      setTodayTimelinesByMemberId((current) => {
+        const next = { ...current };
+        delete next[targetMember.id];
+        return next;
+      });
+      setTemplatesByMemberId((current) => {
+        const next = { ...current };
+        delete next[targetMember.id];
+        return next;
+      });
+      setExpandedTemplatesMemberId((current) => (current === targetMember.id ? null : current));
+
+      if (editingMemberId === targetMember.id) {
+        setEditingMemberId(null);
+        setMemberDraft({ name: '', role: 'parent', email: '', avatar: '' });
+      }
+
+      setSettingsMessage(`Member "${targetMember.name}" deleted.`);
+      setMemberDeleteTarget(null);
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not delete member');
+    } finally {
+      setDeletingMemberId(null);
+    }
   }
 
   async function handleUpdateTimelineSettings(memberId: string, patch: { enabled?: boolean; maxTasksPerDay?: number }) {
@@ -894,6 +1000,7 @@ export function DashboardApp() {
         ...current,
         [memberId]: updated,
       }));
+      await loadTodayTimelineForMember(memberId);
       setSettingsMessage('Timeline settings updated.');
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Could not update timeline settings');
@@ -950,6 +1057,7 @@ export function DashboardApp() {
     try {
       const updated = await updateMemberTimelineSettings(memberId, { enabled: nextEnabled });
       setTimelineSettingsByMemberId((prev) => ({ ...prev, [memberId]: updated }));
+      await loadTodayTimelineForMember(memberId);
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Could not update timeline settings');
     }
@@ -970,6 +1078,7 @@ export function DashboardApp() {
       return;
     }
     setExpandedTemplatesMemberId(memberId);
+    await loadTodayTimelineForMember(memberId);
     if (!templatesByMemberId[memberId]) {
       await loadTemplatesForMember(memberId);
     }
@@ -978,15 +1087,24 @@ export function DashboardApp() {
   async function handleAddTemplate(memberId: string) {
     const pos = Number(newTemplateDraft.position) || ((templatesByMemberId[memberId]?.length ?? 0) + 1);
     const expTime = normalizeTemplateExpectedTime(newTemplateDraft.expectedTime);
+    const rewardText = newTemplateDraft.rewardText.trim();
     if (!newTemplateDraft.title.trim()) return;
     if (newTemplateDraft.expectedTime.trim() && !expTime) {
       setErrorText('Task time must be in HH:MM format');
       return;
     }
     try {
-      await createMemberTimelineTemplate(memberId, { title: newTemplateDraft.title.trim(), position: pos, expectedTime: expTime, isActive: true });
-      setNewTemplateDraft({ title: '', position: '', expectedTime: '' });
+      await createMemberTimelineTemplate(memberId, {
+        title: newTemplateDraft.title.trim(),
+        position: pos,
+        expectedTime: expTime,
+        isActive: true,
+        isMilestone: newTemplateDraft.isMilestone || Boolean(rewardText),
+        rewardText: rewardText || undefined,
+      });
+      setNewTemplateDraft({ title: '', position: '', expectedTime: '', isMilestone: false, rewardText: '' });
       await loadTemplatesForMember(memberId);
+      await loadTodayTimelineForMember(memberId);
       setSettingsMessage('Template task created.');
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Could not create template task');
@@ -997,6 +1115,7 @@ export function DashboardApp() {
     try {
       await deleteMemberTimelineTemplate(memberId, templateId);
       setTemplatesByMemberId((prev) => ({ ...prev, [memberId]: (prev[memberId] ?? []).filter((t) => t.id !== templateId) }));
+      await loadTodayTimelineForMember(memberId);
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Could not delete template task');
     }
@@ -1009,6 +1128,7 @@ export function DashboardApp() {
         ...prev,
         [memberId]: (prev[memberId] ?? []).map((t) => t.id === templateId ? { ...t, isActive: !isActive } : t),
       }));
+      await loadTodayTimelineForMember(memberId);
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Could not update template task');
     }
@@ -1020,12 +1140,14 @@ export function DashboardApp() {
       title: template.title,
       position: String(template.position),
       expectedTime: template.expectedTime || '',
+      isMilestone: template.isMilestone,
+      rewardText: template.rewardText || '',
     });
   }
 
   function handleCancelEditTemplate() {
     setEditingTemplateId(null);
-    setEditingTemplateDraft({ title: '', position: '', expectedTime: '' });
+    setEditingTemplateDraft({ title: '', position: '', expectedTime: '', isMilestone: false, rewardText: '' });
   }
 
   async function handleSaveEditTemplate(memberId: string, templateId: string) {
@@ -1036,18 +1158,33 @@ export function DashboardApp() {
     }
     const pos = Number(editingTemplateDraft.position) || 1;
     const expTime = editingTemplateDraft.expectedTime.trim() ? normalizeTemplateExpectedTime(editingTemplateDraft.expectedTime) : undefined;
+    const rewardText = editingTemplateDraft.rewardText.trim();
     if (editingTemplateDraft.expectedTime.trim() && !expTime) {
       setErrorText('Task time must be in HH:MM format');
       return;
     }
     try {
-      await updateMemberTimelineTemplate(memberId, templateId, { title, position: pos, expectedTime: expTime });
+      await updateMemberTimelineTemplate(memberId, templateId, {
+        title,
+        position: pos,
+        expectedTime: expTime,
+        isMilestone: editingTemplateDraft.isMilestone || Boolean(rewardText),
+        rewardText: rewardText || undefined,
+      });
       setTemplatesByMemberId((prev) => ({
         ...prev,
         [memberId]: (prev[memberId] ?? []).map((t) =>
-          t.id === templateId ? { ...t, title, position: pos, expectedTime: expTime } : t
+          t.id === templateId ? {
+            ...t,
+            title,
+            position: pos,
+            expectedTime: expTime,
+            isMilestone: editingTemplateDraft.isMilestone || Boolean(rewardText),
+            rewardText: rewardText || undefined,
+          } : t
         ),
       }));
+      await loadTodayTimelineForMember(memberId);
       handleCancelEditTemplate();
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Could not update template task');
@@ -1065,6 +1202,7 @@ export function DashboardApp() {
         await createMemberTimelineTemplate(memberId, { title: DEFAULT_TEMPLATE_TASKS[i]!, position: i + 1, isActive: true });
       }
       await loadTemplatesForMember(memberId);
+      await loadTodayTimelineForMember(memberId);
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Could not seed template tasks');
     }
@@ -1366,6 +1504,7 @@ export function DashboardApp() {
                   key={member.id}
                   className={cn(
                     'flex rounded-2xl py-2.5 hover:bg-sidebar-accent/60',
+                    activeMember?.id === member.id && 'bg-sidebar-accent/60',
                     isSidebarCollapsed ? 'justify-center px-1' : 'items-center gap-3 px-3',
                   )}
                   title={isSidebarCollapsed ? `${member.name} (${member.role})` : undefined}
@@ -1469,11 +1608,11 @@ export function DashboardApp() {
                 <div>
                   <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/50 px-3 py-1 text-xs uppercase tracking-[0.22em] text-muted-foreground">
                     <Sparkles className="h-3.5 w-3.5 text-primary" />
-                    New frontend baseline
+                    Version 1.0.0
                   </div>
                   <h1 className="text-3xl font-bold tracking-tight">Family operations dashboard</h1>
                   <p className="mt-1 max-w-3xl text-sm text-muted-foreground md:text-base">
-                    The old planner has been replaced with a clean dashboard built on the ref template direction. It reads from the existing backend, shows live family data, and keeps creation on the same API contracts.
+                    The base of operations. Everything at a glance.
                   </p>
                 </div>
                 <div className="rounded-3xl border border-border/60 bg-card/60 px-4 py-3 shadow-lg shadow-black/10 backdrop-blur">
@@ -1985,6 +2124,28 @@ export function DashboardApp() {
             </div>
             ) : (
             <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
+              <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
+                <div className="flex flex-wrap items-end justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold tracking-tight">Active member</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Choose who is using the family tools right now. Parent members can edit timelines and manage members.</p>
+                  </div>
+                  <label className="grid min-w-[240px] gap-1.5">
+                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Signed in as</span>
+                    <select
+                      value={activeMember?.id ?? ''}
+                      onChange={(event) => setActiveMemberId(event.target.value)}
+                      className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60"
+                    >
+                      {dashboard.members.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.name} ({member.role})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </section>
               {errorText ? (
                 <div className="rounded-3xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">{errorText}</div>
               ) : null}
@@ -2058,8 +2219,8 @@ export function DashboardApp() {
               <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
                 <div className="mb-5 flex items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-2xl font-semibold tracking-tight">Daily Timeline Templates</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Configure the ordered task list for each member&apos;s daily timeline.</p>
+                    <h2 className="text-2xl font-semibold tracking-tight">Daily Timeline</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">View today&apos;s generated timeline for each member and edit the template list behind it.</p>
                   </div>
                 </div>
                 <div className="space-y-3">
@@ -2067,6 +2228,9 @@ export function DashboardApp() {
                     const isExpanded = expandedTemplatesMemberId === member.id;
                     const templates = templatesByMemberId[member.id] ?? [];
                     const timelineEnabled = timelineSettingsByMemberId[member.id]?.enabled ?? false;
+                    const todayTimeline = todayTimelinesByMemberId[member.id];
+                    const isLoadingTodayTimeline = loadingTodayTimelineMemberId === member.id;
+                    const todayTasks = todayTimeline?.timeline.tasks ?? [];
                     return (
                       <div key={member.id} className="rounded-2xl border border-border/60 bg-card/55">
                         <button
@@ -2080,19 +2244,83 @@ export function DashboardApp() {
                             </div>
                             <div>
                               <div className="text-sm font-semibold">{member.name}</div>
-                              <div className="text-xs text-muted-foreground">{timelineEnabled ? `${templates.length} template tasks` : 'Timeline disabled'}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {timelineEnabled
+                                  ? `${todayTimeline ? todayTasks.length : '...'} tasks today${templates.length > 0 ? ` · ${templates.length} templates` : ''}`
+                                  : 'Timeline disabled'}
+                              </div>
                             </div>
                           </div>
                           <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform', isExpanded && 'rotate-90')} />
                         </button>
                         {isExpanded && (
                           <div className="border-t border-border/60 px-4 pb-4 pt-3 space-y-3">
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Template tasks (in order)</span>
-                              {templates.length === 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Today&apos;s generated timeline</span>
                                 <button
                                   type="button"
-                                  onClick={() => void handleSeedDefaultTemplates(member.id)}
+                                  onClick={() => void loadTodayTimelineForMember(member.id)}
+                                  className="rounded-lg border border-border/60 px-3 py-1.5 text-xs hover:bg-accent/60"
+                                >
+                                  Refresh today
+                                </button>
+                              </div>
+                              {!timelineEnabled ? (
+                                <div className="rounded-xl border border-dashed border-border/70 px-4 py-4 text-sm text-muted-foreground">
+                                  Timeline is disabled for this member.
+                                </div>
+                              ) : isLoadingTodayTimeline || !todayTimeline ? (
+                                <div className="rounded-xl border border-dashed border-border/70 px-4 py-4 text-sm text-muted-foreground">
+                                  Loading today&apos;s timeline...
+                                </div>
+                              ) : todayTasks.length === 0 ? (
+                                <div className="rounded-xl border border-dashed border-border/70 px-4 py-4 text-sm text-muted-foreground">
+                                  No tasks generated for this member today.
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {todayTasks.map((task) => (
+                                    <div key={task.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-background/40 px-3 py-2">
+                                      <span className="w-6 shrink-0 text-center text-xs text-muted-foreground">{task.position}</span>
+                                      <div className="flex-1">
+                                        <div className={cn(
+                                          'text-sm',
+                                          task.status === 'completed' && 'text-muted-foreground line-through',
+                                        )}>
+                                          {task.title}
+                                        </div>
+                                        {task.isMilestone || task.rewardText ? (
+                                          <div className="mt-1 text-xs text-amber-600 dark:text-amber-300">
+                                            Success milestone{task.rewardText ? ` - ${task.rewardText}` : ''}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                      {task.dueAt ? (
+                                        <span className="text-xs text-muted-foreground">
+                                          {new Date(task.dueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                      ) : null}
+                                      <span className={cn(
+                                        'rounded-full px-2 py-1 text-[10px] font-medium uppercase tracking-[0.08em]',
+                                        task.status === 'completed' && 'bg-emerald-500/20 text-emerald-700',
+                                        task.status === 'waiting_confirmation' && 'bg-amber-500/20 text-amber-700',
+                                        task.status === 'pending' && 'bg-blue-500/20 text-blue-700',
+                                        task.status === 'skipped' && 'bg-muted text-muted-foreground',
+                                      )}>
+                                        {task.status.replace('_', ' ')}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Template tasks (in order)</span>
+                                {templates.length === 0 && canManageMembers && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleSeedDefaultTemplates(member.id)}
                                   className="rounded-lg border border-border/60 px-3 py-1.5 text-xs hover:bg-accent/60"
                                 >
                                   Seed 10 defaults
@@ -2109,31 +2337,49 @@ export function DashboardApp() {
                                     <div key={task.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-background/40 px-3 py-2">
                                       {isEditing ? (
                                         <>
-                                          <input
-                                            type="number"
-                                            min="1"
-                                            value={editingTemplateDraft.position}
-                                            onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, position: e.target.value }))}
-                                            className="w-12 rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
-                                            placeholder="Pos"
-                                          />
-                                          <input
-                                            type="text"
-                                            value={editingTemplateDraft.title}
-                                            onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, title: e.target.value }))}
-                                            className="flex-1 rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-sm outline-none focus:border-primary/60"
-                                            placeholder="Task title"
-                                          />
-                                          <input
-                                            type="time"
-                                            value={editingTemplateDraft.expectedTime}
-                                            onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, expectedTime: e.target.value }))}
-                                            step={60}
-                                            className="rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
-                                          />
-                                          <button
-                                            type="button"
-                                            onClick={() => void handleSaveEditTemplate(member.id, task.id)}
+                                           <div className="grid flex-1 gap-2 md:grid-cols-[70px_minmax(0,1fr)_120px]">
+                                             <input
+                                               type="number"
+                                               min="1"
+                                               value={editingTemplateDraft.position}
+                                               onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, position: e.target.value }))}
+                                               className="rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
+                                               placeholder="Pos"
+                                             />
+                                             <input
+                                               type="text"
+                                               value={editingTemplateDraft.title}
+                                               onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, title: e.target.value }))}
+                                               className="rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-sm outline-none focus:border-primary/60"
+                                               placeholder="Task title"
+                                             />
+                                             <input
+                                               type="time"
+                                               value={editingTemplateDraft.expectedTime}
+                                               onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, expectedTime: e.target.value }))}
+                                               step={60}
+                                               className="rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
+                                             />
+                                           </div>
+                                           <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                                             <input
+                                               type="checkbox"
+                                               checked={editingTemplateDraft.isMilestone}
+                                               onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, isMilestone: e.target.checked }))}
+                                               className="h-4 w-4 rounded border-border/60"
+                                             />
+                                             Success milestone
+                                           </label>
+                                           <input
+                                             type="text"
+                                             value={editingTemplateDraft.rewardText}
+                                             onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, rewardText: e.target.value }))}
+                                             className="min-w-[180px] flex-1 rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
+                                             placeholder="Treat or reward"
+                                           />
+                                           <button
+                                             type="button"
+                                             onClick={() => void handleSaveEditTemplate(member.id, task.id)}
                                             className="rounded-lg bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
                                           >
                                             Save
@@ -2146,80 +2392,115 @@ export function DashboardApp() {
                                             Cancel
                                           </button>
                                         </>
-                                      ) : (
-                                        <>
-                                          <span className="w-6 shrink-0 text-center text-xs text-muted-foreground">{task.position}</span>
-                                          <span className={cn('flex-1 text-sm', !task.isActive && 'text-muted-foreground line-through')}>{task.title}</span>
-                                          {task.expectedTime ? <span className="text-xs text-muted-foreground">{formatTemplateExpectedTime(task.expectedTime)}</span> : null}
-                                          <button
-                                            type="button"
-                                            onClick={() => handleStartEditTemplate(task)}
-                                            className="rounded-lg border border-border/40 p-1.5 hover:bg-accent/60"
-                                            aria-label="Edit template task"
-                                          >
-                                            <Edit2 className="h-3.5 w-3.5" />
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => void handleToggleTemplateActive(member.id, task.id, task.isActive)}
-                                            className={cn('rounded-lg px-2 py-1 text-xs', task.isActive ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-muted text-muted-foreground hover:bg-accent')}
-                                          >
-                                            {task.isActive ? 'On' : 'Off'}
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => void handleDeleteTemplate(member.id, task.id)}
-                                            className="rounded-lg border border-border/40 p-1.5 hover:bg-destructive/10"
-                                            aria-label="Delete template task"
-                                          >
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                          </button>
-                                        </>
-                                      )}
-                                    </div>
+                                       ) : (
+                                         <>
+                                           <span className="w-6 shrink-0 text-center text-xs text-muted-foreground">{task.position}</span>
+                                           <div className="flex-1">
+                                             <div className={cn('text-sm', !task.isActive && 'text-muted-foreground line-through')}>{task.title}</div>
+                                             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                                               <span className={cn('rounded-full px-2 py-0.5', task.isActive ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
+                                                 {task.isActive ? 'Recurring daily' : 'Paused'}
+                                               </span>
+                                               {task.isMilestone || task.rewardText ? (
+                                                 <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-700 dark:text-amber-300">
+                                                   Milestone{task.rewardText ? ` - ${task.rewardText}` : ''}
+                                                 </span>
+                                               ) : null}
+                                             </div>
+                                           </div>
+                                           {task.expectedTime ? <span className="text-xs text-muted-foreground">{formatTemplateExpectedTime(task.expectedTime)}</span> : null}
+                                           {canManageMembers ? (
+                                             <>
+                                               <button
+                                                 type="button"
+                                                 onClick={() => handleStartEditTemplate(task)}
+                                                 className="rounded-lg border border-border/40 p-1.5 hover:bg-accent/60"
+                                                 aria-label="Edit template task"
+                                               >
+                                                 <Edit2 className="h-3.5 w-3.5" />
+                                               </button>
+                                               <button
+                                                 type="button"
+                                                 onClick={() => void handleToggleTemplateActive(member.id, task.id, task.isActive)}
+                                                 className={cn('rounded-lg px-2 py-1 text-xs', task.isActive ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-muted text-muted-foreground hover:bg-accent')}
+                                               >
+                                                 {task.isActive ? 'Recurring' : 'Paused'}
+                                               </button>
+                                               <button
+                                                 type="button"
+                                                 onClick={() => void handleDeleteTemplate(member.id, task.id)}
+                                                 className="rounded-lg border border-border/40 p-1.5 hover:bg-destructive/10"
+                                                 aria-label="Delete template task"
+                                               >
+                                                 <Trash2 className="h-3.5 w-3.5" />
+                                               </button>
+                                             </>
+                                           ) : null}
+                                         </>
+                                       )}
+                                     </div>
                                   );
                                 })}
                               </div>
                             )}
-                            <div className="flex flex-wrap items-end gap-2 border-t border-border/40 pt-3">
-                              <label className="grid gap-1">
-                                <span className="text-xs text-muted-foreground">Title</span>
-                                <input
-                                  value={newTemplateDraft.title}
-                                  onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, title: e.target.value }))}
-                                  placeholder="Task title"
-                                  className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
-                                />
-                              </label>
-                              <label className="grid gap-1 w-20">
-                                <span className="text-xs text-muted-foreground">Position</span>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  value={newTemplateDraft.position}
-                                  onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, position: e.target.value }))}
-                                  placeholder={String((templates.length) + 1)}
-                                  className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
-                                />
-                              </label>
-                              <label className="grid gap-1 w-28">
-                                <span className="text-xs text-muted-foreground">Time</span>
-                                <input
-                                  type="time"
-                                  step={60}
-                                  value={newTemplateDraft.expectedTime}
-                                  onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, expectedTime: e.target.value }))}
-                                  className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                onClick={() => void handleAddTemplate(member.id)}
-                                className="rounded-xl bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20"
-                              >
-                                Add task
-                              </button>
-                            </div>
+                            {canManageMembers ? (
+                              <div className="grid gap-3 border-t border-border/40 pt-3 md:grid-cols-[minmax(0,1.4fr)_90px_130px_minmax(0,1fr)_auto] md:items-end">
+                                <label className="grid gap-1">
+                                  <span className="text-xs text-muted-foreground">Title</span>
+                                  <input
+                                    value={newTemplateDraft.title}
+                                    onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, title: e.target.value }))}
+                                    placeholder="Task title"
+                                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
+                                  />
+                                </label>
+                                <label className="grid gap-1">
+                                  <span className="text-xs text-muted-foreground">Position</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={newTemplateDraft.position}
+                                    onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, position: e.target.value }))}
+                                    placeholder={String((templates.length) + 1)}
+                                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
+                                  />
+                                </label>
+                                <label className="grid gap-1">
+                                  <span className="text-xs text-muted-foreground">Time</span>
+                                  <input
+                                    type="time"
+                                    step={60}
+                                    value={newTemplateDraft.expectedTime}
+                                    onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, expectedTime: e.target.value }))}
+                                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
+                                  />
+                                </label>
+                                <div className="grid gap-2">
+                                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <input
+                                      type="checkbox"
+                                      checked={newTemplateDraft.isMilestone}
+                                      onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, isMilestone: e.target.checked }))}
+                                      className="h-4 w-4 rounded border-border/60"
+                                    />
+                                    Success milestone
+                                  </label>
+                                  <input
+                                    value={newTemplateDraft.rewardText}
+                                    onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, rewardText: e.target.value }))}
+                                    placeholder="Treat or reward"
+                                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleAddTemplate(member.id)}
+                                  className="rounded-xl bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20"
+                                >
+                                  Add task
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
                         )}
                       </div>
@@ -2759,7 +3040,20 @@ export function DashboardApp() {
                             <div className="text-xs text-muted-foreground capitalize">{member.role}{member.email ? ` · ${member.email}` : ''}</div>
                           </div>
                         </div>
-                        <button type="button" onClick={() => startEditMember(member)} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">Edit</button>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => startEditMember(member)} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">Edit</button>
+                          {canManageMembers && member.id !== activeMember?.id ? (
+                            <button
+                              type="button"
+                              onClick={() => setMemberDeleteTarget(member)}
+                              disabled={deletingMemberId === member.id}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-destructive/40 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-60"
+                            >
+                              {deletingMemberId === member.id ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                              Delete
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-4 border-t border-border/40 pt-3">
                         <div className="flex items-center gap-2">
@@ -3232,6 +3526,35 @@ export function DashboardApp() {
               <div className="text-xs text-muted-foreground">Persists through PUT /api/v1/settings.</div>
               <button type="button" onClick={() => void handleSaveSettings()} disabled={savingSettings} className="rounded-2xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 disabled:opacity-60">
                 {savingSettings ? 'Saving...' : 'Save settings'}
+              </button>
+            </div>
+          </div>
+        </OverlayPanel>
+      ) : null}
+
+      {memberDeleteTarget ? (
+        <OverlayPanel title="Delete member" onClose={() => { if (!deletingMemberId) setMemberDeleteTarget(null); }}>
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              This will permanently delete {memberDeleteTarget.name} and all related member data. This action cannot be undone.
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setMemberDeleteTarget(null)}
+                disabled={Boolean(deletingMemberId)}
+                className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmDeleteMember()}
+                disabled={Boolean(deletingMemberId)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-destructive/40 bg-destructive px-3 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-60"
+              >
+                {deletingMemberId ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                Delete member
               </button>
             </div>
           </div>

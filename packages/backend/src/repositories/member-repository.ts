@@ -5,6 +5,7 @@ export interface MemberRepository {
   findById(id: string): Promise<Member | undefined>;
   create(member: Member): Promise<Member>;
   update(id: string, patch: Partial<Member>): Promise<Member | undefined>;
+  delete(id: string): Promise<boolean>;
 }
 
 export class InMemoryMemberRepository implements MemberRepository {
@@ -31,5 +32,15 @@ export class InMemoryMemberRepository implements MemberRepository {
 
     Object.assign(current, patch);
     return current;
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const index = this.members.findIndex((member) => member.id === id);
+    if (index < 0) {
+      return false;
+    }
+
+    this.members.splice(index, 1);
+    return true;
   }
 }
