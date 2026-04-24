@@ -33,9 +33,14 @@ export class PostgresFoodPlanRepository implements FoodPlanRepository {
   }
 
   private mapRow(row: Record<string, unknown>): FoodPlanItem {
+    const weekStartRaw = row.week_start;
+    const weekStart = weekStartRaw instanceof Date
+      ? weekStartRaw.toISOString().slice(0, 10)
+      : String(weekStartRaw).slice(0, 10);
+
     return {
       id: String(row.id),
-      weekStart: String(row.week_start),
+      weekStart,
       day: String(row.day).toLowerCase() as FoodPlanDay,
       dishName: String(row.dish_name),
       groceryList: Array.isArray(row.grocery_list)

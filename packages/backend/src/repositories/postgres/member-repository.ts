@@ -61,4 +61,9 @@ export class PostgresMemberRepository implements MemberRepository {
 
     return next;
   }
+
+  async delete(id: string): Promise<boolean> {
+    const result = await this.pool.query('delete from members where id = $1', [id]);
+    return (result.rowCount ?? 0) > 0;
+  }
 }

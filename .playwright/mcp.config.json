@@ -1,0 +1,30 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "isolated": true,
+    "contextOptions": {
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    }
+  },
+  "capabilities": [
+    "core",
+    "core-navigation",
+    "core-tabs",
+    "core-input",
+    "testing",
+    "network"
+  ],
+  "outputDir": "test-results/mcp",
+  "saveSession": false,
+  "snapshot": {
+    "mode": "full"
+  },
+  "timeouts": {
+    "action": 10000,
+    "navigation": 120000,
+    "expect": 10000
+  }
+}

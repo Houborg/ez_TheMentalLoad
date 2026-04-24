@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import type { ListTodayMemberTimelineResponse, Member } from '@mental-load/contracts';
+import { CheckCircle2, Clock3, Gift, Sparkles } from 'lucide-react';
+import type { ListTodayMemberTimelineResponse, Member, TimelineTaskInstance } from '@mental-load/contracts';
 import { cn } from '@/lib/utils';
 
 type TodayTimelineBoardProps = {
@@ -12,6 +12,8 @@ type TodayTimelineBoardProps = {
 };
 
 type TimelineVisualState = 'done' | 'active' | 'upcoming' | 'skipped';
+
+const HOUR_MARKS = [0, 6, 12, 18, 24];
 
 function formatTaskTime(input?: string) {
   if (!input) {
@@ -24,28 +26,6 @@ function formatTaskTime(input?: string) {
   }
 
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function getSelectedTaskIndex(statuses: string[]) {
-  const waitingIndex = statuses.findIndex((status) => status === 'waiting_confirmation');
-  if (waitingIndex >= 0) {
-    return waitingIndex;
-  }
-
-  const pendingIndex = statuses.findIndex((status) => status === 'pending');
-  if (pendingIndex >= 0) {
-    return pendingIndex;
-  }
-
-  const completedIndexes = statuses
-    .map((status, index) => ({ status, index }))
-    .filter((item) => item.status === 'completed');
-
-  if (completedIndexes.length > 0) {
-    return completedIndexes[completedIndexes.length - 1].index;
-  }
-
-  return 0;
 }
 
 function getVisualState(status: string): TimelineVisualState {
@@ -64,180 +44,218 @@ function getVisualState(status: string): TimelineVisualState {
   return 'upcoming';
 }
 
-// ── Horizontal geometry constants ──────────────────────────────────────────
-const NODE_HALF = 25;   // radius of 50 px node
-const SPACING   = 90;   // px between node centres horizontally
-const START_X   = 70;   // left + right padding inside SVG
-const CENTER_Y  = 120;  // vertical midline of the 240 px stage
-const AMPLITUDE = 22;   // how far above/below midline nodes sit
-const SVG_HEIGHT = 240; // fixed stage height in px
-
-function buildWavePath(points: Array<{ x: number; y: number }>) {
-  if (points.length === 0) return '';
-  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-
-  let path = `M ${points[0].x} ${points[0].y}`;
-  for (let index = 1; index < points.length; index += 1) {
-    const prev = points[index - 1];
-    const current = points[index];
-    const cx1 = prev.x + (current.x - prev.x) * 0.35;
-    const cx2 = prev.x + (current.x - prev.x) * 0.65;
-    path += ` C ${cx1} ${prev.y}, ${cx2} ${current.y}, ${current.x} ${current.y}`;
-  }
-  return path;
+function getSelectedTask(tasks: TimelineTaskInstance[]) {
+  return tasks.find((task) => task.status === 'waiting_confirmation')
+    ?? tasks.find((task) => task.status === 'pending')
+    ?? [...tasks].reverse().find((task) => task.status === 'completed')
+    ?? tasks[0];
 }
 
-// ── Per-member strip (needs hooks → own component) ───────────────────────────
-type MemberTimelineStripProps = {
+function buildDateAtTime(date: string, hours: number, minutes: number) {
+  return new Date(`${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`);
+}
+
+function getDayProgressPercent(date: string) {
+  const now = new Date();
+  const dayStart = buildDateAtTime(date, 0, 0);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+
+  if (now <= dayStart) {
+    return 0;
+  }
+
+  if (now >= dayEnd) {
+    return 100;
+  }
+
+  return ((now.getTime() - dayStart.getTime()) / (dayEnd.getTime() - dayStart.getTime())) * 100;
+}
+
+function getTaskPositionPercent(task: TimelineTaskInstance, index: number, total: number) {
+  if (task.dueAt) {
+    const dueAt = new Date(task.dueAt);
+    if (!Number.isNaN(dueAt.getTime())) {
+      return ((dueAt.getHours() * 60 + dueAt.getMinutes()) / (24 * 60)) * 100;
+    }
+  }
+
+  if (total <= 1) {
+    return 8;
+  }
+
+  return 8 + (index / (total - 1)) * 84;
+}
+
+function getStatusTone(status: TimelineTaskInstance['status']) {
+  if (status === 'completed') {
+    return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300';
+  }
+
+  if (status === 'waiting_confirmation') {
+    return 'bg-amber-500/15 text-amber-700 dark:text-amber-300';
+  }
+
+  if (status === 'skipped') {
+    return 'bg-muted text-muted-foreground';
+  }
+
+  return 'bg-blue-500/15 text-blue-700 dark:text-blue-300';
+}
+
+type MemberTimelineLaneProps = {
   member: Member;
   data: ListTodayMemberTimelineResponse;
   onConfirmTask: (memberId: string, taskId: string) => Promise<void>;
   celebrationTaskId?: string;
 };
 
-function MemberTimelineStrip({ member, data, onConfirmTask, celebrationTaskId }: MemberTimelineStripProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
+function MemberTimelineLane({ member, data, onConfirmTask, celebrationTaskId }: MemberTimelineLaneProps) {
   const tasks = data.timeline.tasks ?? [];
-  const completed = tasks.filter((t) => t.status === 'completed').length;
+  const completed = tasks.filter((task) => task.status === 'completed').length;
+  const milestones = tasks.filter((task) => task.isMilestone).length;
   const progress = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
-  const selectedTaskIndex = getSelectedTaskIndex(tasks.map((t) => t.status));
-
-  const points = tasks.map((task, index) => ({
-    task,
-    x: START_X + index * SPACING,
-    y: CENTER_Y + (index % 2 === 0 ? -AMPLITUDE : AMPLITUDE),
-  }));
-
-  const selectedPoint = points[selectedTaskIndex] ?? points[0];
-  const svgWidth = tasks.length > 0
-    ? START_X + (tasks.length - 1) * SPACING + START_X
-    : START_X * 2;
-  const path = buildWavePath(points.map((p) => ({ x: p.x, y: p.y })));
-
-  // Auto-scroll so the active node is horizontally centred in the container
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container || !selectedPoint) return;
-    const targetLeft = selectedPoint.x - container.clientWidth / 2;
-    container.scrollLeft = Math.max(0, targetLeft);
-  }, [selectedPoint?.x]);
+  const activeTask = getSelectedTask(tasks);
+  const dayProgressPercent = getDayProgressPercent(data.timeline.date);
 
   return (
-    <article className="timeline-shell rounded-2xl border border-border/60 bg-background/35 p-4">
-      {/* header */}
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <article className="rounded-[28px] border border-border/60 bg-background/35 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="text-sm font-semibold">{member.name}</div>
-          <div className="text-xs text-muted-foreground">{tasks.length} tasks · {progress}% completed</div>
+          <h3 className="text-lg font-semibold">{member.name}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {tasks.length} tasks · {progress}% completed · {milestones} milestones
+          </p>
         </div>
-        <div className="h-2 w-40 overflow-hidden rounded-full bg-muted">
-          <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+        <div className="flex min-w-[220px] flex-1 flex-col gap-2 md:max-w-xs">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Task progress</span>
+            <span>{completed}/{tasks.length || 0}</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+          </div>
         </div>
       </div>
 
       {tasks.length === 0 ? (
-        <div className="rounded-xl border border-border/50 bg-card/70 px-4 py-6 text-sm text-muted-foreground">
+        <div className="mt-5 rounded-2xl border border-dashed border-border/60 bg-card/50 px-4 py-8 text-sm text-muted-foreground">
           No tasks generated for this member today.
         </div>
       ) : (
         <>
-          {/* horizontal scroll strip — NO vertical scroll */}
-          <div className="timeline-scroll" ref={scrollRef}>
-            <div className="timeline-stage" style={{ width: `${svgWidth}px` }}>
-              <svg
-                className="timeline-canvas"
-                viewBox={`0 0 ${svgWidth} ${SVG_HEIGHT}`}
-                preserveAspectRatio="xMidYMid meet"
-                role="img"
-                aria-label={`Timeline for ${member.name}`}
-              >
-                <defs>
-                  <linearGradient
-                    id={`timeline-track-${member.id}`}
-                    gradientUnits="userSpaceOnUse"
-                    x1="0" y1="0" x2={svgWidth} y2="0"
-                  >
-                    <stop offset="0%" stopColor="var(--timeline-cyan)" />
-                    <stop offset="45%" stopColor="var(--timeline-magenta)" />
-                    <stop offset="100%" stopColor="var(--timeline-amber)" />
-                  </linearGradient>
-                </defs>
-                <path d={path} className="timeline-path timeline-path-muted" />
-                <path d={path} className="timeline-path timeline-path-glow" style={{ stroke: `url(#timeline-track-${member.id})` }} />
-              </svg>
+          <div className="mt-6 overflow-x-auto pb-2">
+            <div className="min-w-[900px]">
+              <div className="relative h-[360px] rounded-[26px] border border-border/50 bg-card/40 px-6 py-6">
+                <div className="pointer-events-none absolute inset-x-6 top-12 flex justify-between text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                  {HOUR_MARKS.map((hour) => (
+                    <span key={hour}>{String(hour).padStart(2, '0')}:00</span>
+                  ))}
+                </div>
 
-              {points.map((point, index) => {
-                const visualState = getVisualState(point.task.status);
-                return (
-                  <div
-                    key={point.task.id}
-                    className={cn(
-                      'timeline-node',
-                      visualState === 'done'     && 'timeline-node-done',
-                      visualState === 'active'   && 'timeline-node-active',
-                      visualState === 'upcoming' && 'timeline-node-upcoming',
-                      visualState === 'skipped'  && 'timeline-node-skipped',
-                      selectedTaskIndex === index && 'timeline-node-selected',
-                    )}
-                    style={{ left: `${point.x - NODE_HALF}px`, top: `${point.y - NODE_HALF}px` }}
-                  >
-                    <div className="timeline-node-inner">
-                      {visualState === 'done' ? (
-                        <span aria-hidden="true">✓</span>
-                      ) : visualState === 'active' ? (
-                        <button
-                          type="button"
-                          onClick={() => void onConfirmTask(member.id, point.task.id)}
-                          className="timeline-node-button"
-                          aria-label={`Confirm task ${point.task.title}`}
-                        >
-                          Confirm
-                        </button>
-                      ) : (
-                        <span aria-hidden="true">🔒</span>
-                      )}
+                <div className="absolute inset-x-6 top-24 h-1 rounded-full bg-muted" />
+                <div className="absolute inset-x-6 top-24 h-1 rounded-full bg-primary/20">
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${dayProgressPercent}%` }} />
+                </div>
+                <div
+                  className="absolute top-[74px] h-11 w-px bg-primary/70"
+                  style={{ left: `calc(1.5rem + (${dayProgressPercent} / 100) * (100% - 3rem))` }}
+                >
+                  <span className="absolute left-1/2 top-[-26px] -translate-x-1/2 rounded-full bg-primary px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary-foreground">
+                    Now
+                  </span>
+                </div>
+
+                {tasks.map((task, index) => {
+                  const visualState = getVisualState(task.status);
+                  const left = getTaskPositionPercent(task, index, tasks.length);
+                  const topClass = index % 2 === 0 ? 'top-[116px]' : 'top-[210px]';
+
+                  return (
+                    <div
+                      key={task.id}
+                      className={cn('absolute w-[220px] -translate-x-1/2', topClass)}
+                      style={{ left: `calc(1.5rem + (${left} / 100) * (100% - 3rem))` }}
+                    >
+                      <div className="flex justify-center">
+                        <div className={cn(
+                          'flex h-11 w-11 items-center justify-center rounded-full border-2 text-sm font-semibold shadow-lg',
+                          visualState === 'done' && 'border-emerald-400/70 bg-emerald-500 text-white',
+                          visualState === 'active' && 'border-amber-400/70 bg-amber-500 text-white',
+                          visualState === 'upcoming' && 'border-border/70 bg-card text-muted-foreground',
+                          visualState === 'skipped' && 'border-border/50 bg-muted text-muted-foreground',
+                        )}>
+                          {task.isMilestone ? <Gift className="h-4 w-4" /> : task.status === 'completed' ? '✓' : task.position}
+                        </div>
+                      </div>
+                      <div className={cn(
+                        'mt-3 rounded-2xl border border-border/60 bg-background/90 p-3 shadow-lg shadow-black/10',
+                        celebrationTaskId === task.id && 'ring-2 ring-amber-400/60',
+                      )}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold">{task.title}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span className="inline-flex items-center gap-1">
+                                <Clock3 className="h-3.5 w-3.5" />
+                                {formatTaskTime(task.dueAt)}
+                              </span>
+                              <span className={cn('rounded-full px-2 py-1 font-medium uppercase tracking-[0.08em]', getStatusTone(task.status))}>
+                                {task.status.replace('_', ' ')}
+                              </span>
+                            </div>
+                          </div>
+                          {task.status === 'waiting_confirmation' ? (
+                            <button
+                              type="button"
+                              onClick={() => void onConfirmTask(member.id, task.id)}
+                              className="rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-lg shadow-primary/20"
+                            >
+                              Done
+                            </button>
+                          ) : null}
+                        </div>
+
+                        {task.isMilestone || task.rewardText ? (
+                          <div className="mt-3 rounded-xl bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                            <div className="flex items-center gap-2 font-semibold">
+                              <Sparkles className="h-3.5 w-3.5" />
+                              Success milestone
+                            </div>
+                            {task.rewardText ? <div className="mt-1">{task.rewardText}</div> : null}
+                          </div>
+                        ) : null}
+
+                        {celebrationTaskId === task.id ? (
+                          <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Completed
+                            {task.rewardText ? ` - ${task.rewardText}` : ''}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
-                    <span className="timeline-pin" aria-hidden="true" />
-                    <span className="timeline-tag">{point.task.position}. {point.task.title}</span>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
 
-          {/* callout bar — outside scroll so it's always fully visible */}
-          {selectedPoint ? (
-            <div className="timeline-callout-bar">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Current focus</div>
-                  <div className="mt-0.5 truncate text-sm font-semibold">{selectedPoint.task.title}</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
-                    {selectedPoint.task.source.replaceAll('_', ' ')} · {formatTaskTime(selectedPoint.task.dueAt)}
+          {activeTask ? (
+            <div className="mt-4 rounded-2xl border border-border/60 bg-card/50 px-4 py-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Current focus</div>
+                  <div className="mt-1 text-sm font-semibold">{activeTask.title}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {activeTask.source.replaceAll('_', ' ')} · {formatTaskTime(activeTask.dueAt)}
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className={cn(
-                    'rounded-full px-2 py-1 text-[10px] font-medium uppercase tracking-[0.08em]',
-                    selectedPoint.task.status === 'completed'           && 'bg-emerald-500/20 text-emerald-700',
-                    selectedPoint.task.status === 'waiting_confirmation' && 'bg-amber-500/20 text-amber-700',
-                    selectedPoint.task.status === 'pending'             && 'bg-blue-500/20 text-blue-700',
-                    selectedPoint.task.status === 'skipped'             && 'bg-muted text-muted-foreground',
-                  )}>
-                    {selectedPoint.task.status.replace('_', ' ')}
-                  </span>
-                  {selectedPoint.task.status !== 'completed' ? (
-                    <button
-                      type="button"
-                      onClick={() => void onConfirmTask(member.id, selectedPoint.task.id)}
-                      className="rounded-lg border border-border/60 px-2 py-1 text-xs hover:bg-accent/60"
-                    >
-                      Done
-                    </button>
-                  ) : null}
-                  {celebrationTaskId === selectedPoint.task.id ? <span className="text-base" aria-label="celebration">🎉</span> : null}
-                </div>
+                {(activeTask.isMilestone || activeTask.rewardText) ? (
+                  <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                    <Gift className="h-3.5 w-3.5" />
+                    {activeTask.rewardText || 'Success milestone'}
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -247,7 +265,6 @@ function MemberTimelineStrip({ member, data, onConfirmTask, celebrationTaskId }:
   );
 }
 
-// ── Public board component ────────────────────────────────────────────────────
 export function TodayTimelineBoard({ members, timelinesByMemberId, onConfirmTask, celebrationTaskId }: TodayTimelineBoardProps) {
   const active = members
     .map((member) => ({ member, data: timelinesByMemberId[member.id] }))
@@ -255,7 +272,7 @@ export function TodayTimelineBoard({ members, timelinesByMemberId, onConfirmTask
 
   if (active.length === 0) {
     return (
-      <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
+      <section className="rounded-[30px] border border-border/60 bg-card/50 p-5">
         <h2 className="text-lg font-semibold">Today timeline</h2>
         <p className="mt-1 text-sm text-muted-foreground">No members have timeline enabled yet. Enable it in the Members settings tab.</p>
       </section>
@@ -263,12 +280,12 @@ export function TodayTimelineBoard({ members, timelinesByMemberId, onConfirmTask
   }
 
   return (
-    <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
+    <section className="rounded-[30px] border border-border/60 bg-card/50 p-5">
       <h2 className="text-lg font-semibold">Today timeline</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Progress follows time and waits for confirmation at each due task.</p>
-      <div className="mt-4 grid gap-4">
+      <p className="mt-1 text-sm text-muted-foreground">The day moves left to right, tasks unlock at their due time, and milestones can carry their reward forward into completion.</p>
+      <div className="mt-5 grid gap-5">
         {active.map(({ member, data }) => (
-          <MemberTimelineStrip
+          <MemberTimelineLane
             key={member.id}
             member={member}
             data={data}
