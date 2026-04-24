@@ -26,6 +26,7 @@ import {
   askAssistant,
   connectSync,
   confirmAssistant,
+  confirmTodayTimelineTask,
   createMember,
   createEntry,
   deleteMember,
@@ -60,6 +61,7 @@ import {
   deleteMemberTimelineTemplate,
   type WeatherForecastResponse,
 } from '@/lib/api';
+import { TodayTimelineBoard } from '@/components/today-timeline-board';
 import { cn } from '@/lib/utils';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
@@ -110,7 +112,7 @@ type FoodPlanDraft = {
   groceryInput: string;
 };
 
-type NavSection = 'dashboard' | 'planner' | 'family' | 'settings';
+type NavSection = 'dashboard' | 'planner' | 'timeline' | 'family' | 'settings';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = [
@@ -194,6 +196,7 @@ export function DashboardApp() {
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [pendingInvitations, setPendingInvitations] = useState<Array<{ entry: Entry; invitee: { email: string; status: 'pending' | 'accepted' | 'declined' } }>>([]);
   const [respondingToInvitation, setRespondingToInvitation] = useState<{ entryId: string; email: string } | null>(null);
+  const [celebrationTaskId, setCelebrationTaskId] = useState<string | undefined>();
   const [timelineSettingsByMemberId, setTimelineSettingsByMemberId] = useState<Record<string, MemberTimelineSettings>>({});
   const [todayTimelinesByMemberId, setTodayTimelinesByMemberId] = useState<Record<string, ListTodayMemberTimelineResponse>>({});
   const [loadingTodayTimelineMemberId, setLoadingTodayTimelineMemberId] = useState<string | null>(null);
@@ -692,6 +695,13 @@ export function DashboardApp() {
       return;
     }
 
+    if (section === 'timeline') {
+      void Promise.all(
+        dashboard.members.map((m) => loadTodayTimelineForMember(m.id)),
+      );
+      return;
+    }
+
     const targetId = section === 'dashboard' ? 'hero-section' : `${section}-section`;
     document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -1069,6 +1079,23 @@ export function DashboardApp() {
       setTemplatesByMemberId((prev) => ({ ...prev, [memberId]: result.templates }));
     } catch {
       // silently ignore
+    }
+  }
+
+  async function handleConfirmTodayTimelineTask(memberId: string, taskId: string) {
+    try {
+      const result = await confirmTodayTimelineTask(memberId, { taskId });
+      setTodayTimelinesByMemberId((current) => ({
+        ...current,
+        [memberId]: {
+          ...(current[memberId] ?? { settings: { memberId, enabled: true, maxTasksPerDay: 10, updatedAt: new Date().toISOString() } }),
+          timeline: result.timeline,
+        },
+      }));
+      setCelebrationTaskId(taskId);
+      setTimeout(() => setCelebrationTaskId(undefined), 1400);
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not confirm timeline task');
     }
   }
 
@@ -1475,6 +1502,7 @@ export function DashboardApp() {
             {[
               { label: 'Dashboard', icon: CalendarDays, key: 'dashboard' },
               { label: 'Planner', icon: Clock3, key: 'planner' },
+              { label: 'Timeline', icon: CheckCircle2, key: 'timeline' },
               { label: 'Family', icon: Users, key: 'family' },
               { label: 'Settings', icon: Settings, key: 'settings' },
             ].map((item) => (
@@ -1602,7 +1630,7 @@ export function DashboardApp() {
           </header>
 
           <section className="flex-1 overflow-auto px-4 py-6 md:px-6">
-            {activeNav !== 'family' ? (
+            {activeNav !== 'family' && activeNav !== 'timeline' ? (
             <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
               <div id="hero-section" className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
@@ -2149,6 +2177,7 @@ export function DashboardApp() {
               {errorText ? (
                 <div className="rounded-3xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">{errorText}</div>
               ) : null}
+              {activeNav !== 'timeline' ? (
               <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
                 <div className="mb-6 flex items-center justify-between gap-3">
                   <div>
@@ -2215,13 +2244,23 @@ export function DashboardApp() {
                 </div>
                 {settingsMessage ? <div className="mt-4 rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm">{settingsMessage}</div> : null}
               </section>
+              ) : null}
 
+              {activeNav === 'timeline' ? (
               <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
                 <div className="mb-5 flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-2xl font-semibold tracking-tight">Daily Timeline</h2>
                     <p className="mt-1 text-sm text-muted-foreground">View today&apos;s generated timeline for each member and edit the template list behind it.</p>
                   </div>
+                </div>
+                <div className="mb-4">
+                  <TodayTimelineBoard
+                    members={dashboard.members}
+                    timelinesByMemberId={todayTimelinesByMemberId}
+                    celebrationTaskId={celebrationTaskId}
+                    onConfirmTask={handleConfirmTodayTimelineTask}
+                  />
                 </div>
                 <div className="space-y-3">
                   {dashboard.members.map((member) => {
@@ -2508,6 +2547,7 @@ export function DashboardApp() {
                   })}
                 </div>
               </section>
+              ) : null}
             </div>
             )}
           </section>
