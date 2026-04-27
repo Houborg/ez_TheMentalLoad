@@ -147,7 +147,7 @@ function createDefaultSettings(): AppSettings {
       provider: 'none',
       configJson: {
         mailpitPullMinutes: 1,
-        mailpitAutoPullEnabled: true,
+        mailpitAutoPullEnabled: false,
         mailpitLastUid: 0,
       },
       isConnected: true,

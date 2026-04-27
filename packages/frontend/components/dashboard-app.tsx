@@ -21,7 +21,7 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
-import type { AppSettings, AssistantDraft, DailyTimelineTemplateTask, Entry, FoodPlanDay, FoodPlanItem, Member, Calendar, ListTodayMemberTimelineResponse, MemberRole, MemberTimelineSettings, SyncProvider } from '@mental-load/contracts';
+import type { AppSettings, AssistantDraft, DailyTimelineTemplateTask, Entry, Member, Calendar, ListTodayMemberTimelineResponse, MemberRole, MemberTimelineSettings, SyncProvider } from '@mental-load/contracts';
 import {
   askAssistant,
   connectSync,
@@ -31,13 +31,10 @@ import {
   createEntry,
   deleteMember,
   deleteEntry,
-  deleteFoodPlan,
-  getWeekStart,
   listInvitationsForMember,
   loadAssistantStatus,
   loadMemberTimelineSettings,
   loadDashboardSnapshot,
-  loadFoodPlan,
   loadHealth,
   loadMembers,
   loadMonthOccurrences,
@@ -52,7 +49,6 @@ import {
   saveSettings,
   sendTestEmail,
   updateEntry,
-  updateFoodPlan,
   updateMember,
   updateMemberTimelineSettings,
   listMemberTimelineTemplates,
@@ -105,13 +101,6 @@ type EventDraft = {
   reminder2CustomHours: string;
 };
 
-type FoodPlanDraft = {
-  weekStart: string;
-  day: FoodPlanDay;
-  dishName: string;
-  groceryInput: string;
-};
-
 type NavSection = 'dashboard' | 'planner' | 'timeline' | 'family' | 'settings';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -151,7 +140,6 @@ export function DashboardApp() {
   const [dashboard, setDashboard] = useState<DashboardState>({ members: [], calendars: [], entries: [], reminderJobs: [] });
   const [monthOccurrences, setMonthOccurrences] = useState<Entry[]>([]);
   const [upcomingOccurrences, setUpcomingOccurrences] = useState<Entry[]>([]);
-  const [foodPlan, setFoodPlan] = useState<FoodPlanItem[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [assistantMessage, setAssistantMessage] = useState('');
   const [assistantDraft, setAssistantDraft] = useState<AssistantDraft | null>(null);
@@ -163,7 +151,10 @@ export function DashboardApp() {
   const [assistantStatusText, setAssistantStatusText] = useState('Checking assistant...');
   const [searchQuery, setSearchQuery] = useState('');
   const [memberFilterId, setMemberFilterId] = useState('');
-  const [activeMemberId, setActiveMemberId] = useState('');
+  const [activeMemberId, setActiveMemberId] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return localStorage.getItem('activeMemberId') ?? '';
+  });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -174,11 +165,6 @@ export function DashboardApp() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
-  const [deletingFoodPlan, setDeletingFoodPlan] = useState<{ weekStart: string; day: FoodPlanDay } | null>(null);
-  const [foodPlanComposerOpen, setFoodPlanComposerOpen] = useState(false);
-  const [foodPlanDraft, setFoodPlanDraft] = useState<FoodPlanDraft | null>(null);
-  const [foodPlanEditingKey, setFoodPlanEditingKey] = useState<string | null>(null);
-  const [foodPlanSaving, setFoodPlanSaving] = useState(false);
   const [assistantSuggestionBusy, setAssistantSuggestionBusy] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'mail' | 'sync' | 'recurring' | 'birthdays' | 'weather'>('theme');
   const [memberDraft, setMemberDraft] = useState<{ name: string; role: MemberRole; email: string; avatar: string }>({ name: '', role: 'parent', email: '', avatar: '' });
@@ -220,17 +206,22 @@ export function DashboardApp() {
   const [draft, setDraft] = useState<EventDraft>(() => createDefaultDraft());
 
   useEffect(() => {
+    if (activeMemberId) {
+      localStorage.setItem('activeMemberId', activeMemberId);
+    }
+  }, [activeMemberId]);
+
+  useEffect(() => {
     let active = true;
 
     async function loadAll() {
       try {
         setErrorText('');
         setRefreshing(true);
-        const [dashboardSnapshot, monthEntries, upcoming, weekFoodPlan, health, assistantStatus, settingsSnapshot] = await Promise.all([
+        const [dashboardSnapshot, monthEntries, upcoming, health, assistantStatus, settingsSnapshot] = await Promise.all([
           loadDashboardSnapshot(),
           loadMonthOccurrences(currentMonth),
           loadUpcomingOccurrences(30),
-          loadFoodPlan(getWeekStart()),
           loadHealth(),
           loadAssistantStatus(),
           loadSettings(),
@@ -265,7 +256,6 @@ export function DashboardApp() {
         ));
         setMonthOccurrences(monthEntries);
         setUpcomingOccurrences(upcoming);
-        setFoodPlan(weekFoodPlan.items);
         setHealthNow(health.now);
         setAssistantReady(assistantStatus.ok);
         setAssistantStatusText(assistantStatus.message);
@@ -804,101 +794,6 @@ export function DashboardApp() {
     setIsComposerOpen(false);
     setEditingEntryId(null);
     setDraft(applyRecurringDefaultsToDraft(createDefaultDraft(dashboard.members[0]?.id, dashboard.calendars[0]?.id), recurringDefaults));
-  }
-
-  async function handleDeleteFoodPlan(weekStart: string, day: FoodPlanDay) {
-    try {
-      setErrorText('');
-      setDeletingFoodPlan({ weekStart, day });
-      await deleteFoodPlan({ weekStart, day });
-      const weekFoodPlan = await loadFoodPlan(weekStart);
-      setFoodPlan(weekFoodPlan.items);
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Could not delete food plan item');
-    } finally {
-      setDeletingFoodPlan(null);
-    }
-  }
-
-  function openFoodPlanComposer(input: { weekStart: string; day: FoodPlanDay; item?: FoodPlanItem }) {
-    setFoodPlanEditingKey(input.item ? `${input.item.weekStart}-${input.item.day}` : null);
-    setFoodPlanDraft({
-      weekStart: input.weekStart,
-      day: input.day,
-      dishName: input.item?.dishName ?? '',
-      groceryInput: (input.item?.groceryList ?? []).join('\n'),
-    });
-    setFoodPlanComposerOpen(true);
-  }
-
-  function closeFoodPlanComposer() {
-    setFoodPlanComposerOpen(false);
-    setFoodPlanDraft(null);
-    setFoodPlanEditingKey(null);
-  }
-
-  async function handleSaveFoodPlan() {
-    if (!foodPlanDraft) {
-      return;
-    }
-
-    const dishName = foodPlanDraft.dishName.trim();
-    if (!dishName) {
-      setErrorText('Dish name is required');
-      return;
-    }
-
-    const groceryList = foodPlanDraft.groceryInput
-      .split(/\r?\n|,/)
-      .map((value) => value.trim())
-      .filter(Boolean);
-
-    try {
-      setFoodPlanSaving(true);
-      setErrorText('');
-      await updateFoodPlan({
-        weekStart: foodPlanDraft.weekStart,
-        day: foodPlanDraft.day,
-        dishName,
-        groceryList,
-      });
-      const weekFoodPlan = await loadFoodPlan(foodPlanDraft.weekStart);
-      setFoodPlan(weekFoodPlan.items);
-      closeFoodPlanComposer();
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Could not save food plan item');
-    } finally {
-      setFoodPlanSaving(false);
-    }
-  }
-
-  async function handleDeleteFoodPlanFromComposer() {
-    if (!foodPlanDraft || !foodPlanEditingKey) {
-      return;
-    }
-
-    await handleDeleteFoodPlan(foodPlanDraft.weekStart, foodPlanDraft.day);
-    closeFoodPlanComposer();
-  }
-
-  async function handleSuggestDishIdeas() {
-    if (!foodPlanDraft) {
-      return;
-    }
-
-    try {
-      setAssistantSuggestionBusy(true);
-      setErrorText('');
-      const result = await askAssistant({
-        language: settings?.assistant.language ?? 'en',
-        message: `Suggest 5 family dish ideas for ${foodPlanDraft.day}. Keep each idea short and practical.`,
-      });
-      setAssistantResponse(result.response);
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Could not fetch dish suggestions');
-    } finally {
-      setAssistantSuggestionBusy(false);
-    }
   }
 
   async function refreshMembers() {
@@ -1528,10 +1423,15 @@ export function DashboardApp() {
             {!isSidebarCollapsed ? <div className="mb-3 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Family members</div> : null}
             <div className="space-y-2">
               {dashboard.members.map((member) => (
-                <div
+                <button
                   key={member.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveMemberId(member.id);
+                    router.push(`/member/${encodeURIComponent(member.id)}`);
+                  }}
                   className={cn(
-                    'flex rounded-2xl py-2.5 hover:bg-sidebar-accent/60',
+                    'flex w-full rounded-2xl py-2.5 text-left hover:bg-sidebar-accent/60',
                     activeMember?.id === member.id && 'bg-sidebar-accent/60',
                     isSidebarCollapsed ? 'justify-center px-1' : 'items-center gap-3 px-3',
                   )}
@@ -1546,7 +1446,7 @@ export function DashboardApp() {
                       <div className="truncate text-xs text-muted-foreground">{member.role}</div>
                     </div>
                   ) : null}
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -1610,7 +1510,24 @@ export function DashboardApp() {
             >
               <RefreshCcw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
             </button>
-            <button
+              <label className="hidden items-center gap-2 lg:flex" title="Signed in as">
+                <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-primary-foreground', memberColorById[activeMember?.id ?? ''] ?? 'bg-primary')}>
+                  {activeMember?.avatar ? <span className="text-base">{activeMember.avatar}</span> : <Users className="h-4 w-4" />}
+                </div>
+                <select
+                  aria-label="Signed in as"
+                  value={activeMember?.id ?? ''}
+                  onChange={(event) => setActiveMemberId(event.target.value)}
+                  className="h-9 rounded-2xl border border-border/60 bg-background/60 px-3 text-sm outline-none transition focus:border-primary/60"
+                >
+                  {dashboard.members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name} ({member.role})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
               type="button"
               onClick={() => setNotificationsOpen(true)}
               className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-border/60 bg-background/60 text-muted-foreground transition hover:text-foreground"
@@ -1994,7 +1911,7 @@ export function DashboardApp() {
                       </div>
                       <div className="rounded-full border border-border/60 px-2 py-1 text-xs text-muted-foreground">{filteredUpcoming.length} items</div>
                     </div>
-                    <div className="space-y-3 overflow-auto">
+                    <div className="space-y-3 overflow-auto lg:overflow-visible">
                       {filteredUpcoming.map((entry) => {
                         const owner = dashboard.members.find((member) => member.id === entry.ownerMemberId);
                         return (
@@ -2027,80 +1944,6 @@ export function DashboardApp() {
                         );
                       })}
                       {filteredUpcoming.length === 0 ? <div className="rounded-2xl border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">No upcoming events match the current search.</div> : null}
-                    </div>
-                  </section>
-
-                  <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-                    <div className="mb-4 flex items-center justify-between">
-                      <div>
-                        <h2 className="text-lg font-semibold">Food plan</h2>
-                        <p className="mt-1 text-sm text-muted-foreground">Current week from the backend food plan API.</p>
-                      </div>
-                      <div className="rounded-full border border-border/60 px-2 py-1 text-xs text-muted-foreground">{foodPlan.length} meals</div>
-                    </div>
-                    <div className="space-y-2">
-                      {(() => {
-                        const weekStart = getWeekStart();
-                        const days: Array<{ key: string; label: string }> = [
-                          { key: 'monday', label: 'Monday' },
-                          { key: 'tuesday', label: 'Tuesday' },
-                          { key: 'wednesday', label: 'Wednesday' },
-                          { key: 'thursday', label: 'Thursday' },
-                          { key: 'friday', label: 'Friday' },
-                          { key: 'saturday', label: 'Saturday' },
-                          { key: 'sunday', label: 'Sunday' },
-                        ];
-
-                        return days.map(({ key, label }) => {
-                          const item = foodPlan.find((fp) => fp.day.toLowerCase() === key);
-
-                          return (
-                            <div key={key} className="rounded-2xl border border-border/60 bg-card/55 px-4 py-3">
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
-                                  <div className="mt-1 text-sm font-semibold">
-                                    {item?.dishName || <span className="text-muted-foreground">Not hungry?</span>}
-                                  </div>
-                                </div>
-                                {item ? (
-                                  <div className="flex items-center gap-2">
-                                    <div className="text-xs text-muted-foreground">{item.groceryList.length} groceries</div>
-                                    <button
-                                      type="button"
-                                      onClick={() => openFoodPlanComposer({ weekStart: item.weekStart, day: item.day, item })}
-                                      className="rounded-lg border border-border/40 p-1.5 hover:bg-accent/60"
-                                      aria-label={`Edit ${item.dishName}`}
-                                    >
-                                      <Edit2 className="h-4 w-4" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleDeleteFoodPlan(item.weekStart, item.day)}
-                                      disabled={deletingFoodPlan?.weekStart === item.weekStart && deletingFoodPlan?.day === item.day}
-                                      className="rounded-lg border border-border/40 p-1.5 hover:bg-destructive/10 disabled:opacity-60"
-                                      aria-label={`Delete ${item.dishName}`}
-                                    >
-                                      {deletingFoodPlan?.weekStart === item.weekStart && deletingFoodPlan?.day === item.day ? (
-                                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="h-4 w-4" />
-                                      )}
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button type="button" onClick={() => openFoodPlanComposer({ weekStart, day: key as FoodPlanDay })} className="rounded-lg border border-border/40 p-1.5 hover:bg-primary/10">
-                                    <Plus className="h-4 w-4" />
-                                  </button>
-                                )}
-                              </div>
-                              {item && item.groceryList.length > 0 ? (
-                                <div className="mt-2 text-xs text-muted-foreground">{item.groceryList.join(' · ')}</div>
-                              ) : null}
-                            </div>
-                          );
-                        });
-                      })()}
                     </div>
                   </section>
 
@@ -2152,28 +1995,6 @@ export function DashboardApp() {
             </div>
             ) : (
             <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
-              <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-                <div className="flex flex-wrap items-end justify-between gap-4">
-                  <div>
-                    <h2 className="text-lg font-semibold tracking-tight">Active member</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Choose who is using the family tools right now. Parent members can edit timelines and manage members.</p>
-                  </div>
-                  <label className="grid min-w-[240px] gap-1.5">
-                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Signed in as</span>
-                    <select
-                      value={activeMember?.id ?? ''}
-                      onChange={(event) => setActiveMemberId(event.target.value)}
-                      className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60"
-                    >
-                      {dashboard.members.map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {member.name} ({member.role})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              </section>
               {errorText ? (
                 <div className="rounded-3xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">{errorText}</div>
               ) : null}
@@ -2225,7 +2046,15 @@ export function DashboardApp() {
                   {dashboard.members.map((member) => (
                     <div key={member.id} className="rounded-2xl border border-border/60 bg-card/55 p-4">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveMemberId(member.id);
+                            router.push(`/member/${encodeURIComponent(member.id)}`);
+                          }}
+                          className="flex min-w-0 items-center gap-3 rounded-xl text-left hover:bg-accent/40"
+                          aria-label={`Open ${member.name}`}
+                        >
                           <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-full', member.avatar ? 'text-2xl' : ('text-primary-foreground ' + (memberColorById[member.id] ?? 'bg-primary')))}>
                             {member.avatar ? member.avatar : <Users className="h-5 w-5" />}
                           </div>
@@ -2234,7 +2063,7 @@ export function DashboardApp() {
                             <div className="text-xs capitalize text-muted-foreground">{member.role}</div>
                             {member.email ? <div className="truncate text-xs text-muted-foreground">{member.email}</div> : null}
                           </div>
-                        </div>
+                        </button>
                         <button type="button" onClick={() => startEditMember(member)} className="rounded-lg border border-border/50 p-2 hover:bg-accent/60" aria-label={`Edit ${member.name}`}>
                           <Edit2 className="h-4 w-4" />
                         </button>
@@ -2897,72 +2726,6 @@ export function DashboardApp() {
         );
       })() : null}
 
-      {foodPlanComposerOpen && foodPlanDraft ? (
-        <OverlayPanel title={foodPlanEditingKey ? 'Edit dish' : 'Create dish'} onClose={closeFoodPlanComposer}>
-          <form
-            className="space-y-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleSaveFoodPlan();
-            }}
-          >
-            <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-xs text-muted-foreground uppercase tracking-[0.14em]">
-              {foodPlanDraft.day} · week {foodPlanDraft.weekStart}
-            </div>
-            <label className="grid gap-2">
-              <span className="text-sm font-medium">Dish name</span>
-              <input
-                value={foodPlanDraft.dishName}
-                onChange={(event) => setFoodPlanDraft((current) => (current ? { ...current, dishName: event.target.value } : current))}
-                className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                placeholder="Example: Chicken pasta bake"
-                required
-              />
-            </label>
-            <label className="grid gap-2">
-              <span className="text-sm font-medium">Groceries</span>
-              <textarea
-                value={foodPlanDraft.groceryInput}
-                onChange={(event) => setFoodPlanDraft((current) => (current ? { ...current, groceryInput: event.target.value } : current))}
-                className="min-h-[110px] rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                placeholder="One item per line, or comma separated"
-              />
-            </label>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void handleSuggestDishIdeas()}
-                disabled={assistantSuggestionBusy}
-                className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60 disabled:opacity-60"
-              >
-                {assistantSuggestionBusy ? 'Asking AI...' : 'Suggest dishes with AI'}
-              </button>
-            </div>
-            <div className="flex items-center justify-between gap-2 pt-2">
-              <div className="flex gap-2">
-                {foodPlanEditingKey ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteFoodPlanFromComposer()}
-                    disabled={deletingFoodPlan?.weekStart === foodPlanDraft.weekStart && deletingFoodPlan?.day === foodPlanDraft.day}
-                    className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/15 disabled:opacity-60"
-                  >
-                    Delete dish
-                  </button>
-                ) : null}
-              </div>
-              <button
-                type="submit"
-                disabled={foodPlanSaving}
-                className="rounded-2xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 disabled:opacity-60"
-              >
-                {foodPlanSaving ? 'Saving...' : foodPlanEditingKey ? 'Update dish' : 'Save dish'}
-              </button>
-            </div>
-          </form>
-        </OverlayPanel>
-      ) : null}
-
       {notificationsOpen ? (
         <OverlayPanel title="Notifications" onClose={() => setNotificationsOpen(false)}>
           {dashboard.reminderJobs.length === 0 ? (
@@ -3271,6 +3034,50 @@ export function DashboardApp() {
                   >
                     Pull inbox to mailpit
                   </button>
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-border/60 bg-background/30 p-4 sm:grid-cols-2">
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium">Auto pull IMAP inbox</span>
+                    <select
+                      value={settings.sync.configJson.mailpitAutoPullEnabled === false ? 'no' : 'yes'}
+                      onChange={(event) => setSettings((current) => current ? {
+                        ...current,
+                        sync: {
+                          ...current.sync,
+                          configJson: {
+                            ...current.sync.configJson,
+                            mailpitAutoPullEnabled: event.target.value === 'yes',
+                          },
+                        },
+                      } : current)}
+                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                    >
+                      <option value="no">No (recommended)</option>
+                      <option value="yes">Yes</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium">Auto pull interval (minutes)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={Number(settings.sync.configJson.mailpitPullMinutes ?? 1)}
+                      onChange={(event) => setSettings((current) => current ? {
+                        ...current,
+                        sync: {
+                          ...current.sync,
+                          configJson: {
+                            ...current.sync.configJson,
+                            mailpitPullMinutes: Math.max(1, Number(event.target.value) || 1),
+                          },
+                        },
+                      } : current)}
+                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
+                    />
+                  </label>
+                  <div className="sm:col-span-2 text-xs text-muted-foreground">
+                    Auto pull runs only when Sync provider is set to invite-mail and this toggle is enabled.
+                  </div>
                 </div>
               </div>
             ) : null}

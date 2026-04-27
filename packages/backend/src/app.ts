@@ -664,9 +664,10 @@ export async function buildApp() {
       try {
         const settings = await settingsService.getSettings();
         const autoPullEnabled = settings.sync.configJson.mailpitAutoPullEnabled !== false;
+        const inviteMailSelected = settings.sync.provider === 'invite-mail';
         const pullMinutes = getMailpitPullMinutes(settings.sync.configJson.mailpitPullMinutes);
 
-        if (autoPullEnabled) {
+        if (autoPullEnabled && inviteMailSelected) {
           const storedUid = Number(settings.sync.configJson.mailpitLastUid ?? 0);
           const result = await inboxBridgeService.pullInboxToMailpit(settings, storedUid, 25);
           if (result.ok && result.latestUid > storedUid) {
