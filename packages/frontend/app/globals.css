@@ -260,6 +260,30 @@ textarea {
   opacity: 0.72;
 }
 
+.timeline-confetti-piece {
+  position: absolute;
+  top: -12px;
+  width: 10px;
+  height: 14px;
+  border-radius: 2px;
+  opacity: 0.95;
+  transform: translateX(-50%);
+  animation-name: timeline-confetti-fall;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes timeline-confetti-fall {
+  0% {
+    transform: translateX(-50%) translateY(-4vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(calc(-50% + 24px)) translateY(110vh) rotate(680deg);
+    opacity: 0;
+  }
+}
+
 .timeline-node-button {
   border: 0;
   border-radius: 999px;
