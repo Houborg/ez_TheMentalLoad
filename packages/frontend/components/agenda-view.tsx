@@ -102,7 +102,7 @@ export function AgendaView({ members, entries, memberColorById, onSelectEntry, o
                               <CalendarDays className="h-3 w-3" />
                             )}
                             <span className={cn('truncate', entry.type === 'task' && entry.status === 'completed' && 'line-through')}>
-                              {entry.title}
+                              {formatEntryPillLabel(entry)}
                             </span>
                           </span>
                         </button>
@@ -139,4 +139,29 @@ function isSameCalendarDate(a: Date, b: Date) {
 
 function toDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatEntryPillLabel(entry: Entry) {
+  const timeRange = formatEntryTimeRange(entry);
+  return timeRange ? `${timeRange} ${entry.title}` : entry.title;
+}
+
+function formatEntryTimeRange(entry: Entry) {
+  if (entry.allDay) {
+    return 'All day';
+  }
+
+  const start = new Date(entry.startTime);
+  const end = new Date(entry.endTime);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return '';
+  }
+
+  const formatTime = (value: Date) => value.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+  return `${formatTime(start)}-${formatTime(end)}`;
 }
