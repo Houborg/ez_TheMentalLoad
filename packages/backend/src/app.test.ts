@@ -674,7 +674,7 @@ test('assistant confirm validates missing date fields with 400', async () => {
   await app.close();
 });
 
-test('timeline removes deleted templates and updates changed template tasks in the same day view', async () => {
+test('timeline is generated from member task entries for today', async () => {
   const app = await createTestApp();
   const date = '2026-04-24';
 
@@ -688,76 +688,110 @@ test('timeline removes deleted templates and updates changed template tasks in t
   });
   assert.equal(settingsResponse.statusCode, 200);
 
-  const breakfastTemplate = await app.inject({
+  const firstTask = await app.inject({
     method: 'POST',
-    url: `/api/v1/members/${DEMO_MEMBER_IDS.saga}/timeline-templates`,
+    url: '/api/v1/entries',
     payload: {
-      title: 'Breakfast',
-      position: 1,
-      expectedTime: '07:30',
+      title: 'Pack school bag',
+      type: 'task',
+      ownerMemberId: DEMO_MEMBER_IDS.saga,
+      calendarId: DEMO_CALENDAR_IDS.family,
+      startTime: `${date}T07:30:00.000Z`,
+      endTime: `${date}T08:00:00.000Z`,
+      timezone: 'UTC',
+      allDay: false,
+      reminders: [],
     },
   });
-  assert.equal(breakfastTemplate.statusCode, 201);
+  assert.equal(firstTask.statusCode, 201);
 
-  const choresTemplate = await app.inject({
+  const secondTask = await app.inject({
     method: 'POST',
-    url: `/api/v1/members/${DEMO_MEMBER_IDS.saga}/timeline-templates`,
+    url: '/api/v1/entries',
     payload: {
-      title: 'Chores',
-      position: 2,
-      expectedTime: '09:00',
+      title: 'Put shoes by door',
+      type: 'task',
+      ownerMemberId: DEMO_MEMBER_IDS.saga,
+      calendarId: DEMO_CALENDAR_IDS.family,
+      startTime: `${date}T09:00:00.000Z`,
+      endTime: `${date}T09:15:00.000Z`,
+      timezone: 'UTC',
+      allDay: false,
+      reminders: [],
     },
   });
-  assert.equal(choresTemplate.statusCode, 201);
+  assert.equal(secondTask.statusCode, 201);
 
-  const firstTimeline = await app.inject({
+  const timeline = await app.inject({
     method: 'GET',
     url: `/api/v1/members/${DEMO_MEMBER_IDS.saga}/today-timeline?date=${date}`,
   });
-  assert.equal(firstTimeline.statusCode, 200);
+  assert.equal(timeline.statusCode, 200);
   assert.deepEqual(
-    firstTimeline.json().timeline.tasks.map((task: { title: string; position: number }) => ({ title: task.title, position: task.position })),
+    timeline.json().timeline.tasks.map((task: { title: string; source: string; linkedEntryId?: string }) => ({
+      title: task.title,
+      source: task.source,
+      linkedEntryId: task.linkedEntryId,
+    })),
     [
-      { title: 'Breakfast', position: 1 },
-      { title: 'Chores', position: 2 },
+      { title: 'Pack school bag', source: 'entry_task', linkedEntryId: firstTask.json().id },
+      { title: 'Put shoes by door', source: 'entry_task', linkedEntryId: secondTask.json().id },
     ],
   );
 
-  const updatedTemplate = await app.inject({
-    method: 'PATCH',
-    url: `/api/v1/members/${DEMO_MEMBER_IDS.saga}/timeline-templates/${breakfastTemplate.json().id}`,
+  await app.close();
+});
+
+test('deleting a generated entry task keeps it removed from the same day timeline', async () => {
+  const app = await createTestApp();
+  const date = '2026-04-24';
+
+  const settingsResponse = await app.inject({
+    method: 'PUT',
+    url: `/api/v1/members/${DEMO_MEMBER_IDS.saga}/timeline-settings`,
     payload: {
-      title: 'School breakfast',
-      expectedTime: '08:15',
+      enabled: true,
+      maxTasksPerDay: 10,
     },
   });
-  assert.equal(updatedTemplate.statusCode, 200);
+  assert.equal(settingsResponse.statusCode, 200);
 
-  const deletedTemplate = await app.inject({
-    method: 'DELETE',
-    url: `/api/v1/members/${DEMO_MEMBER_IDS.saga}/timeline-templates/${choresTemplate.json().id}`,
+  const taskResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/entries',
+    payload: {
+      title: 'Pack school bag',
+      type: 'task',
+      ownerMemberId: DEMO_MEMBER_IDS.saga,
+      calendarId: DEMO_CALENDAR_IDS.family,
+      startTime: `${date}T07:45:00.000Z`,
+      endTime: `${date}T08:00:00.000Z`,
+      timezone: 'UTC',
+      allDay: false,
+      reminders: [],
+    },
   });
-  assert.equal(deletedTemplate.statusCode, 204);
+  assert.equal(taskResponse.statusCode, 201);
+
+  const initialTimeline = await app.inject({
+    method: 'GET',
+    url: `/api/v1/members/${DEMO_MEMBER_IDS.saga}/today-timeline?date=${date}`,
+  });
+  assert.equal(initialTimeline.statusCode, 200);
+  assert.equal(initialTimeline.json().timeline.tasks.length, 1);
+
+  const deleteTaskResponse = await app.inject({
+    method: 'DELETE',
+    url: `/api/v1/members/${DEMO_MEMBER_IDS.saga}/today-timeline/tasks/${initialTimeline.json().timeline.tasks[0].id}`,
+  });
+  assert.equal(deleteTaskResponse.statusCode, 204);
 
   const refreshedTimeline = await app.inject({
     method: 'GET',
     url: `/api/v1/members/${DEMO_MEMBER_IDS.saga}/today-timeline?date=${date}`,
   });
   assert.equal(refreshedTimeline.statusCode, 200);
-  assert.deepEqual(
-    refreshedTimeline.json().timeline.tasks.map((task: { title: string; position: number; dueAt?: string }) => ({
-      title: task.title,
-      position: task.position,
-      dueAt: task.dueAt,
-    })),
-    [
-      {
-        title: 'School breakfast',
-        position: 1,
-        dueAt: `${date}T08:15:00.000Z`,
-      },
-    ],
-  );
+  assert.equal(refreshedTimeline.json().timeline.tasks.length, 0);
 
   await app.close();
 });
@@ -778,16 +812,22 @@ test('timeline confirmation is blocked until the due time is reached', async () 
   });
   assert.equal(settingsResponse.statusCode, 200);
 
-  const templateResponse = await app.inject({
+  const taskResponse = await app.inject({
     method: 'POST',
-    url: `/api/v1/members/${DEMO_MEMBER_IDS.saga}/timeline-templates`,
+    url: '/api/v1/entries',
     payload: {
       title: 'Leave for school',
-      position: 1,
-      expectedTime,
+      type: 'task',
+      ownerMemberId: DEMO_MEMBER_IDS.saga,
+      calendarId: DEMO_CALENDAR_IDS.family,
+      startTime: `${date}T${expectedTime}:00.000Z`,
+      endTime: `${date}T${expectedTime}:59.000Z`,
+      timezone: 'UTC',
+      allDay: false,
+      reminders: [],
     },
   });
-  assert.equal(templateResponse.statusCode, 201);
+  assert.equal(taskResponse.statusCode, 201);
 
   const timelineResponse = await app.inject({
     method: 'GET',
@@ -816,7 +856,7 @@ test('timeline confirmation is blocked until the due time is reached', async () 
   await app.close();
 });
 
-test('timeline milestone metadata is stored on templates and copied into generated tasks', async () => {
+test('timeline includes checklist tasks from member events', async () => {
   const app = await createTestApp();
   const date = '2026-04-24';
 
@@ -830,20 +870,25 @@ test('timeline milestone metadata is stored on templates and copied into generat
   });
   assert.equal(settingsResponse.statusCode, 200);
 
-  const templateResponse = await app.inject({
+  const eventResponse = await app.inject({
     method: 'POST',
-    url: `/api/v1/members/${DEMO_MEMBER_IDS.saga}/timeline-templates`,
+    url: '/api/v1/entries',
     payload: {
-      title: 'Finish homework',
-      position: 1,
-      expectedTime: '16:30',
-      isMilestone: true,
-      rewardText: 'Ice cream treat',
+      title: 'After school routine',
+      type: 'event',
+      ownerMemberId: DEMO_MEMBER_IDS.saga,
+      calendarId: DEMO_CALENDAR_IDS.family,
+      startTime: `${date}T16:30:00.000Z`,
+      endTime: `${date}T17:00:00.000Z`,
+      timezone: 'UTC',
+      allDay: false,
+      reminders: [],
+      checklist: [
+        { text: 'Put lunchbox in sink', isCompleted: false },
+      ],
     },
   });
-  assert.equal(templateResponse.statusCode, 201);
-  assert.equal(templateResponse.json().isMilestone, true);
-  assert.equal(templateResponse.json().rewardText, 'Ice cream treat');
+  assert.equal(eventResponse.statusCode, 201);
 
   const timelineResponse = await app.inject({
     method: 'GET',
@@ -851,46 +896,16 @@ test('timeline milestone metadata is stored on templates and copied into generat
   });
   assert.equal(timelineResponse.statusCode, 200);
   assert.deepEqual(
-    timelineResponse.json().timeline.tasks.map((task: { title: string; isMilestone: boolean; rewardText?: string }) => ({
+    timelineResponse.json().timeline.tasks.map((task: { title: string; source: string; linkedEntryId?: string }) => ({
       title: task.title,
-      isMilestone: task.isMilestone,
-      rewardText: task.rewardText,
+      source: task.source,
+      linkedEntryId: task.linkedEntryId,
     })),
     [
       {
-        title: 'Finish homework',
-        isMilestone: true,
-        rewardText: 'Ice cream treat',
-      },
-    ],
-  );
-
-  const updatedTemplateResponse = await app.inject({
-    method: 'PATCH',
-    url: `/api/v1/members/${DEMO_MEMBER_IDS.saga}/timeline-templates/${templateResponse.json().id}`,
-    payload: {
-      isMilestone: false,
-      rewardText: '',
-    },
-  });
-  assert.equal(updatedTemplateResponse.statusCode, 200);
-  assert.equal(updatedTemplateResponse.json().isMilestone, false);
-  assert.equal(updatedTemplateResponse.json().rewardText, undefined);
-
-  const refreshedTimeline = await app.inject({
-    method: 'GET',
-    url: `/api/v1/members/${DEMO_MEMBER_IDS.saga}/today-timeline?date=${date}`,
-  });
-  assert.equal(refreshedTimeline.statusCode, 200);
-  assert.deepEqual(
-    refreshedTimeline.json().timeline.tasks.map((task: { isMilestone: boolean; rewardText?: string }) => ({
-      isMilestone: task.isMilestone,
-      rewardText: task.rewardText,
-    })),
-    [
-      {
-        isMilestone: false,
-        rewardText: undefined,
+        title: 'Put lunchbox in sink',
+        source: 'event_derived_task',
+        linkedEntryId: `${eventResponse.json().id}#checklist:${eventResponse.json().checklist[0].id}`,
       },
     ],
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Bell,
   CalendarDays,
@@ -21,7 +21,7 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
-import type { AppSettings, AssistantDraft, DailyTimelineTemplateTask, Entry, Member, Calendar, ListTodayMemberTimelineResponse, MemberRole, MemberTimelineSettings, SyncProvider } from '@mental-load/contracts';
+import type { AppSettings, AssistantDraft, DailyTimelineTemplateTask, Entry, Member, Calendar, ListTodayMemberTimelineResponse, MemberRole, MemberTimelineSettings, SyncProvider, TimelineTaskInstance } from '@mental-load/contracts';
 import {
   askAssistant,
   connectSync,
@@ -55,6 +55,7 @@ import {
   createMemberTimelineTemplate,
   updateMemberTimelineTemplate,
   deleteMemberTimelineTemplate,
+  deleteMemberTimelineTask,
   type WeatherForecastResponse,
 } from '@/lib/api';
 import { TodayTimelineBoard } from '@/components/today-timeline-board';
@@ -101,6 +102,14 @@ type EventDraft = {
   reminder2CustomHours: string;
 };
 
+type TimelineQuickTaskDraft = {
+  title: string;
+  recurring: boolean;
+  time: string;
+  position: string;
+  treat: string;
+};
+
 type NavSection = 'dashboard' | 'planner' | 'timeline' | 'family' | 'settings';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -131,6 +140,7 @@ const REMINDER_OPTIONS: Array<{ value: Exclude<ReminderDraftMode, 'custom'>; lab
 
 export function DashboardApp() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [currentMonth, setCurrentMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -162,7 +172,7 @@ export function DashboardApp() {
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [assistantSuggestionBusy, setAssistantSuggestionBusy] = useState(false);
@@ -203,13 +213,38 @@ export function DashboardApp() {
     isMilestone: false,
     rewardText: '',
   });
+  const [timelineTaskDraftByMemberId, setTimelineTaskDraftByMemberId] = useState<Record<string, TimelineQuickTaskDraft>>({});
+  const [editingTimelineTaskId, setEditingTimelineTaskId] = useState<string | null>(null);
+  const [editingTimelineTaskDraft, setEditingTimelineTaskDraft] = useState<TimelineQuickTaskDraft>({ title: '', recurring: false, time: '', position: '', treat: '' });
+  const [showConfetti, setShowConfetti] = useState(false);
   const [draft, setDraft] = useState<EventDraft>(() => createDefaultDraft());
+
+  const navSectionFromQuery = useMemo<NavSection>(() => {
+    const value = searchParams.get('section');
+    if (value === 'dashboard' || value === 'planner' || value === 'timeline' || value === 'family' || value === 'settings') {
+      return value;
+    }
+    return 'dashboard';
+  }, [searchParams]);
 
   useEffect(() => {
     if (activeMemberId) {
       localStorage.setItem('activeMemberId', activeMemberId);
     }
   }, [activeMemberId]);
+
+  useEffect(() => {
+    setActiveNav(navSectionFromQuery);
+    setSettingsOpen(navSectionFromQuery === 'settings');
+  }, [navSectionFromQuery]);
+
+  useEffect(() => {
+    if (activeNav !== 'timeline' || dashboard.members.length === 0) {
+      return;
+    }
+
+    void Promise.all(dashboard.members.map((member) => loadTodayTimelineForMember(member.id)));
+  }, [activeNav, dashboard.members]);
 
   useEffect(() => {
     let active = true;
@@ -526,6 +561,7 @@ export function DashboardApp() {
         })),
       });
       await handleRefresh();
+      await refreshTimelinesIfVisible();
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Could not update checklist item');
     }
@@ -533,6 +569,14 @@ export function DashboardApp() {
 
   async function handleRefresh() {
     setCurrentMonth((current) => new Date(current));
+  }
+
+  async function refreshTimelinesIfVisible() {
+    if (activeNav !== 'timeline' || dashboard.members.length === 0) {
+      return;
+    }
+
+    await Promise.all(dashboard.members.map((member) => loadTodayTimelineForMember(member.id)));
   }
 
   async function handleCreateEntry(event: FormEvent<HTMLFormElement>) {
@@ -572,6 +616,7 @@ export function DashboardApp() {
 
       closeEntryComposer();
       await handleRefresh();
+      await refreshTimelinesIfVisible();
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : `Could not ${editingEntryId ? 'update' : 'create'} entry`);
     }
@@ -671,6 +716,11 @@ export function DashboardApp() {
 
   function handleNavClick(section: NavSection) {
     setActiveNav(section);
+
+    if (section === 'dashboard' || section === 'timeline' || section === 'family' || section === 'settings') {
+      router.replace(`/?section=${section}`);
+    }
+
     if (section === 'settings') {
       setSettingsOpen(true);
       return;
@@ -686,9 +736,6 @@ export function DashboardApp() {
     }
 
     if (section === 'timeline') {
-      void Promise.all(
-        dashboard.members.map((m) => loadTodayTimelineForMember(m.id)),
-      );
       return;
     }
 
@@ -702,6 +749,7 @@ export function DashboardApp() {
       setDeletingEntryId(entryId);
       await deleteEntry(entryId);
       await handleRefresh();
+      await refreshTimelinesIfVisible();
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Could not delete entry');
     } finally {
@@ -977,6 +1025,15 @@ export function DashboardApp() {
     }
   }
 
+  async function handleDeleteTodayTimelineTask(memberId: string, taskId: string) {
+    try {
+      await deleteMemberTimelineTask(memberId, taskId);
+      await loadTodayTimelineForMember(memberId);
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not delete timeline task');
+    }
+  }
+
   async function handleConfirmTodayTimelineTask(memberId: string, taskId: string) {
     try {
       const result = await confirmTodayTimelineTask(memberId, { taskId });
@@ -988,9 +1045,178 @@ export function DashboardApp() {
         },
       }));
       setCelebrationTaskId(taskId);
+      const confirmed = result.timeline.tasks.find((task) => task.id === taskId);
+      if (confirmed?.rewardText) {
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 1800);
+      }
       setTimeout(() => setCelebrationTaskId(undefined), 1400);
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Could not confirm timeline task');
+    }
+  }
+
+  function handleOpenTimelineTask(task: TimelineTaskInstance) {
+    const linkedEntryId = task.linkedEntryId?.split('#')[0];
+    if (!linkedEntryId) {
+      return;
+    }
+
+    const entry = dashboard.entries.find((item) => getEntryMutationId(item) === linkedEntryId);
+    if (!entry) {
+      return;
+    }
+
+    handleEditEntry(entry);
+  }
+
+  function getMemberCalendarId(memberId: string): string {
+    return dashboard.calendars.find((calendar) => calendar.ownerMemberId === memberId)?.id
+      ?? dashboard.calendars[0]?.id
+      ?? '';
+  }
+
+  function getTimelineTaskDraft(memberId: string): TimelineQuickTaskDraft {
+    return timelineTaskDraftByMemberId[memberId] ?? { title: '', recurring: false, time: '', position: '', treat: '' };
+  }
+
+  function setTimelineTaskDraft(memberId: string, patch: Partial<TimelineQuickTaskDraft>) {
+    setTimelineTaskDraftByMemberId((current) => {
+      const previous = current[memberId] ?? { title: '', recurring: false, time: '', position: '', treat: '' };
+      return {
+        ...current,
+        [memberId]: {
+          ...previous,
+          ...patch,
+        },
+      };
+    });
+  }
+
+  function buildTimelineTaskSchedule(date: string, timeValue: string, positionValue: string): { startTime: string; endTime: string } {
+    const normalized = normalizeTemplateExpectedTime(timeValue) ?? '09:00';
+    const [hoursRaw, minutesRaw] = normalized.split(':');
+    const hours = Number(hoursRaw ?? '9');
+    const minutes = Number(minutesRaw ?? '0');
+    const position = Math.max(0, Number(positionValue) || 0);
+
+    const start = new Date(`${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`);
+    if (!Number.isNaN(start.getTime()) && position > 0) {
+      start.setSeconds(Math.min(position - 1, 59));
+    }
+
+    const end = new Date(start.getTime() + (30 * 60 * 1000));
+    return {
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+    };
+  }
+
+  function extractTreatFromEntryLocation(location?: string): string {
+    if (!location) {
+      return '';
+    }
+    const trimmed = location.trim();
+    if (!trimmed.toUpperCase().startsWith('TREAT:')) {
+      return '';
+    }
+    return trimmed.slice(6).trim();
+  }
+
+  async function handleAddTimelineTask(memberId: string) {
+    const draft = getTimelineTaskDraft(memberId);
+    const title = draft.title.trim();
+    if (!title) {
+      setErrorText('Task name is required');
+      return;
+    }
+
+    if (draft.time.trim() && !normalizeTemplateExpectedTime(draft.time)) {
+      setErrorText('Task time must be in HH:MM format');
+      return;
+    }
+
+    const date = new Date().toISOString().slice(0, 10);
+    const schedule = buildTimelineTaskSchedule(date, draft.time, draft.position);
+    const treat = draft.treat.trim();
+
+    try {
+      await createEntry({
+        title,
+        type: 'task',
+        ownerMemberId: memberId,
+        calendarId: getMemberCalendarId(memberId),
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        timezone: 'UTC',
+        allDay: false,
+        reminders: [],
+        recurrenceRule: draft.recurring ? 'FREQ=DAILY' : undefined,
+        location: treat ? `TREAT:${treat}` : undefined,
+      });
+
+      setTimelineTaskDraftByMemberId((current) => ({
+        ...current,
+        [memberId]: { title: '', recurring: false, time: '', position: '', treat: '' },
+      }));
+      await handleRefresh();
+      await loadTodayTimelineForMember(memberId);
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not add timeline task');
+    }
+  }
+
+  function handleStartEditTimelineTask(entry: Entry) {
+    setEditingTimelineTaskId(entry.id);
+    const start = new Date(entry.startTime);
+    const hh = Number.isNaN(start.getTime()) ? '' : `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
+    const pos = Number.isNaN(start.getTime()) ? '' : String(start.getSeconds() > 0 ? start.getSeconds() + 1 : 0);
+    setEditingTimelineTaskDraft({
+      title: entry.title,
+      recurring: Boolean(entry.recurrenceRule),
+      time: hh,
+      position: pos,
+      treat: extractTreatFromEntryLocation(entry.location),
+    });
+  }
+
+  function handleCancelEditTimelineTask() {
+    setEditingTimelineTaskId(null);
+    setEditingTimelineTaskDraft({ title: '', recurring: false, time: '', position: '', treat: '' });
+  }
+
+  async function handleSaveTimelineTask(memberId: string, entryId: string) {
+    const title = editingTimelineTaskDraft.title.trim();
+    if (!title) {
+      setErrorText('Task name is required');
+      return;
+    }
+    if (editingTimelineTaskDraft.time.trim() && !normalizeTemplateExpectedTime(editingTimelineTaskDraft.time)) {
+      setErrorText('Task time must be in HH:MM format');
+      return;
+    }
+
+    const date = new Date().toISOString().slice(0, 10);
+    const schedule = buildTimelineTaskSchedule(date, editingTimelineTaskDraft.time, editingTimelineTaskDraft.position);
+    const previous = dashboard.entries.find((entry) => entry.id === entryId);
+    const previousTreat = extractTreatFromEntryLocation(previous?.location);
+    const location = editingTimelineTaskDraft.treat.trim()
+      ? `TREAT:${editingTimelineTaskDraft.treat.trim()}`
+      : (previousTreat ? undefined : previous?.location);
+
+    try {
+      await updateEntry(entryId, {
+        title,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        recurrenceRule: editingTimelineTaskDraft.recurring ? 'FREQ=DAILY' : undefined,
+        location,
+      });
+      handleCancelEditTimelineTask();
+      await handleRefresh();
+      await loadTodayTimelineForMember(memberId);
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not save task changes');
     }
   }
 
@@ -1001,9 +1227,6 @@ export function DashboardApp() {
     }
     setExpandedTemplatesMemberId(memberId);
     await loadTodayTimelineForMember(memberId);
-    if (!templatesByMemberId[memberId]) {
-      await loadTemplatesForMember(memberId);
-    }
   }
 
   async function handleAddTemplate(memberId: string) {
@@ -1365,7 +1588,7 @@ export function DashboardApp() {
       <div className="flex min-h-screen">
         <aside
           className={cn(
-            'hidden shrink-0 border-r border-sidebar-border bg-sidebar/80 py-5 backdrop-blur transition-all duration-300 md:flex md:flex-col',
+            'flex shrink-0 border-r border-sidebar-border bg-sidebar/80 py-5 backdrop-blur transition-all duration-300 flex-col',
             isSidebarCollapsed ? 'w-20 px-2' : 'w-72 px-4',
           )}
         >
@@ -2080,7 +2303,7 @@ export function DashboardApp() {
                 <div className="mb-5 flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-2xl font-semibold tracking-tight">Daily Timeline</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">View today&apos;s generated timeline for each member and edit the template list behind it.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">View today&apos;s generated timeline for each member and manage member tasks directly from this page.</p>
                   </div>
                 </div>
                 <div className="mb-4">
@@ -2089,16 +2312,18 @@ export function DashboardApp() {
                     timelinesByMemberId={todayTimelinesByMemberId}
                     celebrationTaskId={celebrationTaskId}
                     onConfirmTask={handleConfirmTodayTimelineTask}
+                    onDeleteTask={handleDeleteTodayTimelineTask}
+                    onSelectTask={(_memberId, task) => handleOpenTimelineTask(task)}
                   />
                 </div>
                 <div className="space-y-3">
                   {dashboard.members.map((member) => {
                     const isExpanded = expandedTemplatesMemberId === member.id;
-                    const templates = templatesByMemberId[member.id] ?? [];
                     const timelineEnabled = timelineSettingsByMemberId[member.id]?.enabled ?? false;
                     const todayTimeline = todayTimelinesByMemberId[member.id];
                     const isLoadingTodayTimeline = loadingTodayTimelineMemberId === member.id;
-                    const todayTasks = todayTimeline?.timeline.tasks ?? [];
+                    const todayTasks = (todayTimeline?.timeline.tasks ?? []).filter((task) => task.status !== 'skipped');
+                    const taskDraft = getTimelineTaskDraft(member.id);
                     return (
                       <div key={member.id} className="rounded-2xl border border-border/60 bg-card/55">
                         <button
@@ -2114,7 +2339,7 @@ export function DashboardApp() {
                               <div className="text-sm font-semibold">{member.name}</div>
                               <div className="text-xs text-muted-foreground">
                                 {timelineEnabled
-                                  ? `${todayTimeline ? todayTasks.length : '...'} tasks today${templates.length > 0 ? ` · ${templates.length} templates` : ''}`
+                                  ? `${todayTimeline ? todayTasks.length : '...'} tasks today`
                                   : 'Timeline disabled'}
                               </div>
                             </div>
@@ -2148,7 +2373,11 @@ export function DashboardApp() {
                                 </div>
                               ) : (
                                 <div className="space-y-2">
-                                  {todayTasks.map((task) => (
+                                  {todayTasks.map((task) => {
+                                    const linkedTaskEntry = task.source === 'entry_task'
+                                      ? dashboard.entries.find((entry) => entry.id === task.linkedEntryId)
+                                      : undefined;
+                                    return (
                                     <div key={task.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-background/40 px-3 py-2">
                                       <span className="w-6 shrink-0 text-center text-xs text-muted-foreground">{task.position}</span>
                                       <div className="flex-1">
@@ -2178,158 +2407,99 @@ export function DashboardApp() {
                                       )}>
                                         {task.status.replace('_', ' ')}
                                       </span>
+                                      {linkedTaskEntry ? (
+                                        <button
+                                          type="button"
+                                          aria-label={`Edit ${task.title}`}
+                                          onClick={() => handleStartEditTimelineTask(linkedTaskEntry)}
+                                          className="rounded-lg border border-border/60 p-1.5 text-muted-foreground hover:bg-accent/60"
+                                        >
+                                          <Edit2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      ) : null}
+                                      {task.status !== 'completed' && task.status !== 'skipped' ? (
+                                        <button
+                                          type="button"
+                                          aria-label={`Delete ${task.title}`}
+                                          onClick={() => void handleDeleteTodayTimelineTask(member.id, task.id)}
+                                          className="rounded-lg border border-border/60 p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      ) : null}
                                     </div>
-                                  ))}
+                                  )})}
                                 </div>
                               )}
                             </div>
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Template tasks (in order)</span>
-                                {templates.length === 0 && canManageMembers && (
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleSeedDefaultTemplates(member.id)}
-                                  className="rounded-lg border border-border/60 px-3 py-1.5 text-xs hover:bg-accent/60"
-                                >
-                                  Seed 10 defaults
-                                </button>
-                              )}
-                            </div>
-                            {templates.length === 0 ? (
-                              <div className="rounded-xl border border-dashed border-border/70 px-4 py-4 text-sm text-muted-foreground">No template tasks yet. Add one below or seed the 10 defaults.</div>
-                            ) : (
-                              <div className="space-y-2">
-                                {[...templates].sort((a, b) => a.position - b.position).map((task) => {
-                                  const isEditing = editingTemplateId === task.id;
-                                  return (
-                                    <div key={task.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-background/40 px-3 py-2">
-                                      {isEditing ? (
-                                        <>
-                                           <div className="grid flex-1 gap-2 md:grid-cols-[70px_minmax(0,1fr)_120px]">
-                                             <input
-                                               type="number"
-                                               min="1"
-                                               value={editingTemplateDraft.position}
-                                               onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, position: e.target.value }))}
-                                               className="rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
-                                               placeholder="Pos"
-                                             />
-                                             <input
-                                               type="text"
-                                               value={editingTemplateDraft.title}
-                                               onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, title: e.target.value }))}
-                                               className="rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-sm outline-none focus:border-primary/60"
-                                               placeholder="Task title"
-                                             />
-                                             <input
-                                               type="time"
-                                               value={editingTemplateDraft.expectedTime}
-                                               onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, expectedTime: e.target.value }))}
-                                               step={60}
-                                               className="rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
-                                             />
-                                           </div>
-                                           <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                                             <input
-                                               type="checkbox"
-                                               checked={editingTemplateDraft.isMilestone}
-                                               onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, isMilestone: e.target.checked }))}
-                                               className="h-4 w-4 rounded border-border/60"
-                                             />
-                                             Success milestone
-                                           </label>
-                                           <input
-                                             type="text"
-                                             value={editingTemplateDraft.rewardText}
-                                             onChange={(e) => setEditingTemplateDraft((prev) => ({ ...prev, rewardText: e.target.value }))}
-                                             className="min-w-[180px] flex-1 rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
-                                             placeholder="Treat or reward"
-                                           />
-                                           <button
-                                             type="button"
-                                             onClick={() => void handleSaveEditTemplate(member.id, task.id)}
-                                            className="rounded-lg bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
-                                          >
-                                            Save
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleCancelEditTemplate()}
-                                            className="rounded-lg border border-border/40 px-2 py-1 text-xs hover:bg-accent/60"
-                                          >
-                                            Cancel
-                                          </button>
-                                        </>
-                                       ) : (
-                                         <>
-                                           <span className="w-6 shrink-0 text-center text-xs text-muted-foreground">{task.position}</span>
-                                           <div className="flex-1">
-                                             <div className={cn('text-sm', !task.isActive && 'text-muted-foreground line-through')}>{task.title}</div>
-                                             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                                               <span className={cn('rounded-full px-2 py-0.5', task.isActive ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
-                                                 {task.isActive ? 'Recurring daily' : 'Paused'}
-                                               </span>
-                                               {task.isMilestone || task.rewardText ? (
-                                                 <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-700 dark:text-amber-300">
-                                                   Milestone{task.rewardText ? ` - ${task.rewardText}` : ''}
-                                                 </span>
-                                               ) : null}
-                                             </div>
-                                           </div>
-                                           {task.expectedTime ? <span className="text-xs text-muted-foreground">{formatTemplateExpectedTime(task.expectedTime)}</span> : null}
-                                           {canManageMembers ? (
-                                             <>
-                                               <button
-                                                 type="button"
-                                                 onClick={() => handleStartEditTemplate(task)}
-                                                 className="rounded-lg border border-border/40 p-1.5 hover:bg-accent/60"
-                                                 aria-label="Edit template task"
-                                               >
-                                                 <Edit2 className="h-3.5 w-3.5" />
-                                               </button>
-                                               <button
-                                                 type="button"
-                                                 onClick={() => void handleToggleTemplateActive(member.id, task.id, task.isActive)}
-                                                 className={cn('rounded-lg px-2 py-1 text-xs', task.isActive ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-muted text-muted-foreground hover:bg-accent')}
-                                               >
-                                                 {task.isActive ? 'Recurring' : 'Paused'}
-                                               </button>
-                                               <button
-                                                 type="button"
-                                                 onClick={() => void handleDeleteTemplate(member.id, task.id)}
-                                                 className="rounded-lg border border-border/40 p-1.5 hover:bg-destructive/10"
-                                                 aria-label="Delete template task"
-                                               >
-                                                 <Trash2 className="h-3.5 w-3.5" />
-                                               </button>
-                                             </>
-                                           ) : null}
-                                         </>
-                                       )}
-                                     </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                            {canManageMembers ? (
-                              <div className="grid gap-3 border-t border-border/40 pt-3 md:grid-cols-[minmax(0,1.4fr)_90px_130px_minmax(0,1fr)_auto] md:items-end">
-                                <label className="grid gap-1">
-                                  <span className="text-xs text-muted-foreground">Title</span>
+                            <div className="space-y-2 border-t border-border/40 pt-3">
+                              <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Add task</div>
+
+                              {editingTimelineTaskId ? (
+                                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-background/40 px-3 py-2">
                                   <input
-                                    value={newTemplateDraft.title}
-                                    onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, title: e.target.value }))}
-                                    placeholder="Task title"
-                                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
+                                    value={editingTimelineTaskDraft.title}
+                                    onChange={(event) => setEditingTimelineTaskDraft((current) => ({ ...current, title: event.target.value }))}
+                                    className="min-w-[180px] flex-1 rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-sm outline-none focus:border-primary/60"
+                                    placeholder="Task name"
                                   />
-                                </label>
-                                <label className="grid gap-1">
-                                  <span className="text-xs text-muted-foreground">Position</span>
+                                  <label className="inline-flex items-center gap-1 rounded-lg border border-border/60 px-2 py-1 text-xs">
+                                    <input
+                                      type="checkbox"
+                                      checked={editingTimelineTaskDraft.recurring}
+                                      onChange={(event) => setEditingTimelineTaskDraft((current) => ({ ...current, recurring: event.target.checked }))}
+                                    />
+                                    Recurring
+                                  </label>
+                                  <input
+                                    type="time"
+                                    value={editingTimelineTaskDraft.time}
+                                    onChange={(event) => setEditingTimelineTaskDraft((current) => ({ ...current, time: event.target.value }))}
+                                    className="rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
+                                  />
                                   <input
                                     type="number"
-                                    min={1}
-                                    value={newTemplateDraft.position}
-                                    onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, position: e.target.value }))}
-                                    placeholder={String((templates.length) + 1)}
+                                    min={0}
+                                    value={editingTimelineTaskDraft.position}
+                                    onChange={(event) => setEditingTimelineTaskDraft((current) => ({ ...current, position: event.target.value }))}
+                                    className="w-20 rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
+                                    placeholder="Pos"
+                                  />
+                                  <input
+                                    value={editingTimelineTaskDraft.treat}
+                                    onChange={(event) => setEditingTimelineTaskDraft((current) => ({ ...current, treat: event.target.value }))}
+                                    className="min-w-[140px] flex-1 rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
+                                    placeholder="Treat on complete"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const taskToEdit = todayTasks.find((task) => task.source === 'entry_task' && task.linkedEntryId === editingTimelineTaskId);
+                                      if (taskToEdit) {
+                                        void handleSaveTimelineTask(member.id, editingTimelineTaskId);
+                                      }
+                                    }}
+                                    className="rounded-lg bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCancelEditTimelineTask()}
+                                    className="rounded-lg border border-border/40 px-2 py-1 text-xs hover:bg-accent/60"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : null}
+
+                              <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_120px_90px_minmax(0,1fr)_auto] md:items-end">
+                                <label className="grid gap-1">
+                                  <span className="text-xs text-muted-foreground">Task name</span>
+                                  <input
+                                    value={taskDraft.title}
+                                    onChange={(event) => setTimelineTaskDraft(member.id, { title: event.target.value })}
+                                    placeholder="Task name"
                                     className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
                                   />
                                 </label>
@@ -2338,8 +2508,18 @@ export function DashboardApp() {
                                   <input
                                     type="time"
                                     step={60}
-                                    value={newTemplateDraft.expectedTime}
-                                    onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, expectedTime: e.target.value }))}
+                                    value={taskDraft.time}
+                                    onChange={(event) => setTimelineTaskDraft(member.id, { time: event.target.value })}
+                                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
+                                  />
+                                </label>
+                                <label className="grid gap-1">
+                                  <span className="text-xs text-muted-foreground">Pos</span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={taskDraft.position}
+                                    onChange={(event) => setTimelineTaskDraft(member.id, { position: event.target.value })}
                                     className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
                                   />
                                 </label>
@@ -2347,28 +2527,28 @@ export function DashboardApp() {
                                   <label className="flex items-center gap-2 text-xs text-muted-foreground">
                                     <input
                                       type="checkbox"
-                                      checked={newTemplateDraft.isMilestone}
-                                      onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, isMilestone: e.target.checked }))}
+                                      checked={taskDraft.recurring}
+                                      onChange={(event) => setTimelineTaskDraft(member.id, { recurring: event.target.checked })}
                                       className="h-4 w-4 rounded border-border/60"
                                     />
-                                    Success milestone
+                                    Recurring daily
                                   </label>
                                   <input
-                                    value={newTemplateDraft.rewardText}
-                                    onChange={(e) => setNewTemplateDraft((prev) => ({ ...prev, rewardText: e.target.value }))}
-                                    placeholder="Treat or reward"
+                                    value={taskDraft.treat}
+                                    onChange={(event) => setTimelineTaskDraft(member.id, { treat: event.target.value })}
+                                    placeholder="Treat on complete"
                                     className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
                                   />
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => void handleAddTemplate(member.id)}
+                                  onClick={() => void handleAddTimelineTask(member.id)}
                                   className="rounded-xl bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20"
                                 >
                                   Add task
                                 </button>
                               </div>
-                            ) : null}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -2382,6 +2562,29 @@ export function DashboardApp() {
           </section>
         </main>
       </div>
+
+      {showConfetti ? (
+        <div className="pointer-events-none fixed inset-0 z-[120] overflow-hidden">
+          {Array.from({ length: 90 }).map((_, index) => {
+            const left = (index * 11) % 100;
+            const delay = (index % 12) * 0.05;
+            const duration = 1.4 + ((index % 5) * 0.25);
+            const color = ['#f43f5e', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'][index % 5];
+            return (
+              <span
+                key={`confetti-${index}`}
+                className="timeline-confetti-piece"
+                style={{
+                  left: `${left}%`,
+                  animationDelay: `${delay}s`,
+                  animationDuration: `${duration}s`,
+                  backgroundColor: color,
+                }}
+              />
+            );
+          })}
+        </div>
+      ) : null}
 
       {isComposerOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 backdrop-blur-sm sm:items-center sm:px-4 sm:py-4">

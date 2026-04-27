@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, Clock3, Gift, Sparkles } from 'lucide-react';
+import { CheckCircle2, Clock3, Gift, Sparkles, Trash2 } from 'lucide-react';
 import type { ListTodayMemberTimelineResponse, Member, TimelineTaskInstance } from '@mental-load/contracts';
 import { cn } from '@/lib/utils';
 
@@ -8,12 +8,19 @@ type TodayTimelineBoardProps = {
   members: Member[];
   timelinesByMemberId: Record<string, ListTodayMemberTimelineResponse>;
   onConfirmTask: (memberId: string, taskId: string) => Promise<void>;
+  onDeleteTask?: (memberId: string, taskId: string) => Promise<void>;
+  onSelectTask?: (memberId: string, task: TimelineTaskInstance) => void;
   celebrationTaskId?: string;
 };
 
 type TimelineVisualState = 'done' | 'active' | 'upcoming' | 'skipped';
 
 const HOUR_MARKS = [0, 6, 12, 18, 24];
+const TASK_CARD_WIDTH_PX = 220;
+const TASK_CARD_HALF_PX = TASK_CARD_WIDTH_PX / 2;
+const TASK_LANE_TOP_START_PX = 116;
+const TASK_LANE_HEIGHT_PX = 122;
+const TASK_MIN_GAP_PERCENT = 24;
 
 function formatTaskTime(input?: string) {
   if (!input) {
@@ -102,20 +109,69 @@ function getStatusTone(status: TimelineTaskInstance['status']) {
   return 'bg-blue-500/15 text-blue-700 dark:text-blue-300';
 }
 
+function buildTaskLayout(tasks: TimelineTaskInstance[]) {
+  const leftByTaskId = new Map<string, number>();
+  const laneByTaskId = new Map<string, number>();
+  const laneLastLeft: number[] = [];
+
+  const positioned = tasks
+    .map((task, index) => ({
+      task,
+      index,
+      left: getTaskPositionPercent(task, index, tasks.length),
+    }))
+    .sort((a, b) => {
+      if (a.left !== b.left) {
+        return a.left - b.left;
+      }
+      return a.index - b.index;
+    });
+
+  for (const item of positioned) {
+    let chosenLane = -1;
+    for (let lane = 0; lane < laneLastLeft.length; lane += 1) {
+      if (item.left - laneLastLeft[lane] >= TASK_MIN_GAP_PERCENT) {
+        chosenLane = lane;
+        break;
+      }
+    }
+
+    if (chosenLane === -1) {
+      chosenLane = laneLastLeft.length;
+      laneLastLeft.push(item.left);
+    } else {
+      laneLastLeft[chosenLane] = item.left;
+    }
+
+    leftByTaskId.set(item.task.id, item.left);
+    laneByTaskId.set(item.task.id, chosenLane);
+  }
+
+  return {
+    leftByTaskId,
+    laneByTaskId,
+    laneCount: Math.max(1, laneLastLeft.length),
+  };
+}
+
 type MemberTimelineLaneProps = {
   member: Member;
   data: ListTodayMemberTimelineResponse;
   onConfirmTask: (memberId: string, taskId: string) => Promise<void>;
+  onDeleteTask?: (memberId: string, taskId: string) => Promise<void>;
+  onSelectTask?: (memberId: string, task: TimelineTaskInstance) => void;
   celebrationTaskId?: string;
 };
 
-function MemberTimelineLane({ member, data, onConfirmTask, celebrationTaskId }: MemberTimelineLaneProps) {
+function MemberTimelineLane({ member, data, onConfirmTask, onDeleteTask, onSelectTask, celebrationTaskId }: MemberTimelineLaneProps) {
   const tasks = data.timeline.tasks ?? [];
   const completed = tasks.filter((task) => task.status === 'completed').length;
   const milestones = tasks.filter((task) => task.isMilestone).length;
   const progress = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
   const activeTask = getSelectedTask(tasks);
   const dayProgressPercent = getDayProgressPercent(data.timeline.date);
+  const { leftByTaskId, laneByTaskId, laneCount } = buildTaskLayout(tasks);
+  const timelineHeight = Math.max(360, TASK_LANE_TOP_START_PX + laneCount * TASK_LANE_HEIGHT_PX + 28);
 
   return (
     <article className="rounded-[28px] border border-border/60 bg-background/35 p-5">
@@ -143,9 +199,9 @@ function MemberTimelineLane({ member, data, onConfirmTask, celebrationTaskId }: 
         </div>
       ) : (
         <>
-          <div className="mt-6 overflow-x-auto pb-2">
-            <div className="min-w-[900px]">
-              <div className="relative h-[360px] rounded-[26px] border border-border/50 bg-card/40 px-6 py-6">
+          <div className="mt-6 overflow-x-auto overflow-y-hidden overscroll-y-none snap-x snap-mandatory scroll-px-6 pb-2 [touch-action:pan-x]">
+            <div className="min-w-[900px] snap-start">
+              <div className="relative rounded-[26px] border border-border/50 bg-card/40 px-6 py-6" style={{ height: `${timelineHeight}px` }}>
                 <div className="pointer-events-none absolute inset-x-6 top-12 flex justify-between text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                   {HOUR_MARKS.map((hour) => (
                     <span key={hour}>{String(hour).padStart(2, '0')}:00</span>
@@ -167,14 +223,18 @@ function MemberTimelineLane({ member, data, onConfirmTask, celebrationTaskId }: 
 
                 {tasks.map((task, index) => {
                   const visualState = getVisualState(task.status);
-                  const left = getTaskPositionPercent(task, index, tasks.length);
-                  const topClass = index % 2 === 0 ? 'top-[116px]' : 'top-[210px]';
+                  const left = leftByTaskId.get(task.id) ?? getTaskPositionPercent(task, index, tasks.length);
+                  const lane = laneByTaskId.get(task.id) ?? 0;
+                  const top = TASK_LANE_TOP_START_PX + lane * TASK_LANE_HEIGHT_PX;
 
                   return (
                     <div
                       key={task.id}
-                      className={cn('absolute w-[220px] -translate-x-1/2', topClass)}
-                      style={{ left: `calc(1.5rem + (${left} / 100) * (100% - 3rem))` }}
+                      className="absolute w-[220px] -translate-x-1/2"
+                      style={{
+                        top: `${top}px`,
+                        left: `clamp(${TASK_CARD_HALF_PX}px, calc(1.5rem + (${left} / 100) * (100% - 3rem)), calc(100% - ${TASK_CARD_HALF_PX}px))`,
+                      }}
                     >
                       <div className="flex justify-center">
                         <div className={cn(
@@ -189,8 +249,11 @@ function MemberTimelineLane({ member, data, onConfirmTask, celebrationTaskId }: 
                       </div>
                       <div className={cn(
                         'mt-3 rounded-2xl border border-border/60 bg-background/90 p-3 shadow-lg shadow-black/10',
+                        onSelectTask && 'cursor-pointer transition hover:bg-accent/20',
                         celebrationTaskId === task.id && 'ring-2 ring-amber-400/60',
-                      )}>
+                      )}
+                      onClick={() => onSelectTask?.(member.id, task)}
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="text-sm font-semibold">{task.title}</div>
@@ -204,15 +267,33 @@ function MemberTimelineLane({ member, data, onConfirmTask, celebrationTaskId }: 
                               </span>
                             </div>
                           </div>
-                          {task.status === 'waiting_confirmation' ? (
-                            <button
-                              type="button"
-                              onClick={() => void onConfirmTask(member.id, task.id)}
-                              className="rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-lg shadow-primary/20"
-                            >
-                              Done
-                            </button>
-                          ) : null}
+                          <div className="flex items-center gap-1.5">
+                            {task.status === 'waiting_confirmation' ? (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void onConfirmTask(member.id, task.id);
+                                }}
+                                className="rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-lg shadow-primary/20"
+                              >
+                                Done
+                              </button>
+                            ) : null}
+                            {onDeleteTask && task.status !== 'completed' && task.status !== 'skipped' ? (
+                              <button
+                                type="button"
+                                aria-label="Delete task"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void onDeleteTask(member.id, task.id);
+                                }}
+                                className="rounded-xl border border-border/60 p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            ) : null}
+                          </div>
                         </div>
 
                         {task.isMilestone || task.rewardText ? (
@@ -265,7 +346,7 @@ function MemberTimelineLane({ member, data, onConfirmTask, celebrationTaskId }: 
   );
 }
 
-export function TodayTimelineBoard({ members, timelinesByMemberId, onConfirmTask, celebrationTaskId }: TodayTimelineBoardProps) {
+export function TodayTimelineBoard({ members, timelinesByMemberId, onConfirmTask, onDeleteTask, onSelectTask, celebrationTaskId }: TodayTimelineBoardProps) {
   const active = members
     .map((member) => ({ member, data: timelinesByMemberId[member.id] }))
     .filter((item) => item.data?.settings.enabled);
@@ -290,6 +371,8 @@ export function TodayTimelineBoard({ members, timelinesByMemberId, onConfirmTask
             member={member}
             data={data}
             onConfirmTask={onConfirmTask}
+            onDeleteTask={onDeleteTask}
+            onSelectTask={onSelectTask}
             celebrationTaskId={celebrationTaskId}
           />
         ))}

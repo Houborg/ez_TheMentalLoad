@@ -290,6 +290,12 @@ export async function deleteMemberTimelineTemplate(memberId: string, templateId:
   });
 }
 
+export async function deleteMemberTimelineTask(memberId: string, taskId: string) {
+  return fetchJson<void>(`/api/v1/members/${memberId}/today-timeline/tasks/${taskId}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function loadTodayTimeline(memberId: string, input?: { date?: string; timezone?: string }) {
   const params = new URLSearchParams();
   if (input?.date) {

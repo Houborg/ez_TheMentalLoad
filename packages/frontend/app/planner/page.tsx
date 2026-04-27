@@ -5,8 +5,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, CalendarDays, Edit2, LoaderCircle, Plus, Trash2, X } from 'lucide-react';
 import type { Entry, FoodPlanDay, FoodPlanItem, Member } from '@mental-load/contracts';
 import { AgendaView } from '@/components/agenda-view';
+import { AppSidebar } from '@/components/app-sidebar';
+import { EntryDetailsPopup } from '@/components/entry-details-popup';
 import { cn } from '@/lib/utils';
 import {
+  deleteEntry,
   deleteFoodPlan,
   getWeekStart,
   loadDashboardSnapshot,
@@ -14,6 +17,7 @@ import {
   loadSettings,
   loadUpcomingOccurrences,
   loadWeatherForecast,
+  updateEntry,
   updateFoodPlan,
   type WeatherForecastResponse,
 } from '@/lib/api';
@@ -40,6 +44,7 @@ export default function PlannerPage() {
   const [foodPlanDraft, setFoodPlanDraft] = useState<FoodPlanDraft | null>(null);
   const [foodPlanEditingKey, setFoodPlanEditingKey] = useState<string | null>(null);
   const [foodPlanSaving, setFoodPlanSaving] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -191,8 +196,12 @@ export default function PlannerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background px-4 py-6 text-foreground md:px-8">
-      <div className="mx-auto flex w-full max-w-none flex-col gap-5">
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="flex min-h-screen">
+        <AppSidebar activeSection="planner" members={members} />
+
+        <main className="flex min-h-screen flex-1 flex-col px-4 py-6 md:px-8">
+          <div className="mx-auto flex w-full max-w-none flex-col gap-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted-foreground">
@@ -231,6 +240,7 @@ export default function PlannerPage() {
                     entries={entries}
                     memberColorById={memberColorById}
                     dayWeatherByDate={dayWeatherByDate}
+                    onSelectEntry={(entry) => setSelectedEntry(entry)}
                   />
                 </div>
               </div>
@@ -311,6 +321,8 @@ export default function PlannerPage() {
             </section>
           </>
         )}
+          </div>
+        </main>
       </div>
 
       {foodPlanComposerOpen && foodPlanDraft ? (
@@ -379,6 +391,32 @@ export default function PlannerPage() {
           </div>
         </div>
       ) : null}
+
+      {selectedEntry ? (
+        <EntryDetailsPopup
+          entry={selectedEntry}
+          ownerName={members.find((member) => member.id === selectedEntry.ownerMemberId)?.name}
+          onClose={() => setSelectedEntry(null)}
+          onSave={async (patch) => {
+            await updateEntry(getEntryMutationId(selectedEntry.id), patch);
+            const refreshed = await loadUpcomingOccurrences(7);
+            setEntries(refreshed);
+          }}
+          onDelete={async () => {
+            await deleteEntry(getEntryMutationId(selectedEntry.id));
+            const refreshed = await loadUpcomingOccurrences(7);
+            setEntries(refreshed);
+          }}
+        />
+      ) : null}
     </div>
   );
+}
+
+function getEntryMutationId(id: string): string {
+  const separatorIndex = id.indexOf(':');
+  if (separatorIndex === -1) {
+    return id;
+  }
+  return id.slice(0, separatorIndex);
 }

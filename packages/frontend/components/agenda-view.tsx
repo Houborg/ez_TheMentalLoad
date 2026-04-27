@@ -1,4 +1,5 @@
 import type { Entry, Member } from '@mental-load/contracts';
+import { CalendarDays, Check, Circle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type AgendaViewProps = {
@@ -84,12 +85,26 @@ export function AgendaView({ members, entries, memberColorById, onSelectEntry, o
                             onSelectEntry?.(entry);
                           }}
                           className={cn(
-                            'w-full rounded px-2 py-1 text-left text-[11px] font-medium text-primary-foreground',
-                            memberColorById[member.id] ?? 'bg-primary',
+                            'w-full rounded-full border px-2.5 py-1 text-left text-[10px] font-semibold transition hover:brightness-95',
+                            entry.type === 'task'
+                              ? entry.status === 'completed'
+                                ? 'border-emerald-500/45 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                : 'border-amber-500/45 bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                              : 'border-primary/40 bg-primary/15 text-primary',
                           )}
                           title={entry.title}
                         >
-                          {entry.title}
+                          <span className="flex items-center gap-1.5">
+                            <span className={cn('h-1.5 w-1.5 rounded-full', memberColorById[member.id] ?? 'bg-primary')} />
+                            {entry.type === 'task' ? (
+                              entry.status === 'completed' ? <Check className="h-3 w-3" /> : <Circle className="h-3 w-3" />
+                            ) : (
+                              <CalendarDays className="h-3 w-3" />
+                            )}
+                            <span className={cn('truncate', entry.type === 'task' && entry.status === 'completed' && 'line-through')}>
+                              {entry.title}
+                            </span>
+                          </span>
                         </button>
                       ))}
                     </div>

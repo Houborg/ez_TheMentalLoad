@@ -43,7 +43,33 @@ export async function buildApp() {
   const infrastructure = await createRepositoryBundle();
   const { memberRepository, calendarRepository, entryRepository, foodPlanRepository, dailyTimelineRepository, reminderScheduler, persistence, close } = infrastructure;
   const entryService = new EntryService(entryRepository, eventBus, reminderScheduler);
-  const dailyTimelineService = new DailyTimelineService(dailyTimelineRepository);
+  const dailyTimelineService = new DailyTimelineService(dailyTimelineRepository, {
+    listOccurrences: (from, to) => entryService.listOccurrences(from, to),
+    findEntryById: (id) => entryRepository.findById(id),
+    createTaskEntry: async (input) => {
+      const calendars = await calendarRepository.list();
+      const ownerCalendar = calendars.find((calendar) => calendar.ownerMemberId === input.ownerMemberId) ?? calendars[0];
+      if (!ownerCalendar) {
+        throw new Error('No calendar available for task creation');
+      }
+
+      return entryService.createEntry({
+        title: input.title,
+        type: 'task',
+        ownerMemberId: input.ownerMemberId,
+        calendarId: ownerCalendar.id,
+        startTime: input.startTime,
+        endTime: input.endTime,
+        timezone: input.timezone,
+        allDay: false,
+        reminders: [],
+        checklist: [],
+        recurrenceRule: input.recurrenceRule,
+      });
+    },
+    updateEntry: (id, patch) => entryRepository.update(id, patch),
+    deleteEntry: (id) => entryRepository.delete(id),
+  });
   const settingsService = new SettingsService();
   const mailService = new MailService();
   const inboxBridgeService = new InboxBridgeService();
@@ -331,6 +357,17 @@ export async function buildApp() {
     return created;
   });
 
+  app.delete<{ Params: { memberId: string; taskId: string } }>('/api/v1/members/:memberId/today-timeline/tasks/:taskId', async (request, reply) => {
+    const deleted = await dailyTimelineService.deleteTask(request.params.memberId, request.params.taskId);
+    if (!deleted) {
+      reply.code(404);
+      return { message: 'Timeline task not found' };
+    }
+
+    reply.code(204);
+    return null;
+  });
+
   app.post<{ Params: { memberId: string }; Body: ConfirmTimelineTaskCompletionRequest }>('/api/v1/members/:memberId/today-timeline/confirm', async (request, reply) => {
     if (!request.body.taskId?.trim()) {
       reply.code(400);
@@ -363,7 +400,7 @@ export async function buildApp() {
       occurredAt: new Date().toISOString(),
     });
 
-    const date = confirmed.createdAt.slice(0, 10);
+    const date = normalizeIsoDate(confirmed.dueAt?.slice(0, 10)) ?? new Date().toISOString().slice(0, 10);
     const timeline = await dailyTimelineService.getTodayTimeline(request.params.memberId, date, 'UTC');
     return { ok: true, timeline };
   });
