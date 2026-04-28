@@ -7,6 +7,8 @@ COPY packages/frontend/package.json ./packages/frontend/package.json
 COPY packages/e2e/package.json ./packages/e2e/package.json
 RUN npm install
 COPY . .
+ARG NEXT_PUBLIC_WS_URL
+ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 RUN npm --workspace @mental-load/frontend run build
 EXPOSE 4173
 CMD ["npm", "--workspace", "@mental-load/frontend", "run", "start"]

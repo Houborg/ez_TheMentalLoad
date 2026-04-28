@@ -130,6 +130,8 @@ services:
       NODE_ENV: production
     networks:
       - mentalload_internal
+    ports:
+      - "3100:3000"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/v1/health || exit 1"]
       interval: 15s
@@ -177,8 +179,8 @@ services:
       context: ..
       dockerfile: packages/frontend/Dockerfile
       args:
-        # ws:// for plain HTTP Traefik; change to wss:// once you add TLS
-        NEXT_PUBLIC_WS_URL: ws://mentalload.${BASE_DOMAIN:-localhost}/ws
+        # Read from .env.production — set NEXT_PUBLIC_WS_URL=ws://<host>:<port>/ws there
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://mentalload.localhost/ws}
     image: ez-mentalload-frontend:local
     container_name: ez-mentalload-frontend
     restart: unless-stopped
@@ -187,7 +189,7 @@ services:
         condition: service_healthy
     environment:
       BACKEND_URL: http://backend:3000
-      NEXT_PUBLIC_WS_URL: ws://mentalload.${BASE_DOMAIN:-localhost}/ws
+      NEXT_PUBLIC_WS_URL: ""
     ports:
       - "4173:4173"
     networks:

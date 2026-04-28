@@ -176,7 +176,9 @@ export function DashboardApp() {
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [assistantSuggestionBusy, setAssistantSuggestionBusy] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'mail' | 'sync' | 'recurring' | 'birthdays' | 'weather'>('theme');
+  const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'mail' | 'sync' | 'recurring' | 'birthdays' | 'weather' | 'developer'>('theme');
+  const [updateInProgress, setUpdateInProgress] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState('');
   const [memberDraft, setMemberDraft] = useState<{ name: string; role: MemberRole; email: string; avatar: string }>({ name: '', role: 'parent', email: '', avatar: '' });
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [memberDeleteTarget, setMemberDeleteTarget] = useState<Member | null>(null);
@@ -1572,6 +1574,24 @@ export function DashboardApp() {
     }, 'Weather settings saved.');
   }
 
+  async function handleForceUpdate() {
+    try {
+      setUpdateInProgress(true);
+      setUpdateMessage('');
+      const response = await fetch('/api/v1/deploy/update', { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) {
+        setUpdateMessage(`Error: ${data.message || 'Update failed'}`);
+      } else {
+        setUpdateMessage('Production update initiated. Check server logs for details.');
+      }
+    } catch (error) {
+      setUpdateMessage(`Failed to trigger update: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setUpdateInProgress(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
@@ -2957,6 +2977,7 @@ export function DashboardApp() {
               { id: 'recurring', label: 'Recurring' },
               { id: 'birthdays', label: 'Birthdays' },
               { id: 'weather', label: 'Weather' },
+              { id: 'developer', label: 'Developer' },
             ].map(({ id, label }) => (
               <button
                 key={id}
@@ -3568,6 +3589,28 @@ export function DashboardApp() {
 
             {settingsTab === 'weather' ? (
               <WeatherSettingsPanel initial={weatherConfig} onSave={(value) => void handleSaveWeather(value)} />
+            ) : null}
+
+            {settingsTab === 'developer' ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm text-muted-foreground">
+                  Force a production update from the current GitHub repository.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleForceUpdate()}
+                  disabled={updateInProgress}
+                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-60"
+                >
+                  {updateInProgress && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                  Update production
+                </button>
+                {updateMessage && (
+                  <div className={cn('rounded-2xl border px-4 py-3 text-sm', updateMessage.includes('Error') || updateMessage.includes('Failed') ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-border/60 bg-background/30')}>
+                    {updateMessage}
+                  </div>
+                )}
+              </div>
             ) : null}
 
             {settingsMessage ? <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm">{settingsMessage}</div> : null}
