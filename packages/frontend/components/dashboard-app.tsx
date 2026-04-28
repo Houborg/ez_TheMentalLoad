@@ -179,6 +179,7 @@ export function DashboardApp() {
   const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'mail' | 'sync' | 'recurring' | 'birthdays' | 'weather' | 'developer'>('theme');
   const [updateInProgress, setUpdateInProgress] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
+  const [serverVersion, setServerVersion] = useState<{ version: string; commit: string; deployedAt: string | null } | null>(null);
   const [memberDraft, setMemberDraft] = useState<{ name: string; role: MemberRole; email: string; avatar: string }>({ name: '', role: 'parent', email: '', avatar: '' });
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [memberDeleteTarget, setMemberDeleteTarget] = useState<Member | null>(null);
@@ -1579,16 +1580,34 @@ export function DashboardApp() {
       setUpdateInProgress(true);
       setUpdateMessage('');
       const response = await fetch('/api/v1/deploy/update', { method: 'POST' });
-      const data = await response.json();
+      const data = (await response.json()) as { ok?: boolean; message?: string };
       if (!response.ok) {
-        setUpdateMessage(`Error: ${data.message || 'Update failed'}`);
+        setUpdateMessage(`Error: ${data.message ?? 'Update failed'}`);
       } else {
-        setUpdateMessage('Production update initiated. Check server logs for details.');
+        setUpdateMessage(data.message ?? 'Deploy triggered. Check server logs for progress.');
+        // Re-fetch server version after a short delay to confirm the update was applied.
+        setTimeout(() => { void fetchServerVersion(); }, 5000);
       }
     } catch (error) {
       setUpdateMessage(`Failed to trigger update: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setUpdateInProgress(false);
+    }
+  }
+
+  async function fetchServerVersion() {
+    try {
+      const res = await fetch('/api/v1/health', { cache: 'no-store' });
+      if (res.ok) {
+        const data = (await res.json()) as { version?: string; commit?: string; deployedAt?: string | null };
+        setServerVersion({
+          version: data.version ?? '0.0.0-dev',
+          commit: data.commit ?? 'local',
+          deployedAt: data.deployedAt ?? null,
+        });
+      }
+    } catch {
+      // ignore
     }
   }
 
@@ -3593,12 +3612,44 @@ export function DashboardApp() {
 
             {settingsTab === 'developer' ? (
               <div className="space-y-4">
+                {/* Version comparison card */}
+                <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 space-y-2">
+                  <div className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Version Info</div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                    <span className="text-muted-foreground">Frontend build</span>
+                    <span className="tabular-nums font-mono">
+                      v{process.env.NEXT_PUBLIC_APP_VERSION}
+                      {process.env.NEXT_PUBLIC_APP_COMMIT !== 'local'
+                        ? <span className="ml-1 text-muted-foreground/60">({process.env.NEXT_PUBLIC_APP_COMMIT})</span>
+                        : <span className="ml-1 text-amber-500/80">(dev)</span>}
+                    </span>
+                    <span className="text-muted-foreground">Server running</span>
+                    {serverVersion
+                      ? <span className="tabular-nums font-mono">
+                          v{serverVersion.version}
+                          <span className="ml-1 text-muted-foreground/60">({serverVersion.commit})</span>
+                          {serverVersion.version === process.env.NEXT_PUBLIC_APP_VERSION
+                            ? <span className="ml-2 text-emerald-500 text-xs">✓ in sync</span>
+                            : <span className="ml-2 text-amber-500 text-xs">⚠ mismatch</span>}
+                        </span>
+                      : <button type="button" onClick={() => void fetchServerVersion()} className="text-primary hover:underline text-left">Check server</button>}
+                  </div>
+                  {serverVersion?.deployedAt ? (
+                    <div className="text-xs text-muted-foreground/60">
+                      Deployed {new Date(serverVersion.deployedAt).toLocaleString()}
+                    </div>
+                  ) : null}
+                </div>
+
                 <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm text-muted-foreground">
                   Force a production update from the current GitHub repository.
+                  {!process.env.NEXT_PUBLIC_APP_COMMIT || process.env.NEXT_PUBLIC_APP_COMMIT === 'local'
+                    ? <span className="block mt-1 text-amber-500/80 text-xs">Running in dev mode — only git pull will run (no Docker rebuild).</span>
+                    : null}
                 </div>
                 <button
                   type="button"
-                  onClick={() => void handleForceUpdate()}
+                  onClick={() => { setServerVersion(null); void handleForceUpdate(); }}
                   disabled={updateInProgress}
                   className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-60"
                 >
@@ -3606,7 +3657,7 @@ export function DashboardApp() {
                   Update production
                 </button>
                 {updateMessage && (
-                  <div className={cn('rounded-2xl border px-4 py-3 text-sm', updateMessage.includes('Error') || updateMessage.includes('Failed') ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-border/60 bg-background/30')}>
+                  <div className={cn('rounded-2xl border px-4 py-3 text-sm', updateMessage.startsWith('Error') || updateMessage.startsWith('Failed') ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-border/60 bg-background/30')}>
                     {updateMessage}
                   </div>
                 )}
