@@ -79,33 +79,73 @@ fi
 # ── Step 2: Pull latest code ──────────────────────────────────
 echo ""
 echo "[ Step 2 ] Pulling latest code..."
-git pull
-ok "git pull complete"
+if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+  if git rev-parse --verify HEAD > /dev/null 2>&1; then
+    CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || true)"
+    if [[ -n "$CURRENT_BRANCH" ]] && git rev-parse --abbrev-ref "${CURRENT_BRANCH}@{upstream}" > /dev/null 2>&1; then
+      git pull --ff-only
+      ok "git pull complete"
+    else
+      warn "No upstream tracking branch configured for '${CURRENT_BRANCH:-unknown}'. Skipping git pull."
+    fi
+  else
+    warn "Git repository has no commits yet. Skipping git pull."
+  fi
+else
+  warn "Not a git worktree. Skipping git pull."
+fi
 
 # ── Step 2.5: Bump version & capture build metadata ───────────
 echo ""
 echo "[ Step 2.5 ] Bumping version and capturing build metadata..."
 
-# Increment the patch segment of the root package.json version.
-# npm version writes back to package.json but does NOT create a git tag/commit here.
-npm version patch --no-git-tag-version --workspaces-update=false > /dev/null
+# Increment the patch segment of the root package.json version when host npm is available.
+# If npm/node are missing on the host, keep the current package version and continue.
+HOST_CAN_BUMP=false
+if command -v npm > /dev/null 2>&1 && command -v node > /dev/null 2>&1; then
+  npm version patch --no-git-tag-version --workspaces-update=false > /dev/null
+  HOST_CAN_BUMP=true
+else
+  warn "npm/node not available on host; using existing package.json version"
+fi
 
-BUILD_VERSION=$(node -p "require('./package.json').version")
-BUILD_COMMIT=$(git rev-parse --short HEAD)
+if command -v node > /dev/null 2>&1; then
+  BUILD_VERSION=$(node -p "require('./package.json').version")
+else
+  BUILD_VERSION=$(grep -m1 '"version"' package.json | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+fi
+if git rev-parse --verify HEAD > /dev/null 2>&1; then
+  BUILD_COMMIT=$(git rev-parse --short HEAD)
+else
+  BUILD_COMMIT="local"
+fi
 BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 export BUILD_VERSION BUILD_COMMIT BUILD_TIME
+
+# Persist build metadata into the production env file so compose interpolation
+# and runtime container environment can use the same values.
+sed -i '/^BUILD_VERSION=/d;/^BUILD_COMMIT=/d;/^BUILD_TIME=/d' deploy/.env.production
+{
+  echo "BUILD_VERSION=${BUILD_VERSION}"
+  echo "BUILD_COMMIT=${BUILD_COMMIT}"
+  echo "BUILD_TIME=${BUILD_TIME}"
+} >> deploy/.env.production
 
 ok "Version  : v${BUILD_VERSION}"
 ok "Commit   : ${BUILD_COMMIT}"
 ok "Timestamp: ${BUILD_TIME}"
 
 # Commit the version bump so it's tracked in git history.
-if git diff --quiet package.json; then
-  warn "package.json unchanged — skipping version commit"
-else
+if [[ "$HOST_CAN_BUMP" == true ]] && git rev-parse --verify HEAD > /dev/null 2>&1 && ! git diff --quiet package.json; then
   git add package.json
   git commit -m "chore: bump version to ${BUILD_VERSION} [skip ci]"
   ok "Version bump committed"
+elif [[ "$HOST_CAN_BUMP" == true ]] && git rev-parse --verify HEAD > /dev/null 2>&1; then
+  warn "package.json unchanged — skipping version commit"
+elif [[ "$HOST_CAN_BUMP" == true ]]; then
+  warn "Skipping version commit (repository has no commits yet)"
+else
+  warn "Skipping version commit (version bump was not performed on host)"
 fi
 
 # ── Step 3: Validate compose syntax ──────────────────────────
