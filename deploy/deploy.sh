@@ -82,6 +82,32 @@ echo "[ Step 2 ] Pulling latest code..."
 git pull
 ok "git pull complete"
 
+# ── Step 2.5: Bump version & capture build metadata ───────────
+echo ""
+echo "[ Step 2.5 ] Bumping version and capturing build metadata..."
+
+# Increment the patch segment of the root package.json version.
+# npm version writes back to package.json but does NOT create a git tag/commit here.
+npm version patch --no-git-tag-version --workspaces-update=false > /dev/null
+
+BUILD_VERSION=$(node -p "require('./package.json').version")
+BUILD_COMMIT=$(git rev-parse --short HEAD)
+BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+export BUILD_VERSION BUILD_COMMIT BUILD_TIME
+
+ok "Version  : v${BUILD_VERSION}"
+ok "Commit   : ${BUILD_COMMIT}"
+ok "Timestamp: ${BUILD_TIME}"
+
+# Commit the version bump so it's tracked in git history.
+if git diff --quiet package.json; then
+  warn "package.json unchanged — skipping version commit"
+else
+  git add package.json
+  git commit -m "chore: bump version to ${BUILD_VERSION} [skip ci]"
+  ok "Version bump committed"
+fi
+
 # ── Step 3: Validate compose syntax ──────────────────────────
 echo ""
 echo "[ Step 3 ] Validating compose configuration..."
@@ -103,8 +129,11 @@ fi
 # ── Step 4: Build images ──────────────────────────────────────
 echo ""
 echo "[ Step 4 ] Building images (this may take a few minutes)..."
-$COMPOSE build --pull
-ok "Images built"
+$COMPOSE build --pull \
+  --build-arg BUILD_VERSION="${BUILD_VERSION}" \
+  --build-arg BUILD_COMMIT="${BUILD_COMMIT}" \
+  --build-arg BUILD_TIME="${BUILD_TIME}"
+ok "Images built (v${BUILD_VERSION} @ ${BUILD_COMMIT})"
 
 # ── Step 5: Deploy ────────────────────────────────────────────
 echo ""
@@ -147,6 +176,22 @@ echo ""
 echo "============================================================"
 if [[ "$ALL_GOOD" == true ]]; then
   ok "Deployment successful!"
+
+  # ── Version verification ────────────────────────────────────
+  echo ""
+  echo "Verifying deployed version..."
+  HEALTH_JSON=$(curl -sf "http://127.0.0.1:3100/api/v1/health" 2>/dev/null || echo "{}")
+  SERVER_VERSION=$(echo "$HEALTH_JSON" | grep -o '"version":"[^"]*"' | cut -d'"' -f4 || true)
+  SERVER_COMMIT=$(echo  "$HEALTH_JSON" | grep -o '"commit":"[^"]*"'  | cut -d'"' -f4 || true)
+
+  if [[ "$SERVER_VERSION" == "$BUILD_VERSION" ]]; then
+    ok "Version verified : v${SERVER_VERSION} (${SERVER_COMMIT:-unknown})"
+  else
+    warn "Version mismatch — server reported: '${SERVER_VERSION:-unknown}', expected: '${BUILD_VERSION}'"
+    warn "The containers may still be initialising. Re-check manually:"
+    warn "  curl http://127.0.0.1:3100/api/v1/health"
+  fi
+
   echo ""
   echo "  App URL (once BASE_DOMAIN is set):  http://mentalload.\${BASE_DOMAIN}"
   echo "  Backend health:  http://mentalload.\${BASE_DOMAIN}/api/v1/health"

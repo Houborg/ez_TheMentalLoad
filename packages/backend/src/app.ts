@@ -104,6 +104,9 @@ export async function buildApp() {
     status: 'ok' as const,
     service: 'mental-load-backend',
     persistence,
+    version: process.env.APP_VERSION ?? '0.0.0-dev',
+    commit: process.env.APP_COMMIT ?? 'local',
+    deployedAt: process.env.APP_DEPLOY_TIME ?? null,
     now: new Date().toISOString(),
   }));
 

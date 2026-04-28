@@ -106,6 +106,32 @@ export function AppSidebar({ activeSection, members = [], activeMemberId }: AppS
           </div>
         </div>
       ) : null}
+
+      {/* Version badge */}
+      <div className="mt-auto pt-6">
+        {!isSidebarCollapsed ? (
+          <div className="rounded-xl border border-border/40 bg-background/30 px-3 py-2">
+            <div className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-widest mb-0.5">Build</div>
+            <div className="text-[11px] tabular-nums text-muted-foreground/60 leading-snug">
+              v{process.env.NEXT_PUBLIC_APP_VERSION}
+              {process.env.NEXT_PUBLIC_APP_COMMIT !== 'local' ? (
+                <span className="ml-1 opacity-60">({process.env.NEXT_PUBLIC_APP_COMMIT})</span>
+              ) : (
+                <span className="ml-1 opacity-60">(dev)</span>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div
+            className="flex h-8 w-8 items-center justify-center rounded-xl border border-border/40 bg-background/30 mx-auto"
+            title={`v${process.env.NEXT_PUBLIC_APP_VERSION} (${process.env.NEXT_PUBLIC_APP_COMMIT})`}
+          >
+            <span className="text-[9px] font-bold text-muted-foreground/60 tabular-nums leading-none">
+              {process.env.NEXT_PUBLIC_APP_VERSION?.split('.').slice(0, 2).join('.')}
+            </span>
+          </div>
+        )}
+      </div>
     </aside>
   );
 }

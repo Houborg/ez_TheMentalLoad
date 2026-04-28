@@ -109,6 +109,10 @@ services:
     build:
       context: ..
       dockerfile: packages/backend/Dockerfile
+      args:
+        BUILD_VERSION: ${BUILD_VERSION:-0.0.0-dev}
+        BUILD_COMMIT: ${BUILD_COMMIT:-local}
+        BUILD_TIME: ${BUILD_TIME:-}
     image: ez-mentalload-backend:local
     container_name: ez-mentalload-backend
     restart: unless-stopped
@@ -149,6 +153,10 @@ services:
     build:
       context: ..
       dockerfile: packages/backend/Dockerfile
+      args:
+        BUILD_VERSION: ${BUILD_VERSION:-0.0.0-dev}
+        BUILD_COMMIT: ${BUILD_COMMIT:-local}
+        BUILD_TIME: ${BUILD_TIME:-}
     image: ez-mentalload-backend:local
     container_name: ez-mentalload-worker
     restart: unless-stopped
@@ -181,6 +189,9 @@ services:
       args:
         # Read from .env.production — set NEXT_PUBLIC_WS_URL=ws://<host>:<port>/ws there
         NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://mentalload.localhost/ws}
+        BUILD_VERSION: ${BUILD_VERSION:-0.0.0-dev}
+        BUILD_COMMIT: ${BUILD_COMMIT:-local}
+        BUILD_TIME: ${BUILD_TIME:-}
     image: ez-mentalload-frontend:local
     container_name: ez-mentalload-frontend
     restart: unless-stopped

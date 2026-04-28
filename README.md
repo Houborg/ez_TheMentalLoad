@@ -238,3 +238,8 @@ This repository now includes:
 - recurring entries and reminder job scheduling
 - ICS import and export
 - assistant draft and confirm workflow
+
+
+##Check version
+- curl http://pl0k.online:3100/api/v1/health
+- # → { "version": "0.1.4", "commit": "a1b2c3d", "deployedAt": "2026-04-28T..." }
