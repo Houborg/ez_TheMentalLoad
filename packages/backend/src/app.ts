@@ -162,6 +162,40 @@ export async function buildApp() {
     return result;
   });
 
+  app.post('/api/v1/deploy/update', async (request, reply) => {
+    try {
+      const { exec } = await import('child_process');
+      const { promisify } = await import('util');
+      const execAsync = promisify(exec);
+      
+      const repoPath = process.cwd();
+      
+      // Run git pull
+      try {
+        const { stdout: gitOutput } = await execAsync('git pull', { cwd: repoPath });
+        console.log('Git pull successful', { stdout: gitOutput });
+      } catch (gitError) {
+        console.warn('Git pull failed or not a git repo', { error: gitError });
+      }
+      
+      // Trigger deploy script asynchronously (don't wait for it)
+      exec(`cd ${repoPath} && bash deploy/deploy.sh 2>&1 | tee deploy.log`, (error, stdout, stderr) => {
+        if (error) {
+          console.error('Deploy script error', { error, stdout, stderr });
+        } else {
+          console.log('Deploy script completed', { stdout });
+        }
+      });
+      
+      reply.code(200);
+      return { ok: true, message: 'Update process initiated. Check server logs for progress.' };
+    } catch (error) {
+      console.error('Deploy update error', { error });
+      reply.code(500);
+      return { ok: false, message: error instanceof Error ? error.message : 'Update failed' };
+    }
+  });
+
   app.get('/api/v1/members', async () => memberRepository.list());
   app.post<{ Body: CreateMemberRequest }>('/api/v1/members', async (request, reply) => {
     const name = request.body.name?.trim();
