@@ -166,36 +166,49 @@ export async function buildApp() {
   });
 
   app.post('/api/v1/deploy/update', async (request, reply) => {
+    const webhookUrl = process.env.UPDATE_WEBHOOK_URL;
+    const webhookSecret = process.env.UPDATE_WEBHOOK_SECRET;
+
+    // Production mode: call the host-side webhook that has Docker access.
+    if (webhookUrl) {
+      try {
+        const webhookResponse = await fetch(`${webhookUrl}/update`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${webhookSecret ?? ''}`,
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(10_000),
+        });
+        const body = (await webhookResponse.json()) as { ok?: boolean; message?: string; error?: string };
+        if (!webhookResponse.ok) {
+          reply.code(502);
+          return { ok: false, message: body.message ?? body.error ?? `Webhook error ${webhookResponse.status}` };
+        }
+        reply.code(200);
+        return { ok: true, message: body.message ?? 'Deploy triggered via webhook.' };
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Update webhook unreachable', { error: msg });
+        reply.code(502);
+        return { ok: false, message: `Webhook unreachable: ${msg}. Is update-webhook.py running on the host?` };
+      }
+    }
+
+    // Dev / local mode: git pull only. tsx watch hot-reloads automatically.
     try {
       const { exec } = await import('child_process');
       const { promisify } = await import('util');
       const execAsync = promisify(exec);
-      
-      const repoPath = process.cwd();
-      
-      // Run git pull
-      try {
-        const { stdout: gitOutput } = await execAsync('git pull', { cwd: repoPath });
-        console.log('Git pull successful', { stdout: gitOutput });
-      } catch (gitError) {
-        console.warn('Git pull failed or not a git repo', { error: gitError });
-      }
-      
-      // Trigger deploy script asynchronously (don't wait for it)
-      exec(`cd ${repoPath} && bash deploy/deploy.sh 2>&1 | tee deploy.log`, (error, stdout, stderr) => {
-        if (error) {
-          console.error('Deploy script error', { error, stdout, stderr });
-        } else {
-          console.log('Deploy script completed', { stdout });
-        }
-      });
-      
+      const { stdout } = await execAsync('git pull', { cwd: process.cwd(), timeout: 30_000 });
+      const summary = stdout.trim() || 'Already up to date.';
+      console.log('Dev mode git pull:', summary);
       reply.code(200);
-      return { ok: true, message: 'Update process initiated. Check server logs for progress.' };
+      return { ok: true, message: `Dev mode – git pull: ${summary}` };
     } catch (error) {
-      console.error('Deploy update error', { error });
+      const msg = error instanceof Error ? error.message : 'git pull failed';
       reply.code(500);
-      return { ok: false, message: error instanceof Error ? error.message : 'Update failed' };
+      return { ok: false, message: msg };
     }
   });
 

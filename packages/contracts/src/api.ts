@@ -18,6 +18,9 @@ export interface ApiHealth {
   status: 'ok';
   service: string;
   persistence?: 'memory' | 'postgres';
+  version?: string;
+  commit?: string;
+  deployedAt?: string | null;
   now: string;
 }
 

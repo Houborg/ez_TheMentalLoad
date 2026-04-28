@@ -198,6 +198,28 @@ if [[ "$ALL_GOOD" == true ]]; then
   echo ""
   echo "  Traefik dashboard: http://SERVER_IP:8081"
   echo "  Portainer:         https://SERVER_IP:9443"
+
+  # ── Start / restart the update webhook ───────────────────────
+  echo ""
+  echo "Starting update-webhook.py on 127.0.0.1:9191..."
+  pkill -f "update-webhook.py" 2>/dev/null || true
+  sleep 1
+  _WEBHOOK_SECRET=$(grep -m1 "^UPDATE_WEBHOOK_SECRET=" deploy/.env.production | cut -d'=' -f2 | tr -d "\"'" || true)
+  if [[ -z "$_WEBHOOK_SECRET" || "$_WEBHOOK_SECRET" == "CHANGE_ME" ]]; then
+    warn "UPDATE_WEBHOOK_SECRET not set — the 'Update production' UI button will not work."
+    warn "Add it to deploy/.env.production, e.g.:"
+    warn "  UPDATE_WEBHOOK_SECRET=\$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+  else
+    export UPDATE_WEBHOOK_SECRET="$_WEBHOOK_SECRET"
+    nohup python3 deploy/update-webhook.py >> deploy/webhook.log 2>&1 &
+    WEBHOOK_PID=$!
+    sleep 1
+    if curl -sf http://127.0.0.1:9191/health > /dev/null 2>&1; then
+      ok "Update webhook running (PID ${WEBHOOK_PID})"
+    else
+      warn "Update webhook may not have started — check deploy/webhook.log"
+    fi
+  fi
 else
   fail "One or more containers failed. Rolling back..."
   $COMPOSE down
