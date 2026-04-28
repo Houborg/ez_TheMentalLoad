@@ -13,5 +13,12 @@ FROM node:20-alpine AS runtime
 WORKDIR /app
 COPY --from=base /app /app
 ENV NODE_ENV=production
+# Build-time version metadata (set by deploy.sh via --build-arg)
+ARG BUILD_VERSION=0.0.0-dev
+ARG BUILD_COMMIT=local
+ARG BUILD_TIME=
+ENV APP_VERSION=$BUILD_VERSION \
+    APP_COMMIT=$BUILD_COMMIT \
+    APP_DEPLOY_TIME=$BUILD_TIME
 EXPOSE 3000
 CMD ["npm", "--workspace", "@mental-load/backend", "run", "start"]
