@@ -142,9 +142,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    log.info("Starting on 127.0.0.1:%d  (repo: %s)", PORT, REPO_ROOT)
+    log.info("Starting on 0.0.0.0:%d  (repo: %s)", PORT, REPO_ROOT)
     log.info("Secret configured: %s", "yes" if SECRET else "NO — webhook will reject all requests")
-    server = http.server.HTTPServer(("127.0.0.1", PORT), Handler)
+    server = http.server.HTTPServer(("0.0.0.0", PORT), Handler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

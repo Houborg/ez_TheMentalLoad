@@ -219,8 +219,10 @@ services:
       - ez_testbench_proxy
     labels:
       - traefik.enable=true
+      - traefik.docker.network=ez_testbench_proxy
       - traefik.http.routers.mentalload.rule=Host(`mentalload.${BASE_DOMAIN:-localhost}`)
-      - traefik.http.routers.mentalload.entrypoints=web
+      - traefik.http.routers.mentalload.entrypoints=web,websecure
+      - traefik.http.routers.mentalload.tls=true
       - traefik.http.services.mentalload.loadbalancer.server.port=4173
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4173/ || exit 1"]
