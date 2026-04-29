@@ -18,6 +18,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // API callers should receive JSON errors instead of HTML redirects.
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+  }
+
   // Not authenticated — redirect to login, preserving the intended destination.
   const loginUrl = new URL('/login', request.url);
   if (pathname !== '/') {
