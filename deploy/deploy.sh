@@ -48,6 +48,9 @@ if [[ ! -f "deploy/.env.production" ]]; then
   exit 1
 fi
 
+BASE_DOMAIN_VALUE=$(grep -m1 '^BASE_DOMAIN=' deploy/.env.production | cut -d'=' -f2- | tr -d '"' | tr -d "'" | xargs)
+APP_HOST="mentalload.${BASE_DOMAIN_VALUE}"
+
 if grep -q "CHANGE_ME" deploy/.env.production; then
   fail "deploy/.env.production still contains CHANGE_ME placeholders. Fill them in first."
   exit 1
@@ -210,6 +213,32 @@ for CONTAINER in ez-mentalload-backend ez-mentalload-frontend; do
     ok "$CONTAINER logs look clean"
   fi
 done
+
+echo ""
+echo "Running origin and public routing checks..."
+if [[ -n "$BASE_DOMAIN_VALUE" && "$BASE_DOMAIN_VALUE" != "CHANGE_ME" ]]; then
+  if curl -sS -I -H "Host: ${APP_HOST}" http://127.0.0.1 > /dev/null; then
+    ok "Origin HTTP host-header check passed for ${APP_HOST}"
+  else
+    fail "Origin HTTP host-header check failed for ${APP_HOST}"
+    ALL_GOOD=false
+  fi
+
+  if curl -sS -k -I --resolve "${APP_HOST}:443:127.0.0.1" "https://${APP_HOST}" > /dev/null; then
+    ok "Origin HTTPS resolve check passed for ${APP_HOST}"
+  else
+    fail "Origin HTTPS resolve check failed for ${APP_HOST}"
+    ALL_GOOD=false
+  fi
+
+  if curl -sS -I "https://${APP_HOST}" > /dev/null; then
+    ok "Public HTTPS check passed for ${APP_HOST}"
+  else
+    warn "Public HTTPS check failed for ${APP_HOST} (may be DNS/cert propagation)"
+  fi
+else
+  warn "BASE_DOMAIN is empty or placeholder in deploy/.env.production; skipping host-based Traefik checks"
+fi
 
 # ── Step 7: Report ────────────────────────────────────────────
 echo ""
