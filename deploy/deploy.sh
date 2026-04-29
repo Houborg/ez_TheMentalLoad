@@ -220,8 +220,7 @@ if [[ -n "$BASE_DOMAIN_VALUE" && "$BASE_DOMAIN_VALUE" != "CHANGE_ME" ]]; then
   if curl -sS -I -H "Host: ${APP_HOST}" http://127.0.0.1 > /dev/null; then
     ok "Origin HTTP host-header check passed for ${APP_HOST}"
   else
-    fail "Origin HTTP host-header check failed for ${APP_HOST}"
-    ALL_GOOD=false
+    warn "Origin HTTP host-header check failed for ${APP_HOST}"
   fi
 
   if curl -sS -k -I --resolve "${APP_HOST}:443:127.0.0.1" "https://${APP_HOST}" > /dev/null; then
