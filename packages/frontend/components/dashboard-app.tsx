@@ -1580,11 +1580,20 @@ export function DashboardApp() {
       setUpdateInProgress(true);
       setUpdateMessage('');
       const response = await fetch('/api/v1/deploy/update', { method: 'POST' });
-      const data = (await response.json()) as { ok?: boolean; message?: string };
+      const contentType = response.headers.get('content-type') ?? '';
+      const data = contentType.includes('application/json')
+        ? (await response.json()) as { ok?: boolean; message?: string }
+        : undefined;
       if (!response.ok) {
-        setUpdateMessage(`Error: ${data.message ?? 'Update failed'}`);
+        if (response.status === 401) {
+          setUpdateMessage('Error: Session expired. Please log in again.');
+          return;
+        }
+
+        const fallbackText = data?.message ?? (await response.text()).trim();
+        setUpdateMessage(`Error: ${fallbackText || 'Update failed'}`);
       } else {
-        setUpdateMessage(data.message ?? 'Deploy triggered. Check server logs for progress.');
+        setUpdateMessage(data?.message ?? 'Deploy triggered. Check server logs for progress.');
         // Re-fetch server version after a short delay to confirm the update was applied.
         setTimeout(() => { void fetchServerVersion(); }, 5000);
       }
