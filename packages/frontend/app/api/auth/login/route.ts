@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { createSessionToken, validateCredentials, COOKIE_NAME } from '@/lib/auth';
+import { createSessionToken, validateCredentials, COOKIE_NAME, isHttpsRequest } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -18,20 +18,20 @@ export async function POST(request: NextRequest) {
   const valid = validateCredentials(username, password);
 
   if (!valid) {
-    // Artificial delay so timing attacks learn nothing useful.
     await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 200));
     return NextResponse.json({ message: 'Invalid credentials' }, { status: 401 });
   }
 
   const token = await createSessionToken();
+  const secure = isHttpsRequest(request.headers, request.url);
 
   const response = NextResponse.json({ ok: true });
   response.cookies.set(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure,
     sameSite: 'strict',
     path: '/',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7,
   });
 
   return response;

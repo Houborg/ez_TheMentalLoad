@@ -5,7 +5,6 @@
 
 export const COOKIE_NAME = 'ml_session';
 
-/** Message that is HMAC-signed to form the session token. */
 const SESSION_PAYLOAD = 'ml:authenticated';
 
 function getSecret(): string {
@@ -25,7 +24,6 @@ async function importKey(secret: string): Promise<CryptoKey> {
   );
 }
 
-/** Derives the expected session token for the current secret. */
 export async function createSessionToken(): Promise<string> {
   const key = await importKey(getSecret());
   const sig = await crypto.subtle.sign(
@@ -38,7 +36,6 @@ export async function createSessionToken(): Promise<string> {
     .join('');
 }
 
-/** Verifies a session token in constant time. Returns true if valid. */
 export async function verifySessionToken(token: string): Promise<boolean> {
   try {
     const key = await importKey(getSecret());
@@ -56,12 +53,10 @@ export async function verifySessionToken(token: string): Promise<boolean> {
   }
 }
 
-/** Validates plaintext credentials. Both checks always run to avoid timing leaks. */
 export function validateCredentials(username: string, password: string): boolean {
   const validUsername = process.env.AUTH_USERNAME ?? 'DEV';
   const validPassword = process.env.AUTH_PASSWORD ?? 'TheMentalLoad2026';
 
-  // XOR-based constant-time compare for each field
   const checkField = (input: string, valid: string): boolean => {
     let diff = input.length ^ valid.length;
     const len = Math.max(input.length, valid.length);
@@ -74,4 +69,13 @@ export function validateCredentials(username: string, password: string): boolean
   const usernameOk = checkField(username, validUsername);
   const passwordOk = checkField(password, validPassword);
   return usernameOk && passwordOk;
+}
+
+/**
+ * Returns true when the request arrived over HTTPS — either directly
+ * or via a reverse proxy that set x-forwarded-proto.
+ * Used to decide whether to mark cookies as Secure.
+ */
+export function isHttpsRequest(headers: Headers, url: string): boolean {
+  return headers.get('x-forwarded-proto') === 'https' || url.startsWith('https://');
 }
