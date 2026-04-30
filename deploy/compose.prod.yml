@@ -137,7 +137,7 @@ services:
       APP_DEPLOY_TIME: ${BUILD_TIME:-}
       # Calls the host-side update webhook (deploy/update-webhook.py)
       UPDATE_WEBHOOK_URL: http://host.docker.internal:9191
-      UPDATE_WEBHOOK_SECRET: ${UPDATE_WEBHOOK_SECRET:-}
+      # UPDATE_WEBHOOK_SECRET comes from env_file (.env.production) — do not override here
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
