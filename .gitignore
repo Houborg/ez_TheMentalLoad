@@ -8,6 +8,10 @@ test-results/
 .env
 .env.local
 npm-debug.log*
+*.log
+*-output.txt
+.eslintcache
+tsconfig.tsbuildinfo
 
 # Compiled contract artifacts (source-of-truth is .ts files)
 packages/contracts/src/*.js
