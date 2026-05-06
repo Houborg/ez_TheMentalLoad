@@ -1,39 +1,37 @@
 # ============================================================
-# ez_TheMentalLoad — Production Compose (ez_testbench target)
+# ez_TheMentalLoad — Production Compose (Testbench / Cloudflare Tunnel)
 # ============================================================
-# Follows the EZ Testbench Deployment Rules (Deployment_rules/)
+# Routing: Cloudflare Tunnel (NOT Traefik).
+#   - All services join the external `testbench` Docker network.
+#   - Tunnel ingress: mentalload.pl0k.online → http://mentalload-frontend:4173
+#   - No Traefik labels needed.
 #
-# Before first use on the server:
-#   cp deploy/.env.production.example deploy/.env.production
-#   # Edit deploy/.env.production and fill in all CHANGE_ME values
+# Build context is the absolute path on the server.
+# Env vars are set inline — no .env file required.
 #
-# To deploy / update:
-#   ./deploy/deploy.sh
-#
-# Networks
-#   mentalload_internal  — private bridge; postgres, redis, ollama, backend, worker
-#   ez_testbench_proxy   — external; Traefik routes frontend via BASE_DOMAIN
+# Deploy via Testbench UI → Managed Apps → mentalload → Redeploy
+# Or manually:
+#   docker compose -f /home/mhouborg/testbench/TestBench/data/apps/mentalload/docker-compose.yml \
+#     -p mentalload up -d --build --remove-orphans
 # ============================================================
 
 services:
 
   # ── Database ──────────────────────────────────────────────
-  postgres:
+  mentalload-postgres:
     image: postgres:16-alpine
-    container_name: ez-mentalload-postgres
+    container_name: mentalload-postgres
     restart: unless-stopped
-    env_file:
-      - .env.production
     environment:
       POSTGRES_DB: mental_load
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-CHANGE_ME}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     volumes:
       - mentalload_postgres_data:/var/lib/postgresql/data
     networks:
-      - mentalload_internal
+      - testbench
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d mental_load"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mental_load"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -45,14 +43,14 @@ services:
           memory: 256M
 
   # ── Cache / Queue ─────────────────────────────────────────
-  redis:
+  mentalload-redis:
     image: redis:7-alpine
-    container_name: ez-mentalload-redis
+    container_name: mentalload-redis
     restart: unless-stopped
     volumes:
       - mentalload_redis_data:/data
     networks:
-      - mentalload_internal
+      - testbench
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -66,14 +64,14 @@ services:
           memory: 128M
 
   # ── AI / Ollama ───────────────────────────────────────────
-  ollama:
+  mentalload-ollama:
     image: ollama/ollama:0.6.5
-    container_name: ez-mentalload-ollama
+    container_name: mentalload-ollama
     restart: unless-stopped
     volumes:
       - mentalload_ollama_data:/root/.ollama
     networks:
-      - mentalload_internal
+      - testbench
     healthcheck:
       test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/11434"]
       interval: 30s
@@ -86,18 +84,18 @@ services:
           cpus: "2.0"
           memory: 4096M
 
-  ollama-init:
+  mentalload-ollama-init:
     image: ollama/ollama:0.6.5
-    container_name: ez-mentalload-ollama-init
+    container_name: mentalload-ollama-init
     depends_on:
-      ollama:
+      mentalload-ollama:
         condition: service_healthy
     environment:
-      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_HOST: http://mentalload-ollama:11434
     command: ["pull", "llama3.2:3b"]
     restart: on-failure
     networks:
-      - mentalload_internal
+      - testbench
     deploy:
       resources:
         limits:
@@ -105,45 +103,32 @@ services:
           memory: 256M
 
   # ── Backend API ───────────────────────────────────────────
-  backend:
+  mentalload-backend:
     build:
-      context: ..
+      context: /home/mhouborg/ez_TheMentalLoad
       dockerfile: packages/backend/Dockerfile
-      args:
-        BUILD_VERSION: ${BUILD_VERSION:-0.0.0-dev}
-        BUILD_COMMIT: ${BUILD_COMMIT:-local}
-        BUILD_TIME: ${BUILD_TIME:-}
-    image: ez-mentalload-backend:local
-    container_name: ez-mentalload-backend
+    image: mentalload-backend:local
+    container_name: mentalload-backend
     restart: unless-stopped
     depends_on:
-      postgres:
+      mentalload-postgres:
         condition: service_healthy
-      redis:
+      mentalload-redis:
         condition: service_healthy
-      ollama:
+      mentalload-ollama:
         condition: service_started
-    env_file:
-      - .env.production
     environment:
-      PORT: 3000
+      PORT: "3000"
       PERSISTENCE_DRIVER: postgres
-      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-CHANGE_ME}@postgres:5432/mental_load
-      REDIS_URL: redis://redis:6379
-      OLLAMA_URL: http://ollama:11434
+      DATABASE_URL: postgresql://postgres:postgres@mentalload-postgres:5432/mental_load
+      REDIS_URL: redis://mentalload-redis:6379
+      OLLAMA_URL: http://mentalload-ollama:11434
+      SMTP_HOST: smtp.simply.dk
+      SMTP_PORT: "587"
+      DEFAULT_TIMEZONE: Europe/Copenhagen
       NODE_ENV: production
-      APP_VERSION: ${BUILD_VERSION:-0.0.0-dev}
-      APP_COMMIT: ${BUILD_COMMIT:-local}
-      APP_DEPLOY_TIME: ${BUILD_TIME:-}
-      # Calls the host-side update webhook (deploy/update-webhook.py)
-      UPDATE_WEBHOOK_URL: http://host.docker.internal:9191
-      # UPDATE_WEBHOOK_SECRET comes from env_file (.env.production) — do not override here
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
-      - mentalload_internal
-    ports:
-      - "3100:3000"
+      - testbench
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/v1/health || exit 1"]
       interval: 15s
@@ -157,35 +142,29 @@ services:
           memory: 512M
 
   # ── Reminder Worker ───────────────────────────────────────
-  worker:
+  mentalload-worker:
     build:
-      context: ..
+      context: /home/mhouborg/ez_TheMentalLoad
       dockerfile: packages/backend/Dockerfile
-      args:
-        BUILD_VERSION: ${BUILD_VERSION:-0.0.0-dev}
-        BUILD_COMMIT: ${BUILD_COMMIT:-local}
-        BUILD_TIME: ${BUILD_TIME:-}
-    image: ez-mentalload-backend:local
-    container_name: ez-mentalload-worker
+    image: mentalload-backend:local
+    container_name: mentalload-worker
     restart: unless-stopped
     depends_on:
-      postgres:
+      mentalload-postgres:
         condition: service_healthy
-      redis:
+      mentalload-redis:
         condition: service_healthy
-    env_file:
-      - .env.production
     environment:
       PERSISTENCE_DRIVER: postgres
-      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-CHANGE_ME}@postgres:5432/mental_load
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://postgres:postgres@mentalload-postgres:5432/mental_load
+      REDIS_URL: redis://mentalload-redis:6379
+      SMTP_HOST: smtp.simply.dk
+      SMTP_PORT: "587"
+      DEFAULT_TIMEZONE: Europe/Copenhagen
       NODE_ENV: production
-      APP_VERSION: ${BUILD_VERSION:-0.0.0-dev}
-      APP_COMMIT: ${BUILD_COMMIT:-local}
-      APP_DEPLOY_TIME: ${BUILD_TIME:-}
     command: ["npm", "--workspace", "@mental-load/backend", "run", "start:worker"]
     networks:
-      - mentalload_internal
+      - testbench
     deploy:
       resources:
         limits:
@@ -193,37 +172,26 @@ services:
           memory: 256M
 
   # ── Frontend ──────────────────────────────────────────────
-  frontend:
+  mentalload-frontend:
     build:
-      context: ..
+      context: /home/mhouborg/ez_TheMentalLoad
       dockerfile: packages/frontend/Dockerfile
       args:
-        # Read from .env.production — set NEXT_PUBLIC_WS_URL=ws://<host>:<port>/ws there
-        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://mentalload.localhost/ws}
-        BUILD_VERSION: ${BUILD_VERSION:-0.0.0-dev}
-        BUILD_COMMIT: ${BUILD_COMMIT:-local}
-        BUILD_TIME: ${BUILD_TIME:-}
-    image: ez-mentalload-frontend:local
-    container_name: ez-mentalload-frontend
+        # Compiled into the client bundle at build time — must be wss:// on HTTPS
+        NEXT_PUBLIC_WS_URL: wss://mentalload.pl0k.online/ws
+    image: mentalload-frontend:local
+    container_name: mentalload-frontend
     restart: unless-stopped
     depends_on:
-      backend:
+      mentalload-backend:
         condition: service_healthy
     environment:
-      BACKEND_URL: http://backend:3000
+      BACKEND_URL: http://mentalload-backend:3000
       NEXT_PUBLIC_WS_URL: ""
     ports:
       - "4173:4173"
     networks:
-      - mentalload_internal
-      - ez_testbench_proxy
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=ez_testbench_proxy
-      - traefik.http.routers.mentalload.rule=Host(`mentalload.${BASE_DOMAIN:-localhost}`)
-      - traefik.http.routers.mentalload.entrypoints=web,websecure
-      - traefik.http.routers.mentalload.tls=true
-      - traefik.http.services.mentalload.loadbalancer.server.port=4173
+      - testbench
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4173/ || exit 1"]
       interval: 30s
@@ -244,7 +212,5 @@ volumes:
 
 # ── Networks ───────────────────────────────────────────────
 networks:
-  mentalload_internal:
-    driver: bridge
-  ez_testbench_proxy:
-    external: true   # Must already exist — created by ez_testbench core
+  testbench:
+    external: true   # Created by Testbench core; cloudflared lives here
