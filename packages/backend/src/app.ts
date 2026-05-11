@@ -42,14 +42,32 @@ export async function buildApp() {
   const eventBus = new DomainEventBus();
   const infrastructure = await createRepositoryBundle();
   const { memberRepository, calendarRepository, entryRepository, foodPlanRepository, dailyTimelineRepository, reminderScheduler, persistence, close } = infrastructure;
-  // Seed a shared "Family" calendar if the app has no calendars yet.
+  // On startup: ensure every member has a personal calendar, and a shared Family calendar exists.
+  const memberColors = ['#6366f1', '#f59e0b', '#ec4899', '#14b8a6', '#f97316', '#8b5cf6', '#06b6d4', '#84cc16'];
+  const allMembers = await memberRepository.list();
   const existingCalendars = await calendarRepository.list();
-  if (existingCalendars.length === 0) {
+  const calendarOwners = new Set(existingCalendars.map((c) => c.ownerMemberId).filter(Boolean));
+
+  for (const member of allMembers) {
+    if (!calendarOwners.has(member.id)) {
+      const color = memberColors[existingCalendars.length % memberColors.length];
+      await calendarRepository.create({
+        id: uuid(),
+        name: member.name,
+        color,
+        ownerMemberId: member.id,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  const hasSharedCalendar = existingCalendars.some((c) => !c.ownerMemberId);
+  if (!hasSharedCalendar) {
     await calendarRepository.create({
       id: uuid(),
       name: 'Family',
       color: '#10b981',
-      ownerMemberId: '',   // shared — no specific member owner
+      ownerMemberId: '',
       createdAt: new Date().toISOString(),
     });
   }
@@ -242,6 +260,19 @@ export async function buildApp() {
     };
 
     await memberRepository.create(created);
+
+    // Auto-create a personal calendar for the new member.
+    const memberColors = ['#6366f1', '#f59e0b', '#ec4899', '#14b8a6', '#f97316', '#8b5cf6', '#06b6d4', '#84cc16'];
+    const allCalendars = await calendarRepository.list();
+    const memberColor = memberColors[allCalendars.length % memberColors.length];
+    await calendarRepository.create({
+      id: uuid(),
+      name: created.name,
+      color: memberColor,
+      ownerMemberId: created.id,
+      createdAt: new Date().toISOString(),
+    });
+
     reply.code(201);
     return created;
   });
