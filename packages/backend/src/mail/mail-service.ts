@@ -49,7 +49,7 @@ export class MailService {
     }, settings);
   }
 
-  private async sendMail(payload: ReminderNotificationPayload, settings?: Partial<MailSettings>): Promise<MailActionResult> {
+  async sendMail(payload: ReminderNotificationPayload, settings?: Partial<MailSettings>): Promise<MailActionResult> {
     const smtpHost = settings?.smtpHost || process.env.SMTP_HOST;
     const smtpPort = Number(settings?.smtpPort ?? process.env.SMTP_PORT ?? 1025);
     const smtpUser = settings?.smtpUser || process.env.SMTP_USER;
