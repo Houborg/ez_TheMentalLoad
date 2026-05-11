@@ -2,13 +2,14 @@
 
 import { useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Eye, EyeOff, Lock, LogIn, User } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import Link from 'next/link';
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -23,7 +24,7 @@ export function LoginForm() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email, password }),
       });
 
       if (!res.ok) {
@@ -57,22 +58,22 @@ export function LoginForm() {
         {/* Card */}
         <div className="bg-[oklch(0.18_0_0)] border border-[oklch(0.28_0_0)] rounded-2xl p-8 shadow-xl">
           <form onSubmit={handleSubmit} noValidate className="space-y-5">
-            {/* Username field */}
+            {/* Email field */}
             <div className="space-y-1.5">
-              <label htmlFor="username" className="text-xs font-medium text-[oklch(0.7_0_0)] uppercase tracking-wider">
-                Username
+              <label htmlFor="email" className="text-xs font-medium text-[oklch(0.7_0_0)] uppercase tracking-wider">
+                Email
               </label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[oklch(0.45_0_0)]" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[oklch(0.45_0_0)]" />
                 <input
-                  id="username"
-                  type="text"
-                  autoComplete="username"
+                  id="email"
+                  type="email"
+                  autoComplete="email"
                   required
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
                   className="w-full bg-[oklch(0.13_0_0)] border border-[oklch(0.3_0_0)] rounded-lg pl-9 pr-4 py-2.5 text-sm text-white placeholder-[oklch(0.4_0_0)] focus:outline-none focus:ring-2 focus:ring-[oklch(0.5_0_0)] focus:border-transparent transition"
-                  placeholder="Enter your username"
+                  placeholder="you@example.com"
                   disabled={loading}
                 />
               </div>
@@ -80,9 +81,14 @@ export function LoginForm() {
 
             {/* Password field */}
             <div className="space-y-1.5">
-              <label htmlFor="password" className="text-xs font-medium text-[oklch(0.7_0_0)] uppercase tracking-wider">
-                Password
-              </label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="text-xs font-medium text-[oklch(0.7_0_0)] uppercase tracking-wider">
+                  Password
+                </label>
+                <Link href="/forgot-password" className="text-xs text-[oklch(0.556_0_0)] hover:text-white transition">
+                  Forgot password?
+                </Link>
+              </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[oklch(0.45_0_0)]" />
                 <input
@@ -121,21 +127,20 @@ export function LoginForm() {
             {/* Submit */}
             <button
               type="submit"
-              disabled={loading || !username || !password}
+              disabled={loading || !email || !password}
               className="w-full flex items-center justify-center gap-2 bg-[oklch(0.75_0_0)] hover:bg-[oklch(0.85_0_0)] disabled:bg-[oklch(0.3_0_0)] disabled:cursor-not-allowed text-[oklch(0.1_0_0)] disabled:text-[oklch(0.5_0_0)] font-medium text-sm rounded-lg py-2.5 transition-colors"
             >
               {loading ? (
                 <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <LogIn className="w-4 h-4" />
-              )}
+              ) : null}
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
         </div>
 
-        <p className="text-center text-[oklch(0.4_0_0)] text-xs mt-6">
-          MentalLoad Dashboard &mdash; Internal access only
+        <p className="text-center text-[oklch(0.556_0_0)] text-sm mt-4">
+          {"Don't have an account? "}
+          <Link href="/signup" className="text-white hover:underline">Sign up</Link>
         </p>
       </div>
     </div>

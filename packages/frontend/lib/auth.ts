@@ -1,11 +1,16 @@
 /**
  * Auth utilities using the Web Crypto API so they work in both
  * the Node.js runtime (API routes) and the Edge runtime (middleware).
+ * Verifies HS256 JWTs signed by the backend.
  */
 
 export const COOKIE_NAME = 'ml_session';
 
-const SESSION_PAYLOAD = 'ml:authenticated';
+export interface SessionPayload {
+  userId: string;
+  familyId: string;
+  role: 'admin' | 'member';
+}
 
 function getSecret(): string {
   return (
@@ -14,67 +19,54 @@ function getSecret(): string {
   );
 }
 
-async function importKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign', 'verify'],
-  );
+function b64urlDecode(b64url: string): Uint8Array {
+  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = b64.padEnd(b64.length + (4 - (b64.length % 4)) % 4, '=');
+  return Uint8Array.from(atob(padded), c => c.charCodeAt(0));
 }
 
-export async function createSessionToken(): Promise<string> {
-  const key = await importKey(getSecret());
-  const sig = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(SESSION_PAYLOAD),
-  );
-  return Array.from(new Uint8Array(sig))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-export async function verifySessionToken(token: string): Promise<boolean> {
+export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
   try {
-    const key = await importKey(getSecret());
-    const sigBytes = new Uint8Array(
-      token.match(/.{2}/g)?.map(h => parseInt(h, 16)) ?? [],
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [header, payload, sig] = parts as [string, string, string];
+
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(getSecret()),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify'],
     );
-    return crypto.subtle.verify(
+
+    const valid = await crypto.subtle.verify(
       'HMAC',
       key,
-      sigBytes,
-      new TextEncoder().encode(SESSION_PAYLOAD),
+      b64urlDecode(sig),
+      new TextEncoder().encode(`${header}.${payload}`),
     );
+    if (!valid) return null;
+
+    const data = JSON.parse(
+      new TextDecoder().decode(b64urlDecode(payload)),
+    ) as Record<string, unknown>;
+
+    if (typeof data.exp === 'number' && Date.now() / 1000 > data.exp) return null;
+    if (typeof data.userId !== 'string' || typeof data.familyId !== 'string') return null;
+
+    return {
+      userId: data.userId,
+      familyId: data.familyId,
+      role: (data.role as 'admin' | 'member') ?? 'admin',
+    };
   } catch {
-    return false;
+    return null;
   }
-}
-
-export function validateCredentials(username: string, password: string): boolean {
-  const validUsername = process.env.AUTH_USERNAME ?? 'DEV';
-  const validPassword = process.env.AUTH_PASSWORD ?? 'TheMentalLoad2026';
-
-  const checkField = (input: string, valid: string): boolean => {
-    let diff = input.length ^ valid.length;
-    const len = Math.max(input.length, valid.length);
-    for (let i = 0; i < len; i++) {
-      diff |= (input.charCodeAt(i) || 0) ^ (valid.charCodeAt(i) || 0);
-    }
-    return diff === 0;
-  };
-
-  const usernameOk = checkField(username, validUsername);
-  const passwordOk = checkField(password, validPassword);
-  return usernameOk && passwordOk;
 }
 
 /**
  * Returns true when the request arrived over HTTPS — either directly
  * or via a reverse proxy that set x-forwarded-proto.
- * Used to decide whether to mark cookies as Secure.
  */
 export function isHttpsRequest(headers: Headers, url: string): boolean {
   return headers.get('x-forwarded-proto') === 'https' || url.startsWith('https://');
