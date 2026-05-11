@@ -112,6 +112,10 @@
   border-color: var(--border);
 }
 
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 html {
   min-height: 100%;
   background:

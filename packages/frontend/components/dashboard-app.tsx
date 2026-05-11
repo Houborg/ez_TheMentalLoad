@@ -60,6 +60,7 @@ import {
   type WeatherForecastResponse,
 } from '@/lib/api';
 import { TodayTimelineBoard } from '@/components/today-timeline-board';
+import { MobileNav } from '@/components/mobile-nav';
 import { cn } from '@/lib/utils';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
@@ -1677,10 +1678,11 @@ export function DashboardApp() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <MobileNav activeSection={activeNav} />
       <div className="flex min-h-screen">
         <aside
           className={cn(
-            'flex shrink-0 border-r border-sidebar-border bg-sidebar/80 py-5 backdrop-blur transition-all duration-300 flex-col',
+            'hidden md:flex shrink-0 border-r border-sidebar-border bg-sidebar/80 py-5 backdrop-blur transition-all duration-300 flex-col',
             isSidebarCollapsed ? 'w-20 px-2' : 'w-72 px-4',
           )}
         >
@@ -1861,7 +1863,7 @@ export function DashboardApp() {
             </button>
           </header>
 
-          <section className="flex-1 overflow-auto px-4 py-6 md:px-6">
+          <section className="flex-1 overflow-auto px-4 py-6 pb-20 md:px-6 md:pb-6">
             {activeNav !== 'family' && activeNav !== 'timeline' ? (
             <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
               <div id="hero-section" className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -2035,7 +2037,7 @@ export function DashboardApp() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-7 gap-px overflow-hidden rounded-[24px] border border-border/60 bg-border/60">
+                  <div className="overflow-x-auto -mx-1 px-1"><div className="min-w-[420px]"><div className="grid grid-cols-7 gap-px overflow-hidden rounded-[24px] border border-border/60 bg-border/60">
                     {DAYS.map((day) => (
                       <div key={day} className="bg-card px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                         {day}
@@ -2119,7 +2121,7 @@ export function DashboardApp() {
                         </div>
                       );
                     })}
-                  </div>
+                  </div></div></div>{/* end calendar scroll wrappers */}
 
                   <div className="mt-6 rounded-[26px] border border-border/60 bg-background/30 p-4">
                     <div className="mb-3 flex items-center justify-between">
@@ -2735,7 +2737,7 @@ export function DashboardApp() {
               </label>
               <div className="grid gap-1.5">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recurrence</span>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <select
                     aria-label="Recurrence frequency"
                     value={draft.recurrenceFreq}
