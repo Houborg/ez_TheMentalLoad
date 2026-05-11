@@ -54,6 +54,9 @@ export class EntryService {
   }
 
   async createEntry(input: CreateEntryRequest): Promise<Entry> {
+    if (!input.calendarId) {
+      throw Object.assign(new Error('calendarId is required — create a calendar or a member first'), { statusCode: 400 });
+    }
     validateRecurrence(input.recurrenceRule);
 
     const now = new Date().toISOString();

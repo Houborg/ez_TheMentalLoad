@@ -590,6 +590,11 @@ export function DashboardApp() {
       return;
     }
 
+    if (!draft.calendarId) {
+      setErrorText('No calendar available. Create a member first — each member gets their own calendar.');
+      return;
+    }
+
     try {
       setErrorText('');
       const payload = {
@@ -1143,12 +1148,18 @@ export function DashboardApp() {
     const schedule = buildTimelineTaskSchedule(date, draft.time, draft.position);
     const treat = draft.treat.trim();
 
+    const calendarId = getMemberCalendarId(memberId);
+    if (!calendarId) {
+      setErrorText('No calendar found for this member. Create a member first — each member gets their own calendar.');
+      return;
+    }
+
     try {
       await createEntry({
         title,
         type: 'task',
         ownerMemberId: memberId,
-        calendarId: getMemberCalendarId(memberId),
+        calendarId,
         startTime: schedule.startTime,
         endTime: schedule.endTime,
         timezone: 'UTC',
