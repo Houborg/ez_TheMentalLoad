@@ -30,7 +30,7 @@ export function AppSidebar({ activeSection, members = [], activeMemberId }: AppS
   return (
     <aside
       className={cn(
-        'flex shrink-0 border-r border-sidebar-border bg-sidebar/80 py-5 backdrop-blur transition-all duration-300 flex-col',
+        'hidden md:flex shrink-0 border-r border-sidebar-border bg-sidebar/80 py-5 backdrop-blur transition-all duration-300 flex-col',
         isSidebarCollapsed ? 'w-20 px-2' : 'w-72 px-4',
       )}
     >
