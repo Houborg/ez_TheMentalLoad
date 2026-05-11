@@ -29,6 +29,7 @@ import {
   confirmTodayTimelineTask,
   createMember,
   createEntry,
+  deleteCalendar,
   deleteMember,
   deleteEntry,
   listInvitationsForMember,
@@ -176,7 +177,7 @@ export function DashboardApp() {
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [assistantSuggestionBusy, setAssistantSuggestionBusy] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'mail' | 'sync' | 'recurring' | 'birthdays' | 'weather' | 'developer'>('theme');
+  const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'calendars' | 'mail' | 'sync' | 'recurring' | 'birthdays' | 'weather' | 'developer'>('theme');
   const [updateInProgress, setUpdateInProgress] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
   const [serverVersion, setServerVersion] = useState<{ version: string; commit: string; deployedAt: string | null } | null>(null);
@@ -184,6 +185,7 @@ export function DashboardApp() {
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [memberDeleteTarget, setMemberDeleteTarget] = useState<Member | null>(null);
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
+  const [deletingCalendarId, setDeletingCalendarId] = useState<string | null>(null);
   const [mailActionBusy, setMailActionBusy] = useState(false);
   const [syncActionBusy, setSyncActionBusy] = useState(false);
   const [syncRunDraft, setSyncRunDraft] = useState({ calendarId: '', ownerMemberId: '', icsUrl: '', rawContent: '' });
@@ -950,6 +952,18 @@ export function DashboardApp() {
       setErrorText(error instanceof Error ? error.message : 'Could not delete member');
     } finally {
       setDeletingMemberId(null);
+    }
+  }
+
+  async function handleDeleteCalendar(id: string) {
+    try {
+      setDeletingCalendarId(id);
+      await deleteCalendar(id);
+      setDashboard((prev) => ({ ...prev, calendars: prev.calendars.filter((c) => c.id !== id) }));
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not delete calendar');
+    } finally {
+      setDeletingCalendarId(null);
     }
   }
 
@@ -3011,6 +3025,7 @@ export function DashboardApp() {
             {[
               { id: 'theme', label: 'Theme' },
               { id: 'members', label: 'Members' },
+              { id: 'calendars', label: 'Calendars' },
               { id: 'mail', label: 'Mail' },
               { id: 'sync', label: 'Sync' },
               { id: 'recurring', label: 'Recurring' },
@@ -3155,6 +3170,45 @@ export function DashboardApp() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            ) : null}
+
+            {settingsTab === 'calendars' ? (
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm text-muted-foreground">
+                  Calendars are created automatically for each member. You can delete unused ones here.
+                </div>
+                <div className="space-y-2">
+                  {dashboard.calendars.map((calendar) => (
+                    <div key={calendar.id} className="flex items-center justify-between rounded-2xl border border-border/60 bg-background/60 px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="h-3 w-3 rounded-full shrink-0" style={{ background: calendar.color }} />
+                        <div>
+                          <div className="text-sm font-semibold">{calendar.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {calendar.ownerMemberId
+                              ? (dashboard.members.find((m) => m.id === calendar.ownerMemberId)?.name ?? 'Unknown member')
+                              : 'Shared'}
+                          </div>
+                        </div>
+                      </div>
+                      {canManageMembers && (
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteCalendar(calendar.id)}
+                          disabled={deletingCalendarId === calendar.id}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-destructive/40 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-60"
+                        >
+                          {deletingCalendarId === calendar.id ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {dashboard.calendars.length === 0 && (
+                    <div className="py-6 text-center text-sm text-muted-foreground">No calendars yet.</div>
+                  )}
                 </div>
               </div>
             ) : null}
