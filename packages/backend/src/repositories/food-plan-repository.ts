@@ -1,21 +1,21 @@
 import type { FoodPlanDay, FoodPlanItem } from '@mental-load/contracts';
 
 export interface FoodPlanRepository {
-  listByWeek(weekStart: string): Promise<FoodPlanItem[]>;
-  upsert(input: { weekStart: string; day: FoodPlanDay; dishName: string; groceryList: string[] }): Promise<FoodPlanItem>;
-  deleteByWeekAndDay(weekStart: string, day: FoodPlanDay): Promise<boolean>;
+  listByWeek(weekStart: string, familyId?: string): Promise<FoodPlanItem[]>;
+  upsert(input: { weekStart: string; day: FoodPlanDay; dishName: string; groceryList: string[] }, familyId?: string): Promise<FoodPlanItem>;
+  deleteByWeekAndDay(weekStart: string, day: FoodPlanDay, familyId?: string): Promise<boolean>;
 }
 
 export class InMemoryFoodPlanRepository implements FoodPlanRepository {
   constructor(private readonly items: FoodPlanItem[] = []) {}
 
-  async listByWeek(weekStart: string): Promise<FoodPlanItem[]> {
+  async listByWeek(weekStart: string, _familyId?: string): Promise<FoodPlanItem[]> {
     return this.items
       .filter((item) => item.weekStart === weekStart)
       .sort((left, right) => left.day.localeCompare(right.day));
   }
 
-  async upsert(input: { weekStart: string; day: FoodPlanDay; dishName: string; groceryList: string[] }): Promise<FoodPlanItem> {
+  async upsert(input: { weekStart: string; day: FoodPlanDay; dishName: string; groceryList: string[] }, _familyId?: string): Promise<FoodPlanItem> {
     const existing = this.items.find((item) => item.weekStart === input.weekStart && item.day === input.day);
 
     if (existing) {
@@ -39,7 +39,7 @@ export class InMemoryFoodPlanRepository implements FoodPlanRepository {
     return created;
   }
 
-  async deleteByWeekAndDay(weekStart: string, day: FoodPlanDay): Promise<boolean> {
+  async deleteByWeekAndDay(weekStart: string, day: FoodPlanDay, _familyId?: string): Promise<boolean> {
     const index = this.items.findIndex((item) => item.weekStart === weekStart && item.day === day);
     if (index < 0) {
       return false;

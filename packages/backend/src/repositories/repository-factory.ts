@@ -29,6 +29,7 @@ export interface RepositoryBundle {
   dailyTimelineRepository: DailyTimelineRepository;
   reminderScheduler: ReminderScheduler;
   persistence: 'memory' | 'postgres';
+  pool: Pool | null;
   close(): Promise<void>;
 }
 
@@ -51,6 +52,7 @@ export async function createRepositoryBundle(): Promise<RepositoryBundle> {
         dailyTimelineRepository: new PostgresDailyTimelineRepository(pool),
         reminderScheduler: scheduler,
         persistence: 'postgres',
+        pool,
         close: async () => {
           await pool.end();
         },
@@ -80,6 +82,7 @@ export async function createRepositoryBundle(): Promise<RepositoryBundle> {
     dailyTimelineRepository: new InMemoryDailyTimelineRepository(),
     reminderScheduler: scheduler,
     persistence: 'memory',
+    pool: null,
     close: async () => undefined,
   };
 }
