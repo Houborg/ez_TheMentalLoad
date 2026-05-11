@@ -5,30 +5,36 @@ import type { FoodPlanRepository } from '../food-plan-repository';
 export class PostgresFoodPlanRepository implements FoodPlanRepository {
   constructor(private readonly pool: Pool) {}
 
-  async listByWeek(weekStart: string): Promise<FoodPlanItem[]> {
+  async listByWeek(weekStart: string, familyId?: string): Promise<FoodPlanItem[]> {
+    if (!familyId) return [];
     const result = await this.pool.query(
-      'select id, week_start, day, dish_name, grocery_list, created_at, updated_at from food_plan_items where week_start = $1 order by day asc',
-      [weekStart],
+      'select id, week_start, day, dish_name, grocery_list, created_at, updated_at from food_plan_items where week_start = $1 and family_id = $2 order by day asc',
+      [weekStart, familyId],
     );
 
     return result.rows.map((row) => this.mapRow(row));
   }
 
-  async upsert(input: { weekStart: string; day: FoodPlanDay; dishName: string; groceryList: string[] }): Promise<FoodPlanItem> {
+  async upsert(input: { weekStart: string; day: FoodPlanDay; dishName: string; groceryList: string[] }, familyId?: string): Promise<FoodPlanItem> {
+    if (!familyId) throw new Error('familyId required for upsert');
     const result = await this.pool.query(
-      `insert into food_plan_items (week_start, day, dish_name, grocery_list)
-       values ($1, lower($2), $3, $4::jsonb)
-       on conflict (week_start, day)
+      `insert into food_plan_items (week_start, day, dish_name, grocery_list, family_id)
+       values ($1, lower($2), $3, $4::jsonb, $5)
+       on conflict (family_id, week_start, day)
        do update set dish_name = excluded.dish_name, grocery_list = excluded.grocery_list, updated_at = now()
        returning id, week_start, day, dish_name, grocery_list, created_at, updated_at`,
-      [input.weekStart, input.day, input.dishName, JSON.stringify(input.groceryList)],
+      [input.weekStart, input.day, input.dishName, JSON.stringify(input.groceryList), familyId],
     );
 
     return this.mapRow(result.rows[0]);
   }
 
-  async deleteByWeekAndDay(weekStart: string, day: FoodPlanDay): Promise<boolean> {
-    const result = await this.pool.query('delete from food_plan_items where week_start = $1 and lower(day) = lower($2)', [weekStart, day]);
+  async deleteByWeekAndDay(weekStart: string, day: FoodPlanDay, familyId?: string): Promise<boolean> {
+    if (!familyId) return false;
+    const result = await this.pool.query(
+      'delete from food_plan_items where week_start = $1 and lower(day) = lower($2) and family_id = $3',
+      [weekStart, day, familyId],
+    );
     return (result.rowCount ?? 0) > 0;
   }
 

@@ -1,37 +1,37 @@
 import type { Entry } from '@mental-load/contracts';
 
 export interface EntryRepository {
-  list(): Promise<Entry[]>;
-  findById(id: string): Promise<Entry | undefined>;
-  findByOwnerAndAssignedMember(ownerMemberId: string, assignedToMemberId: string): Promise<Entry[]>;
-  create(entry: Entry): Promise<Entry>;
-  update(id: string, patch: Partial<Entry>): Promise<Entry | undefined>;
-  delete(id: string): Promise<boolean>;
+  list(familyId?: string): Promise<Entry[]>;
+  findById(id: string, familyId?: string): Promise<Entry | undefined>;
+  findByOwnerAndAssignedMember(ownerMemberId: string, assignedToMemberId: string, familyId?: string): Promise<Entry[]>;
+  create(entry: Entry, familyId?: string): Promise<Entry>;
+  update(id: string, patch: Partial<Entry>, familyId?: string): Promise<Entry | undefined>;
+  delete(id: string, familyId?: string): Promise<boolean>;
 }
 
 export class InMemoryEntryRepository implements EntryRepository {
   constructor(private readonly entries: Entry[] = []) {}
 
-  async list(): Promise<Entry[]> {
+  async list(_familyId?: string): Promise<Entry[]> {
     return [...this.entries].sort((left, right) => left.startTime.localeCompare(right.startTime));
   }
 
-  async findById(id: string): Promise<Entry | undefined> {
+  async findById(id: string, _familyId?: string): Promise<Entry | undefined> {
     return this.entries.find((entry) => entry.id === id);
   }
 
-  async findByOwnerAndAssignedMember(ownerMemberId: string, assignedToMemberId: string): Promise<Entry[]> {
+  async findByOwnerAndAssignedMember(ownerMemberId: string, assignedToMemberId: string, _familyId?: string): Promise<Entry[]> {
     return this.entries
       .filter((entry) => entry.ownerMemberId === ownerMemberId && entry.assignedToMemberId === assignedToMemberId)
       .sort((left, right) => left.startTime.localeCompare(right.startTime));
   }
 
-  async create(entry: Entry): Promise<Entry> {
+  async create(entry: Entry, _familyId?: string): Promise<Entry> {
     this.entries.push(entry);
     return entry;
   }
 
-  async update(id: string, patch: Partial<Entry>): Promise<Entry | undefined> {
+  async update(id: string, patch: Partial<Entry>, _familyId?: string): Promise<Entry | undefined> {
     const current = this.entries.find((entry) => entry.id === id);
     if (!current) {
       return undefined;
@@ -41,7 +41,7 @@ export class InMemoryEntryRepository implements EntryRepository {
     return current;
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, _familyId?: string): Promise<boolean> {
     const index = this.entries.findIndex((entry) => entry.id === id);
     if (index === -1) {
       return false;

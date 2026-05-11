@@ -5,17 +5,23 @@ import type { EntryRepository } from '../entry-repository';
 export class PostgresEntryRepository implements EntryRepository {
   constructor(private readonly pool: Pool) {}
 
-  async list(): Promise<Entry[]> {
+  async list(familyId?: string): Promise<Entry[]> {
+    if (!familyId) return [];
     const result = await this.pool.query(
-      'select * from entries order by start_time asc, created_at asc',
+      'select * from entries where family_id = $1 order by start_time asc, created_at asc',
+      [familyId],
     );
 
     const entries = result.rows.map((row) => this.mapBaseEntry(row));
     return this.enrichEntries(entries);
   }
 
-  async findById(id: string): Promise<Entry | undefined> {
-    const result = await this.pool.query('select * from entries where id = $1', [id]);
+  async findById(id: string, familyId?: string): Promise<Entry | undefined> {
+    if (!familyId) return undefined;
+    const result = await this.pool.query(
+      'select * from entries where id = $1 and family_id = $2',
+      [id, familyId],
+    );
     const row = result.rows[0];
     if (!row) {
       return undefined;
@@ -25,21 +31,23 @@ export class PostgresEntryRepository implements EntryRepository {
     return entry;
   }
 
-  async findByOwnerAndAssignedMember(ownerMemberId: string, assignedToMemberId: string): Promise<Entry[]> {
+  async findByOwnerAndAssignedMember(ownerMemberId: string, assignedToMemberId: string, familyId?: string): Promise<Entry[]> {
+    if (!familyId) return [];
     const result = await this.pool.query(
-      'select * from entries where owner_member_id = $1 and assigned_to_member_id = $2 order by start_time asc, created_at asc',
-      [ownerMemberId, assignedToMemberId],
+      'select * from entries where owner_member_id = $1 and assigned_to_member_id = $2 and family_id = $3 order by start_time asc, created_at asc',
+      [ownerMemberId, assignedToMemberId, familyId],
     );
 
     const entries = result.rows.map((row) => this.mapBaseEntry(row));
     return this.enrichEntries(entries);
   }
 
-  async create(entry: Entry): Promise<Entry> {
+  async create(entry: Entry, familyId?: string): Promise<Entry> {
+    if (!familyId) throw new Error('familyId required for create');
     const client = await this.pool.connect();
     try {
       await client.query('begin');
-      await this.writeEntry(entry, client);
+      await this.writeEntry(entry, familyId, client);
       await client.query('commit');
       return entry;
     } catch (error) {
@@ -50,8 +58,9 @@ export class PostgresEntryRepository implements EntryRepository {
     }
   }
 
-  async update(id: string, patch: Partial<Entry>): Promise<Entry | undefined> {
-    const current = await this.findById(id);
+  async update(id: string, patch: Partial<Entry>, familyId?: string): Promise<Entry | undefined> {
+    if (!familyId) return undefined;
+    const current = await this.findById(id, familyId);
     if (!current) {
       return undefined;
     }
@@ -69,7 +78,7 @@ export class PostgresEntryRepository implements EntryRepository {
       await client.query('delete from entry_checklist_items where entry_id = $1', [id]);
       await client.query('delete from entry_invitees where entry_id = $1', [id]);
       await client.query(
-        'update entries set title = $2, type = $3, owner_member_id = $4, calendar_id = $5, start_time = $6, end_time = $7, all_day = $8, location = $9, status = $10, recurrence_rule = $11, parent_entry_id = $12, timezone = $13, assigned_to_member_id = $14, updated_at = $15 where id = $1',
+        'update entries set title = $2, type = $3, owner_member_id = $4, calendar_id = $5, start_time = $6, end_time = $7, all_day = $8, location = $9, status = $10, recurrence_rule = $11, parent_entry_id = $12, timezone = $13, assigned_to_member_id = $14, updated_at = $15 where id = $1 and family_id = $16',
         [
           id,
           updated.title,
@@ -86,6 +95,7 @@ export class PostgresEntryRepository implements EntryRepository {
           updated.timezone,
           updated.assignedToMemberId ?? null,
           updated.updatedAt,
+          familyId,
         ],
       );
       await this.writeRelations(updated, client);
@@ -99,14 +109,18 @@ export class PostgresEntryRepository implements EntryRepository {
     }
   }
 
-  async delete(id: string): Promise<boolean> {
-    const result = await this.pool.query('delete from entries where id = $1', [id]);
+  async delete(id: string, familyId?: string): Promise<boolean> {
+    if (!familyId) return false;
+    const result = await this.pool.query(
+      'delete from entries where id = $1 and family_id = $2',
+      [id, familyId],
+    );
     return (result.rowCount ?? 0) > 0;
   }
 
-  private async writeEntry(entry: Entry, client: PoolClient): Promise<void> {
+  private async writeEntry(entry: Entry, familyId: string, client: PoolClient): Promise<void> {
     await client.query(
-      'insert into entries (id, title, type, owner_member_id, calendar_id, start_time, end_time, all_day, location, status, recurrence_rule, parent_entry_id, timezone, assigned_to_member_id, created_at, updated_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)',
+      'insert into entries (id, title, type, owner_member_id, calendar_id, start_time, end_time, all_day, location, status, recurrence_rule, parent_entry_id, timezone, assigned_to_member_id, created_at, updated_at, family_id) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)',
       [
         entry.id,
         entry.title,
@@ -124,6 +138,7 @@ export class PostgresEntryRepository implements EntryRepository {
         entry.assignedToMemberId ?? null,
         entry.createdAt,
         entry.updatedAt,
+        familyId,
       ],
     );
 
