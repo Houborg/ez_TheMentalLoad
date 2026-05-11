@@ -181,6 +181,7 @@ export function DashboardApp() {
   const [updateInProgress, setUpdateInProgress] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
   const [serverVersion, setServerVersion] = useState<{ version: string; commit: string; deployedAt: string | null } | null>(null);
+  const [remoteVersion, setRemoteVersion] = useState<{ sha: string; shortSha: string; message: string; date: string } | null | 'loading' | 'unavailable'>('unavailable');
   const [memberDraft, setMemberDraft] = useState<{ name: string; role: MemberRole; email: string; avatar: string }>({ name: '', role: 'parent', email: '', avatar: '' });
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [memberDeleteTarget, setMemberDeleteTarget] = useState<Member | null>(null);
@@ -1642,6 +1643,24 @@ export function DashboardApp() {
       }
     } catch {
       // ignore
+    }
+  }
+
+  async function fetchRemoteVersion() {
+    setRemoteVersion('loading');
+    try {
+      const res = await fetch('/api/version/remote', { cache: 'no-store' });
+      if (!res.ok) { setRemoteVersion('unavailable'); return; }
+      const data = (await res.json()) as { sha?: string; message?: string; date?: string };
+      if (!data.sha) { setRemoteVersion('unavailable'); return; }
+      setRemoteVersion({
+        sha: data.sha,
+        shortSha: data.sha.slice(0, 7),
+        message: data.message ?? '',
+        date: data.date ?? '',
+      });
+    } catch {
+      setRemoteVersion('unavailable');
     }
   }
 
@@ -3694,19 +3713,32 @@ export function DashboardApp() {
                     <span className="tabular-nums font-mono">
                       v{process.env.NEXT_PUBLIC_APP_VERSION}
                       {process.env.NEXT_PUBLIC_APP_COMMIT !== 'local'
-                        ? <span className="ml-1 text-muted-foreground/60">({process.env.NEXT_PUBLIC_APP_COMMIT})</span>
+                        ? <span className="ml-1 text-muted-foreground/60">({process.env.NEXT_PUBLIC_APP_COMMIT?.slice(0, 7)})</span>
                         : <span className="ml-1 text-amber-500/80">(dev)</span>}
                     </span>
                     <span className="text-muted-foreground">Server running</span>
                     {serverVersion
                       ? <span className="tabular-nums font-mono">
                           v{serverVersion.version}
-                          <span className="ml-1 text-muted-foreground/60">({serverVersion.commit})</span>
+                          <span className="ml-1 text-muted-foreground/60">({serverVersion.commit?.slice(0, 7)})</span>
                           {serverVersion.version === process.env.NEXT_PUBLIC_APP_VERSION
                             ? <span className="ml-2 text-emerald-500 text-xs">✓ in sync</span>
                             : <span className="ml-2 text-amber-500 text-xs">⚠ mismatch</span>}
                         </span>
                       : <button type="button" onClick={() => void fetchServerVersion()} className="text-primary hover:underline text-left">Check server</button>}
+                    <span className="text-muted-foreground">Latest on GitHub</span>
+                    {remoteVersion === 'loading'
+                      ? <span className="text-muted-foreground/60 text-xs">Checking…</span>
+                      : remoteVersion === 'unavailable'
+                        ? <button type="button" onClick={() => void fetchRemoteVersion()} className="text-primary hover:underline text-left text-xs">Check for updates</button>
+                        : <span className="tabular-nums font-mono">
+                            <span className="text-muted-foreground/60">({remoteVersion.shortSha})</span>
+                            {remoteVersion.sha.startsWith(process.env.NEXT_PUBLIC_APP_COMMIT ?? '__never__')
+                              || process.env.NEXT_PUBLIC_APP_COMMIT?.startsWith(remoteVersion.shortSha)
+                              ? <span className="ml-2 text-emerald-500 text-xs">✓ up to date</span>
+                              : <span className="ml-2 text-amber-500 text-xs">⚠ update available</span>}
+                            <span className="ml-2 text-muted-foreground/60 text-xs truncate max-w-[160px] inline-block align-bottom" title={remoteVersion.message}>{remoteVersion.message.split('\n')[0]}</span>
+                          </span>}
                   </div>
                   {serverVersion?.deployedAt ? (
                     <div className="text-xs text-muted-foreground/60">
@@ -3723,7 +3755,7 @@ export function DashboardApp() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => { setServerVersion(null); void handleForceUpdate(); }}
+                  onClick={() => { setServerVersion(null); setRemoteVersion('unavailable'); void handleForceUpdate(); }}
                   disabled={updateInProgress}
                   className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-60"
                 >
