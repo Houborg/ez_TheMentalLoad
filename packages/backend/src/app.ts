@@ -42,6 +42,18 @@ export async function buildApp() {
   const eventBus = new DomainEventBus();
   const infrastructure = await createRepositoryBundle();
   const { memberRepository, calendarRepository, entryRepository, foodPlanRepository, dailyTimelineRepository, reminderScheduler, persistence, close } = infrastructure;
+  // Seed a shared "Family" calendar if the app has no calendars yet.
+  const existingCalendars = await calendarRepository.list();
+  if (existingCalendars.length === 0) {
+    await calendarRepository.create({
+      id: uuid(),
+      name: 'Family',
+      color: '#10b981',
+      ownerMemberId: '',   // shared — no specific member owner
+      createdAt: new Date().toISOString(),
+    });
+  }
+
   const entryService = new EntryService(entryRepository, eventBus, reminderScheduler);
   const dailyTimelineService = new DailyTimelineService(dailyTimelineRepository, {
     listOccurrences: (from, to) => entryService.listOccurrences(from, to),

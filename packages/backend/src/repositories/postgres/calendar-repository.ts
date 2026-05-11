@@ -14,7 +14,7 @@ export class PostgresCalendarRepository implements CalendarRepository {
       id: row.id,
       name: row.name,
       color: row.color,
-      ownerMemberId: row.owner_member_id,
+      ownerMemberId: row.owner_member_id ?? '',
       createdAt: new Date(row.created_at).toISOString(),
     }));
   }
@@ -31,7 +31,7 @@ export class PostgresCalendarRepository implements CalendarRepository {
           id: row.id,
           name: row.name,
           color: row.color,
-          ownerMemberId: row.owner_member_id,
+          ownerMemberId: row.owner_member_id ?? '',
           createdAt: new Date(row.created_at).toISOString(),
         }
       : undefined;
@@ -40,7 +40,8 @@ export class PostgresCalendarRepository implements CalendarRepository {
   async create(calendar: Calendar): Promise<Calendar> {
     await this.pool.query(
       'insert into calendars (id, name, color, owner_member_id, created_at) values ($1, $2, $3, $4, $5)',
-      [calendar.id, calendar.name, calendar.color, calendar.ownerMemberId, calendar.createdAt],
+      // ownerMemberId '' means shared/no-owner — store as NULL in the DB
+      [calendar.id, calendar.name, calendar.color, calendar.ownerMemberId || null, calendar.createdAt],
     );
 
     return calendar;
