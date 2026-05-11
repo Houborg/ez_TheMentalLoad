@@ -46,4 +46,8 @@ export class PostgresCalendarRepository implements CalendarRepository {
 
     return calendar;
   }
+
+  async delete(id: string): Promise<void> {
+    await this.pool.query('delete from calendars where id = $1', [id]);
+  }
 }
