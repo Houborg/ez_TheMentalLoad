@@ -214,6 +214,10 @@ export async function updateMember(id: string, payload: UpdateMemberRequest) {
   });
 }
 
+export async function deleteCalendar(id: string): Promise<void> {
+  await fetchJson<void>(`/api/v1/calendars/${id}`, { method: 'DELETE' });
+}
+
 export async function deleteMember(id: string, input?: { actorMemberId?: string }) {
   const params = new URLSearchParams();
   if (input?.actorMemberId) {

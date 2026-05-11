@@ -554,6 +554,13 @@ export async function buildApp() {
   });
 
   app.get('/api/v1/calendars', async () => calendarRepository.list());
+
+  app.delete<{ Params: { id: string } }>('/api/v1/calendars/:id', async (request, reply) => {
+    const calendar = await calendarRepository.findById(request.params.id);
+    if (!calendar) { reply.code(404); return { message: 'Calendar not found' }; }
+    await calendarRepository.delete(request.params.id);
+    reply.code(204);
+  });
   app.get<{ Querystring: { ownerMemberId?: string; assignedToMemberId?: string } }>('/api/v1/entries', async (request, reply) => {
     if (request.query.ownerMemberId && request.query.assignedToMemberId) {
       return entryService.listMemberTasks(request.query.ownerMemberId, request.query.assignedToMemberId);
