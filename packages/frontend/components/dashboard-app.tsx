@@ -3732,12 +3732,12 @@ export function DashboardApp() {
                       : remoteVersion === 'unavailable'
                         ? <button type="button" onClick={() => void fetchRemoteVersion()} className="text-primary hover:underline text-left text-xs">Check for updates</button>
                         : <span className="tabular-nums font-mono">
-                            <span className="text-muted-foreground/60">({remoteVersion.shortSha})</span>
-                            {remoteVersion.sha.startsWith(process.env.NEXT_PUBLIC_APP_COMMIT ?? '__never__')
-                              || process.env.NEXT_PUBLIC_APP_COMMIT?.startsWith(remoteVersion.shortSha)
+                            <span className="text-muted-foreground/60">({remoteVersion?.shortSha})</span>
+                            {remoteVersion?.sha.startsWith(process.env.NEXT_PUBLIC_APP_COMMIT ?? '__never__')
+                              || process.env.NEXT_PUBLIC_APP_COMMIT?.startsWith(remoteVersion?.shortSha ?? '')
                               ? <span className="ml-2 text-emerald-500 text-xs">✓ up to date</span>
                               : <span className="ml-2 text-amber-500 text-xs">⚠ update available</span>}
-                            <span className="ml-2 text-muted-foreground/60 text-xs truncate max-w-[160px] inline-block align-bottom" title={remoteVersion.message}>{remoteVersion.message.split('\n')[0]}</span>
+                            <span className="ml-2 text-muted-foreground/60 text-xs truncate max-w-[160px] inline-block align-bottom" title={remoteVersion?.message}>{remoteVersion?.message?.split('\n')[0]}</span>
                           </span>}
                   </div>
                   {serverVersion?.deployedAt ? (

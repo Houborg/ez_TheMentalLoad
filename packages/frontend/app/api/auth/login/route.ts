@@ -1,5 +1,8 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { createSessionToken, validateCredentials, COOKIE_NAME, isHttpsRequest } from '@/lib/auth';
+
+function getBackendUrl(): string {
+  return (process.env.BACKEND_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+}
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -9,30 +12,34 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Invalid request body' }, { status: 400 });
   }
 
-  const { username, password } = (body ?? {}) as { username?: string; password?: string };
+  const { email, password } = (body ?? {}) as { email?: string; password?: string };
 
-  if (typeof username !== 'string' || typeof password !== 'string') {
-    return NextResponse.json({ message: 'username and password are required' }, { status: 400 });
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    return NextResponse.json({ message: 'email and password are required' }, { status: 400 });
   }
 
-  const valid = validateCredentials(username, password);
-
-  if (!valid) {
-    await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 200));
-    return NextResponse.json({ message: 'Invalid credentials' }, { status: 401 });
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${getBackendUrl()}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch {
+    return NextResponse.json({ message: 'Backend unavailable' }, { status: 502 });
   }
 
-  const token = await createSessionToken();
-  const secure = isHttpsRequest(request.headers, request.url);
+  const data = await upstream.json() as { ok?: boolean; message?: string };
+
+  if (!upstream.ok) {
+    return NextResponse.json({ message: data.message ?? 'Login failed' }, { status: upstream.status });
+  }
 
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(COOKIE_NAME, token, {
-    httpOnly: true,
-    secure,
-    sameSite: 'strict',
-    path: '/',
-    maxAge: 60 * 60 * 24 * 7,
-  });
+  const setCookie = upstream.headers.get('set-cookie');
+  if (setCookie) {
+    response.headers.set('set-cookie', setCookie);
+  }
 
   return response;
 }
