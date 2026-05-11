@@ -1604,7 +1604,7 @@ export function DashboardApp() {
     try {
       setUpdateInProgress(true);
       setUpdateMessage('');
-      const response = await fetch('/api/v1/deploy/update', { method: 'POST' });
+      const response = await fetch('/api/update', { method: 'POST' });
       const contentType = response.headers.get('content-type') ?? '';
       const data = contentType.includes('application/json')
         ? (await response.json()) as { ok?: boolean; message?: string }
