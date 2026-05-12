@@ -11,6 +11,7 @@ import {
   Clock3,
   Edit2,
   LoaderCircle,
+  LogOut,
   Plus,
   RefreshCcw,
   Search,
@@ -252,6 +253,12 @@ export function DashboardApp() {
 
     void Promise.all(dashboard.members.map((member) => loadTodayTimelineForMember(member.id)));
   }, [activeNav, dashboard.members]);
+
+  async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
+    router.refresh();
+  }
 
   useEffect(() => {
     let active = true;
@@ -1769,22 +1776,40 @@ export function DashboardApp() {
           </div>
 
           {isSidebarCollapsed ? (
-            <div className="mt-auto flex justify-center">
+            <div className="mt-auto flex flex-col items-center gap-2">
               <div className="rounded-2xl border border-border/60 bg-card/70 p-2.5 shadow-lg shadow-black/10 backdrop-blur" title={assistantStatusText}>
                 <Wifi className={cn('h-4 w-4', assistantReady ? 'text-primary' : 'text-muted-foreground')} />
               </div>
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                title="Sign out"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-background/55 text-muted-foreground transition hover:text-destructive hover:border-destructive/60"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
           ) : (
-            <div className="mt-auto rounded-3xl border border-border/60 bg-card/70 p-4 shadow-lg shadow-black/10 backdrop-blur">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <Wifi className={cn('h-4 w-4', assistantReady ? 'text-primary' : 'text-muted-foreground')} />
-                {assistantReady ? 'Assistant online' : 'Assistant fallback'}
+            <div className="mt-auto space-y-3">
+              <div className="rounded-3xl border border-border/60 bg-card/70 p-4 shadow-lg shadow-black/10 backdrop-blur">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Wifi className={cn('h-4 w-4', assistantReady ? 'text-primary' : 'text-muted-foreground')} />
+                  {assistantReady ? 'Assistant online' : 'Assistant fallback'}
+                </div>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">{assistantStatusText}</p>
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                  <span className="rounded-full border border-border/60 px-2 py-1">Persistence: {dashboard.persistence ?? 'unknown'}</span>
+                  <span className="rounded-full border border-border/60 px-2 py-1">Server time: {formatStamp(healthNow)}</span>
+                </div>
               </div>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">{assistantStatusText}</p>
-              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                <span className="rounded-full border border-border/60 px-2 py-1">Persistence: {dashboard.persistence ?? 'unknown'}</span>
-                <span className="rounded-full border border-border/60 px-2 py-1">Server time: {formatStamp(healthNow)}</span>
-              </div>
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                className="flex w-full items-center gap-2 rounded-2xl border border-border/60 bg-background/55 px-3 py-2.5 text-sm text-muted-foreground transition hover:text-destructive hover:border-destructive/60"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign out
+              </button>
             </div>
           )}
         </aside>
