@@ -3,6 +3,7 @@ import '@fastify/cookie';
 import type { Pool } from 'pg';
 import { AuthService, AuthError, verifyToken } from './auth-service';
 import { MailService } from '../mail/mail-service';
+import { SystemMailService } from '../mail/system-mail-service';
 
 const COOKIE_NAME = 'ml_session';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
@@ -24,6 +25,7 @@ function isSecure(request: { headers: Record<string, string | string[] | undefin
 export async function registerAuthRoutes(app: FastifyInstance, pool: Pool): Promise<void> {
   const authService = new AuthService(pool);
   const mailService = new MailService();
+  const systemMailService = new SystemMailService();
 
   app.post<{ Body: { email?: string; password?: string } }>('/api/auth/signup', async (request, reply) => {
     const { email, password } = request.body ?? {};
@@ -35,8 +37,17 @@ export async function registerAuthRoutes(app: FastifyInstance, pool: Pool): Prom
     }
 
     try {
-      const { token } = await authService.signup(email, password);
+      const { token, userId } = await authService.signup(email, password);
       reply.setCookie(COOKIE_NAME, token, cookieOptions(isSecure(request)));
+
+      // Send verification email — fire-and-forget
+      const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
+      const verToken = await authService.createVerificationToken(userId);
+      const verifyUrl = `${appUrl}/api/auth/verify-email?token=${verToken.raw}`;
+      void systemMailService.sendVerificationEmail(email.trim().toLowerCase(), verifyUrl).catch((err: unknown) => {
+        console.error('[signup] verification email failed:', err instanceof Error ? err.message : err);
+      });
+
       reply.code(201);
       return { ok: true };
     } catch (err) {
@@ -77,7 +88,11 @@ export async function registerAuthRoutes(app: FastifyInstance, pool: Pool): Prom
     try {
       const payload = verifyToken(token);
       const familyName = await authService.getFamilyName(payload.familyId);
-      return { userId: payload.userId, familyId: payload.familyId, role: payload.role, familyName };
+      const userResult = await pool.query<{ email_verified: boolean }>(
+        'select email_verified from users where id = $1', [payload.userId],
+      );
+      const emailVerified = userResult.rows[0]?.email_verified ?? false;
+      return { userId: payload.userId, familyId: payload.familyId, role: payload.role, familyName, emailVerified };
     } catch {
       reply.code(401); return { message: 'Invalid or expired session' };
     }
@@ -90,7 +105,7 @@ export async function registerAuthRoutes(app: FastifyInstance, pool: Pool): Prom
     if (!name) { reply.code(400); return { message: 'familyName is required' }; }
     try {
       const payload = verifyToken(token);
-      await authService.setFamilyName(payload.familyId, name);
+      await authService.setFamilyName(payload.familyId, name, systemMailService);
       return { ok: true };
     } catch {
       reply.code(401); return { message: 'Invalid or expired session' };
@@ -147,6 +162,50 @@ export async function registerAuthRoutes(app: FastifyInstance, pool: Pool): Prom
         reply.code(err.status); return { message: err.message };
       }
       throw err;
+    }
+  });
+
+  app.get<{ Querystring: { token?: string } }>('/api/auth/verify-email', async (request, reply) => {
+    const rawToken = request.query.token?.trim();
+    const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
+
+    if (!rawToken) {
+      return reply.redirect(`${appUrl}/verify-email?error=expired`);
+    }
+
+    try {
+      const { familyId } = await authService.verifyEmailToken(rawToken);
+      const familyName = await authService.getFamilyName(familyId);
+      if (!familyName) {
+        return reply.redirect(`${appUrl}/setup`);
+      }
+      return reply.redirect(`${appUrl}/`);
+    } catch {
+      return reply.redirect(`${appUrl}/verify-email?error=expired`);
+    }
+  });
+
+  app.post('/api/auth/resend-verification', async (request, reply) => {
+    const token = request.cookies[COOKIE_NAME];
+    if (!token) { reply.code(401); return { message: 'Not authenticated' }; }
+
+    try {
+      const payload = verifyToken(token);
+      const newToken = await authService.resendVerificationToken(payload.userId);
+      const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
+      const verifyUrl = `${appUrl}/api/auth/verify-email?token=${newToken.raw}`;
+
+      const userResult = await pool.query<{ email: string }>(
+        'select email from users where id = $1', [payload.userId],
+      );
+      const email = userResult.rows[0]?.email;
+      if (email) {
+        void systemMailService.sendVerificationEmail(email, verifyUrl).catch(() => {});
+      }
+
+      return { ok: true };
+    } catch {
+      reply.code(401); return { message: 'Invalid session' };
     }
   });
 }
