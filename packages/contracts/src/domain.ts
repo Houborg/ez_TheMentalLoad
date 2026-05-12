@@ -86,6 +86,8 @@ export interface AssistantConfig {
   language: SupportedLanguage;
   enabled: boolean;
   ollamaUrl?: string;
+  tone?: 'informal' | 'formal';
+  customInstructions?: string;
 }
 
 export interface ThemeSettings {
