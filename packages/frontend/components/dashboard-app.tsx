@@ -483,24 +483,14 @@ export function DashboardApp() {
   );
 
   const weatherConfig = useMemo<{ location: string; state: string; country: string; unit: 'C' | 'F'; updateFrequencyMinutes: number }>(() => {
-    const raw = settings?.sync.configJson.weather;
-    if (!raw || typeof raw !== 'object') {
-      return { location: '', state: '', country: '', unit: 'C', updateFrequencyMinutes: 60 };
-    }
-
-    const location = typeof (raw as Record<string, unknown>).location === 'string' ? (raw as Record<string, string>).location : '';
-    const state = typeof (raw as Record<string, unknown>).state === 'string' ? (raw as Record<string, string>).state : '';
-    const country = typeof (raw as Record<string, unknown>).country === 'string' ? (raw as Record<string, string>).country : '';
-    const unit = (raw as Record<string, unknown>).unit === 'F' ? 'F' : 'C';
-    const updateFrequencyMinutes = Number((raw as Record<string, unknown>).updateFrequencyMinutes ?? 60);
     return {
-      location,
-      state,
-      country,
-      unit,
-      updateFrequencyMinutes: Number.isFinite(updateFrequencyMinutes) && updateFrequencyMinutes > 0 ? updateFrequencyMinutes : 60,
+      location: settings?.weather?.location ?? '',
+      state: '',
+      country: settings?.weather?.country ?? '',
+      unit: settings?.weather?.unit ?? 'C',
+      updateFrequencyMinutes: 60,
     };
-  }, [settings?.sync.configJson.weather]);
+  }, [settings?.weather]);
 
   const dayWeatherByDate = useMemo(() => {
     if (!weatherForecast) {
@@ -723,6 +713,8 @@ export function DashboardApp() {
         mail: settings.mail,
         sync: settings.sync,
         assistant: settings.assistant,
+        weather: settings.weather,
+        language: settings.language,
       });
       setSettings(next);
       setSettingsOpen(false);
@@ -1603,10 +1595,20 @@ export function DashboardApp() {
   }
 
   async function handleSaveWeather(config: { location: string; state: string; country: string; unit: 'C' | 'F'; updateFrequencyMinutes: number }) {
-    await persistSyncConfig({
-      ...(settings?.sync.configJson ?? {}),
-      weather: config,
-    }, 'Weather settings saved.');
+    if (!settings) return;
+    try {
+      setSavingSettings(true);
+      setErrorText('');
+      const next = await saveSettings({
+        weather: { location: config.location, country: config.country, unit: config.unit },
+      });
+      setSettings(next);
+      setSettingsMessage('Weather settings saved.');
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not save weather settings');
+    } finally {
+      setSavingSettings(false);
+    }
   }
 
   async function handleForceUpdate() {
@@ -3112,6 +3114,14 @@ export function DashboardApp() {
                     <option value="classic">classic</option>
                     <option value="glass">glass</option>
                   </select>
+                </label>
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium">Language</span>
+                  <select aria-label="Language" value={settings.language ?? 'en'} onChange={(event) => setSettings((current) => (current ? { ...current, language: event.target.value as AppSettings['language'] } : current))} className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60">
+                    <option value="en">English</option>
+                    <option value="da">Dansk</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">Full translation coming soon — saves your preference now.</p>
                 </label>
               </>
             ) : null}
