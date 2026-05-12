@@ -139,9 +139,23 @@ export async function buildApp() {
     }
     try {
       const payload = verifyToken(token);
+
+      // Check email verification
+      if (infrastructure.pool) {
+        const result = await infrastructure.pool.query<{ email_verified: boolean }>(
+          'select email_verified from users where id = $1',
+          [payload.userId],
+        );
+        if (!result.rows[0]?.email_verified) {
+          reply.code(403);
+          return reply.send({ code: 'EMAIL_VERIFICATION_REQUIRED' });
+        }
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (request as any).svc = getRequestServices(payload.familyId);
-    } catch {
+    } catch (err) {
+      if (reply.statusCode === 403) throw err;
       reply.code(401);
       return reply.send({ message: 'Invalid or expired session' });
     }
