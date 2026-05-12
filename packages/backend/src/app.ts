@@ -196,7 +196,22 @@ export async function buildApp() {
       (input) => entryService.createEntry(input),
       async () => {
         const settings = await settingsService.getSettings();
-        return { ollamaUrl: settings.assistant.ollamaUrl, modelName: settings.assistant.modelName };
+        return {
+          ollamaUrl: settings.assistant.ollamaUrl,
+          modelName: settings.assistant.modelName,
+          tone: settings.assistant.tone,
+          customInstructions: settings.assistant.customInstructions,
+        };
+      },
+      (from, to) => entryService.listOccurrences(from, to),
+      (weekStart) => repo.foodPlanRepository.listByWeek(weekStart),
+      async () => {
+        if (!infrastructure.pool) return null;
+        const result = await infrastructure.pool.query<{ name: string | null }>(
+          'select name from families where id = $1',
+          [familyId],
+        );
+        return result.rows[0]?.name ?? null;
       },
     );
     return { ...repo, entryService, dailyTimelineService, syncService, assistantService, settingsService };
