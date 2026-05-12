@@ -85,8 +85,14 @@ fi
 # ── Step 4: Build images ──────────────────────────────────────
 echo ""
 echo "[ Step 4 ] Building images (this may take a few minutes)..."
+export BUILD_VERSION=$(git describe --tags --always 2>/dev/null || echo "0.0.0")
+export BUILD_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "local")
+export BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "  Version : $BUILD_VERSION"
+echo "  Commit  : $BUILD_COMMIT"
+echo "  Time    : $BUILD_TIME"
 $COMPOSE build --pull
-ok "Images built"
+ok "Images built ($BUILD_COMMIT)"
 
 # ── Step 5: Deploy ────────────────────────────────────────────
 echo ""
