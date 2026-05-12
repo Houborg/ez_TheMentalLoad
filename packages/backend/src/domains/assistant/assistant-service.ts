@@ -8,6 +8,8 @@ import type {
   AssistantParseResponse,
   Calendar,
   CreateEntryRequest,
+  Entry,
+  FoodPlanItem,
   Member,
 } from '@mental-load/contracts';
 
@@ -16,8 +18,96 @@ export class AssistantService {
     private readonly listMembers: () => Promise<Member[]>,
     private readonly listCalendars: () => Promise<Calendar[]>,
     private readonly createEntry: (input: CreateEntryRequest) => Promise<unknown>,
-    private readonly getAssistantRuntimeConfig?: () => Promise<{ ollamaUrl?: string; modelName?: string }>,
+    private readonly getAssistantRuntimeConfig?: () => Promise<{
+      ollamaUrl?: string;
+      modelName?: string;
+      tone?: string;
+      customInstructions?: string;
+    }>,
+    private readonly listUpcomingEntries?: (from: string, to: string) => Promise<Entry[]>,
+    private readonly getCurrentFoodPlan?: (weekStart: string) => Promise<FoodPlanItem[]>,
+    private readonly getFamilyName?: () => Promise<string | null>,
   ) {}
+
+  private async buildSystemPrompt(runtimeConfig?: {
+    ollamaUrl?: string; modelName?: string; tone?: string; customInstructions?: string;
+  }): Promise<string | undefined> {
+    try {
+      const [members, familyName] = await Promise.all([
+        this.listMembers(),
+        this.getFamilyName?.() ?? null,
+      ]);
+
+      const tone = runtimeConfig?.tone === 'formal' ? 'formel' : 'uformel og venlig';
+      const memberList = members.map(m => `${m.name} (${m.role === 'parent' ? 'forælder' : 'barn'})`).join(', ');
+      const family = familyName ? `familien ${familyName}` : 'familien';
+
+      const lines: string[] = [
+        `Du er en hjælpsom familie-assistent for ${family}.`,
+        `Familiemedlemmer: ${memberList || 'ingen endnu'}.`,
+        `Svar på dansk. Vær ${tone}.`,
+      ];
+
+      if (runtimeConfig?.customInstructions?.trim()) {
+        lines.push(runtimeConfig.customInstructions.trim());
+      }
+
+      // Calendar snapshot — next 7 days
+      const now = new Date();
+      const in7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const upcomingEntries = await this.listUpcomingEntries?.(
+        now.toISOString(),
+        in7Days.toISOString(),
+      ).catch(() => []);
+
+      const DAYS_DA = ['Søndag', 'Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag'];
+      if (upcomingEntries && upcomingEntries.length > 0) {
+        lines.push('');
+        lines.push('Kommende begivenheder (næste 7 dage):');
+        for (const entry of upcomingEntries.slice(0, 15)) {
+          const start = new Date(entry.startTime);
+          const day = DAYS_DA[start.getUTCDay()];
+          const date = `${start.getUTCDate()}/${start.getUTCMonth() + 1}`;
+          const time = entry.allDay ? '' : ` kl. ${String(start.getUTCHours()).padStart(2, '0')}:${String(start.getUTCMinutes()).padStart(2, '0')}`;
+          lines.push(`- ${day} ${date}: ${entry.title}${time}`);
+        }
+      } else {
+        lines.push('');
+        lines.push('Ingen kommende begivenheder de næste 7 dage.');
+      }
+
+      // Food plan snapshot — this week + next week
+      const currentWeekStart = getMondayStr(now);
+      const nextWeekStart = getMondayStr(new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000));
+      const [thisWeek, nextWeek] = await Promise.all([
+        this.getCurrentFoodPlan?.(currentWeekStart).catch(() => []),
+        this.getCurrentFoodPlan?.(nextWeekStart).catch(() => []),
+      ]);
+
+      const DAYS_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      const DAYS_DA_SHORT: Record<string, string> = {
+        monday: 'Mandag', tuesday: 'Tirsdag', wednesday: 'Onsdag',
+        thursday: 'Torsdag', friday: 'Fredag', saturday: 'Lørdag', sunday: 'Søndag',
+      };
+
+      const formatWeek = (items: FoodPlanItem[] | undefined, label: string): string => {
+        if (!items || items.length === 0) return `${label}: (ingen madplan)`;
+        const byDay: Record<string, string> = {};
+        for (const item of items) byDay[item.day] = item.dishName;
+        const parts = DAYS_ORDER.map(d => `${DAYS_DA_SHORT[d]}: ${byDay[d] ?? '(ikke planlagt)'}`);
+        return `${label}: ${parts.join(', ')}`;
+      };
+
+      lines.push('');
+      lines.push('Madplan:');
+      lines.push(formatWeek(thisWeek as FoodPlanItem[] | undefined, 'Denne uge'));
+      lines.push(formatWeek(nextWeek as FoodPlanItem[] | undefined, 'Næste uge'));
+
+      return lines.join('\n');
+    } catch {
+      return undefined;
+    }
+  }
 
   async parseRequest(input: AssistantParseRequest): Promise<AssistantParseResponse> {
     const members = await this.listMembers();
@@ -75,18 +165,12 @@ export class AssistantService {
 
   async funChat(input: AssistantFunRequest): Promise<AssistantFunResponse> {
     const runtimeConfig = await this.getAssistantRuntimeConfig?.();
-    const ollamaResponse = await tryOllamaChat(input.message, runtimeConfig);
+    const systemPrompt = await this.buildSystemPrompt(runtimeConfig);
+    const ollamaResponse = await tryOllamaChat(input.message, runtimeConfig, systemPrompt);
     if (ollamaResponse) {
-      return {
-        source: 'ollama-fallback',
-        response: ollamaResponse,
-      };
+      return { source: 'ollama-fallback', response: ollamaResponse };
     }
-
-    return {
-      source: 'rule-based',
-      response: buildFunFallback(input.message),
-    };
+    return { source: 'rule-based', response: buildFunFallback(input.message) };
   }
 
   async getStatus(): Promise<AssistantStatusResponse> {
@@ -287,13 +371,31 @@ function buildFunFallback(message: string): string {
 async function tryOllamaChat(
   message: string,
   runtimeConfig?: { ollamaUrl?: string; modelName?: string },
+  systemPrompt?: string,
 ): Promise<string | undefined> {
   const config = resolveOllamaConfig(runtimeConfig);
-  if (!config) {
-    return undefined;
-  }
+  if (!config) return undefined;
 
   try {
+    if (systemPrompt) {
+      const response = await fetch(`${config.ollamaUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: config.modelName,
+          stream: false,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: message },
+          ],
+        }),
+      });
+      if (!response.ok) return undefined;
+      const payload = (await response.json()) as { message?: { content?: string } };
+      return payload.message?.content?.trim() || undefined;
+    }
+
+    // Fallback: /api/generate without system context
     const response = await fetch(`${config.ollamaUrl}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -303,11 +405,7 @@ async function tryOllamaChat(
         prompt: `You are a cheerful family planning assistant. Reply briefly and helpfully. User: ${message}`,
       }),
     });
-
-    if (!response.ok) {
-      return undefined;
-    }
-
+    if (!response.ok) return undefined;
     const payload = (await response.json()) as { response?: string };
     return payload.response?.trim() || undefined;
   } catch {
@@ -435,4 +533,12 @@ async function checkOllamaStatus(
       message: `Ollama is configured but not reachable at ${config.ollamaUrl}.`,
     };
   }
+}
+
+function getMondayStr(date: Date): string {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = d.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0, 10);
 }
