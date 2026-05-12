@@ -131,7 +131,21 @@ export class AuthService {
   }
 
   async setFamilyName(familyId: string, name: string): Promise<void> {
-    await this.pool.query('update families set name = $1 where id = $2', [name.trim(), familyId]);
+    const trimmed = name.trim();
+    await this.pool.query('update families set name = $1 where id = $2', [trimmed, familyId]);
+
+    // Create the shared Family calendar if this family doesn't have one yet
+    const existing = await this.pool.query(
+      'select 1 from calendars where family_id = $1 and owner_member_id is null limit 1',
+      [familyId],
+    );
+    if ((existing.rowCount ?? 0) === 0) {
+      await this.pool.query(
+        `insert into calendars (id, name, color, owner_member_id, family_id, created_at)
+         values (gen_random_uuid(), $1, $2, null, $3, now())`,
+        [trimmed, '#10b981', familyId],
+      );
+    }
   }
 
   async getFamilyName(familyId: string): Promise<string | null> {
