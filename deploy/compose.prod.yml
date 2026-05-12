@@ -179,6 +179,9 @@ services:
       args:
         # Compiled into the client bundle at build time — must be wss:// on HTTPS
         NEXT_PUBLIC_WS_URL: wss://mentalload.pl0k.online/ws
+        BUILD_VERSION: ${BUILD_VERSION:-0.0.0}
+        BUILD_COMMIT: ${BUILD_COMMIT:-local}
+        BUILD_TIME: ${BUILD_TIME:-}
     image: mentalload-frontend:local
     container_name: mentalload-frontend
     restart: unless-stopped
