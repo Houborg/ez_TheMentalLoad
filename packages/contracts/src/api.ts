@@ -95,6 +95,8 @@ export interface UpdateSettingsRequest {
   sync?: Partial<AppSettings['sync']> & {
     configJson?: Record<string, unknown>;
   };
+  weather?: Partial<AppSettings['weather']>;
+  language?: AppSettings['language'];
   updatedAt?: string;
 }
 
