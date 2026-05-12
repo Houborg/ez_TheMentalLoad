@@ -114,12 +114,10 @@ export async function buildApp() {
     });
   }
 
-  const settingsService = new SettingsService();
   const mailService = new MailService();
   const inboxBridgeService = new InboxBridgeService();
   const sockets = new Set<{ send: (message: string) => void }>();
-  let mailpitTimer: NodeJS.Timeout | undefined;
-  let mailpitClosed = false;
+  let appClosed = false;
 
   await app.register(cors, { origin: true });
   await app.register(cookie);
@@ -150,15 +148,15 @@ export async function buildApp() {
   });
 
   app.addHook('onClose', async () => {
-    mailpitClosed = true;
-    if (mailpitTimer) {
-      clearTimeout(mailpitTimer);
-    }
+    appClosed = true;
     await close();
   });
 
   function getRequestServices(familyId: string) {
     const repo = makeScopedBundle(infrastructure, familyId);
+    const settingsService = infrastructure.pool
+      ? new SettingsService(infrastructure.pool, familyId)
+      : (() => { throw new Error('SettingsService requires postgres'); })();
     const entryService = new EntryService(repo.entryRepository, eventBus, reminderScheduler);
     const dailyTimelineService = new DailyTimelineService(dailyTimelineRepository, {
       listOccurrences: (from, to) => entryService.listOccurrences(from, to),
@@ -187,7 +185,7 @@ export async function buildApp() {
         return { ollamaUrl: settings.assistant.ollamaUrl, modelName: settings.assistant.modelName };
       },
     );
-    return { ...repo, entryService, dailyTimelineService, syncService, assistantService };
+    return { ...repo, entryService, dailyTimelineService, syncService, assistantService, settingsService };
   }
 
   app.get('/api/v1/health', async () => ({
@@ -200,11 +198,11 @@ export async function buildApp() {
     now: new Date().toISOString(),
   }));
 
-  app.get('/api/v1/settings', async () => settingsService.getSettings());
+  app.get('/api/v1/settings', async (request) => svc(request).settingsService.getSettings());
 
   app.put<{ Body: UpdateSettingsRequest }>('/api/v1/settings', async (request, reply) => {
     try {
-      return await settingsService.updateSettings(request.body ?? {});
+      return await svc(request).settingsService.updateSettings(request.body ?? {});
     } catch (error) {
       reply.code(400);
       return { message: error instanceof Error ? error.message : 'Could not save settings' };
@@ -212,12 +210,12 @@ export async function buildApp() {
   });
 
   app.post<{ Body: TestEmailRequest }>('/api/v1/settings/test-email', async (request) => {
-    const settings = await settingsService.getSettings();
+    const settings = await svc(request).settingsService.getSettings();
     return mailService.sendTestEmail(request.body?.to ?? settings.mail.testRecipient, settings.mail);
   });
 
   app.post<{ Body: PullInboxToMailpitRequest }>('/api/v1/mailpit/pull-inbox', async (request, reply) => {
-    const settings = await settingsService.getSettings();
+    const settings = await svc(request).settingsService.getSettings();
     const storedUid = Number(settings.sync.configJson.mailpitLastUid ?? 0);
     const requestedUid = Number(request.body?.sinceUid ?? storedUid);
     const limit = Number(request.body?.limit ?? 20);
@@ -229,7 +227,7 @@ export async function buildApp() {
     }
 
     if (result.latestUid > storedUid) {
-      await settingsService.updateSettings({
+      await svc(request).settingsService.updateSettings({
         sync: {
           ...settings.sync,
           configJson: {
@@ -559,7 +557,7 @@ export async function buildApp() {
       date: confirmed.createdAt.slice(0, 10),
       task: confirmed,
       completedByMemberId: request.params.memberId,
-    }, svc(request).memberRepository);
+    }, svc(request).memberRepository, svc(request).settingsService);
 
     const date = normalizeIsoDate(confirmed.dueAt?.slice(0, 10)) ?? new Date().toISOString().slice(0, 10);
     const timeline = await svc(request).dailyTimelineService.getTodayTimeline(request.params.memberId, date, 'UTC');
@@ -658,7 +656,7 @@ export async function buildApp() {
   app.post<{ Body: CreateEntryRequest }>('/api/v1/entries', async (request, reply) => {
     const created = await svc(request).entryService.createEntry(request.body);
     try {
-      await sendInviteEmailsForEntry(created, svc(request).memberRepository);
+      await sendInviteEmailsForEntry(created, svc(request).memberRepository, svc(request).settingsService);
     } catch {
       // Keep entry creation successful even if outbound invite email fails.
     }
@@ -774,7 +772,7 @@ export async function buildApp() {
     }
   }
 
-  async function sendInviteEmailsForEntry(entry: Entry, scopedMemberRepository: MemberRepository): Promise<void> {
+  async function sendInviteEmailsForEntry(entry: Entry, scopedMemberRepository: MemberRepository, settingsService: SettingsService): Promise<void> {
     if (entry.type !== 'event') {
       return;
     }
@@ -826,7 +824,7 @@ export async function buildApp() {
     date: string;
     task: { title: string; confirmedAt?: string };
     completedByMemberId?: string;
-  }, scopedMemberRepository: MemberRepository): Promise<void> {
+  }, scopedMemberRepository: MemberRepository, settingsService: SettingsService): Promise<void> {
     const [members, settings] = await Promise.all([
       scopedMemberRepository.list(),
       settingsService.getSettings(),
@@ -851,49 +849,7 @@ export async function buildApp() {
     }));
   }
 
-  scheduleMailpitPull(15_000);
-
   return app;
-
-  function scheduleMailpitPull(delayMs?: number): void {
-    if (mailpitClosed) {
-      return;
-    }
-
-    if (mailpitTimer) {
-      clearTimeout(mailpitTimer);
-    }
-
-    const nextDelayMs = typeof delayMs === 'number' ? delayMs : 60_000;
-    mailpitTimer = setTimeout(async () => {
-      try {
-        const settings = await settingsService.getSettings();
-        const autoPullEnabled = settings.sync.configJson.mailpitAutoPullEnabled !== false;
-        const inviteMailSelected = settings.sync.provider === 'invite-mail';
-        const pullMinutes = getMailpitPullMinutes(settings.sync.configJson.mailpitPullMinutes);
-
-        if (autoPullEnabled && inviteMailSelected) {
-          const storedUid = Number(settings.sync.configJson.mailpitLastUid ?? 0);
-          const result = await inboxBridgeService.pullInboxToMailpit(settings, storedUid, 25);
-          if (result.ok && result.latestUid > storedUid) {
-            await settingsService.updateSettings({
-              sync: {
-                ...settings.sync,
-                configJson: {
-                  ...settings.sync.configJson,
-                  mailpitLastUid: result.latestUid,
-                },
-              },
-            });
-          }
-        }
-
-        scheduleMailpitPull(pullMinutes * 60_000);
-      } catch {
-        scheduleMailpitPull(60_000);
-      }
-    }, nextDelayMs);
-  }
 }
 
 const FOOD_PLAN_DAYS: FoodPlanDay[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
