@@ -179,7 +179,7 @@ export function DashboardApp() {
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [assistantSuggestionBusy, setAssistantSuggestionBusy] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'calendars' | 'mail' | 'sync' | 'recurring' | 'birthdays' | 'weather' | 'developer'>('theme');
+  const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'calendars' | 'mail' | 'sync' | 'recurring' | 'birthdays' | 'weather' | 'assistant' | 'developer'>('theme');
   const [updateInProgress, setUpdateInProgress] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
   const [serverVersion, setServerVersion] = useState<{ version: string; commit: string; deployedAt: string | null } | null>(null);
@@ -3079,6 +3079,7 @@ export function DashboardApp() {
               { id: 'recurring', label: 'Recurring' },
               { id: 'birthdays', label: 'Birthdays' },
               { id: 'weather', label: 'Weather' },
+              { id: 'assistant', label: 'Assistent' },
               { id: 'developer', label: 'Developer' },
             ].map(({ id, label }) => (
               <button
@@ -3738,6 +3739,58 @@ export function DashboardApp() {
 
             {settingsTab === 'weather' ? (
               <WeatherSettingsPanel initial={weatherConfig} onSave={(value) => void handleSaveWeather(value)} />
+            ) : null}
+
+            {settingsTab === 'assistant' && settings ? (
+              <div className="space-y-6">
+                <div className="rounded-2xl border border-border/60 bg-background/30 p-5">
+                  <h3 className="mb-4 text-sm font-semibold">AI Assistent</h3>
+                  <div className="space-y-5">
+                    {/* Tone */}
+                    <div className="space-y-1.5">
+                      <span className="text-sm font-medium">Tone</span>
+                      <div className="flex gap-2 mt-1">
+                        {(['informal', 'formal'] as const).map(t => (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setSettings(current => current ? {
+                              ...current,
+                              assistant: { ...current.assistant, tone: t },
+                            } : current)}
+                            className={cn(
+                              'rounded-xl border px-4 py-2 text-sm transition',
+                              (settings.assistant.tone ?? 'informal') === t
+                                ? 'border-primary bg-primary/10 text-primary'
+                                : 'border-border/60 bg-background/60 text-muted-foreground hover:text-foreground',
+                            )}
+                          >
+                            {t === 'informal' ? 'Uformel' : 'Formel'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Custom instructions */}
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Egne instruktioner</label>
+                      <textarea
+                        rows={4}
+                        value={settings.assistant.customInstructions ?? ''}
+                        onChange={e => setSettings(current => current ? {
+                          ...current,
+                          assistant: { ...current.assistant, customInstructions: e.target.value },
+                        } : current)}
+                        placeholder="Eks: Kald altid børnene ved navn. Brug humor. Nævn altid hvem der har ansvaret."
+                        className="w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60 resize-none"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Tilføjes til AI-assistentens systemprompt. Giv assistenten personlighed eller husregler.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             ) : null}
 
             {settingsTab === 'developer' ? (
