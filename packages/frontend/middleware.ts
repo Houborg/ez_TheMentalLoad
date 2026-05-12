@@ -7,6 +7,7 @@ const PUBLIC_PREFIXES = [
   '/setup',
   '/forgot-password',
   '/reset-password',
+  '/verify-email',
   '/api/auth/',
 ];
 
@@ -22,6 +23,21 @@ export async function middleware(request: NextRequest) {
   if (sessionToken) {
     const payload = await verifySessionToken(sessionToken);
     if (payload) {
+      // Check email verification for page routes only (avoid loops on API calls)
+      if (!pathname.startsWith('/api/')) {
+        try {
+          const backendUrl = (process.env.BACKEND_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+          const me = await fetch(`${backendUrl}/api/auth/me`, {
+            headers: { 'Cookie': `${COOKIE_NAME}=${sessionToken}` },
+            signal: AbortSignal.timeout(3000),
+          });
+          if (me.status === 403) {
+            return NextResponse.redirect(new URL('/verify-email', request.url));
+          }
+        } catch {
+          // Backend unreachable — let the request through, don't block on network errors
+        }
+      }
       return NextResponse.next();
     }
   }
