@@ -3,7 +3,6 @@ import '@fastify/cookie';
 import type { Pool } from 'pg';
 import { AuthService, AuthError, verifyToken } from './auth-service';
 import { MailService } from '../mail/mail-service';
-import { SettingsService } from '../settings/settings-service';
 
 const COOKIE_NAME = 'ml_session';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
@@ -25,7 +24,6 @@ function isSecure(request: { headers: Record<string, string | string[] | undefin
 export async function registerAuthRoutes(app: FastifyInstance, pool: Pool): Promise<void> {
   const authService = new AuthService(pool);
   const mailService = new MailService();
-  const settingsService = new SettingsService();
 
   app.post<{ Body: { email?: string; password?: string } }>('/api/auth/signup', async (request, reply) => {
     const { email, password } = request.body ?? {};
@@ -105,15 +103,23 @@ export async function registerAuthRoutes(app: FastifyInstance, pool: Pool): Prom
 
     const result = await authService.createResetToken(email);
     if (result) {
-      const settings = await settingsService.getSettings();
       const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
       const resetUrl = `${appUrl}/reset-password?token=${result.raw}`;
+      const smtpConfig = {
+        smtpHost: process.env.SMTP_HOST ?? '',
+        smtpPort: Number(process.env.SMTP_PORT ?? 1025),
+        smtpUser: process.env.SMTP_USER ?? '',
+        smtpPass: process.env.SMTP_PASS ?? '',
+        smtpFrom: process.env.SMTP_FROM ?? 'mental-load@local.test',
+        imapHost: '', imapPort: 993, imapUser: '', imapPass: '',
+        imapSecure: true, testRecipient: '', previewMode: !process.env.SMTP_HOST,
+      };
       try {
         await mailService.sendMail({
           to: email,
           subject: 'Reset your MentalLoad password',
           text: `Click the link to reset your password (expires in 1 hour):\n\n${resetUrl}`,
-        }, settings.mail);
+        }, smtpConfig);
       } catch {
         // Swallow email errors — always return 200 to avoid email enumeration
         console.error('Failed to send password reset email to', email);
