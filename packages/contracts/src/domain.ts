@@ -132,12 +132,20 @@ export interface SyncSettings {
   lastSyncAt?: string;
 }
 
+export interface WeatherSettings {
+  location: string;
+  country: string;
+  unit: 'C' | 'F';
+}
+
 export interface AppSettings {
   id: string;
   theme: ThemeSettings;
   assistant: AssistantConfig;
   mail: MailSettings;
   sync: SyncSettings;
+  weather: WeatherSettings;
+  language: SupportedLanguage;
   updatedAt: string;
 }
 
