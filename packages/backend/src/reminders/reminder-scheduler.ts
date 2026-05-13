@@ -28,7 +28,7 @@ export interface TimelineResetJobRecord {
 }
 
 export interface ReminderScheduler {
-  scheduleForEntry(entry: Entry): Promise<ReminderJobRecord[]>;
+  scheduleForEntry(entry: Entry, familyId: string): Promise<ReminderJobRecord[]>;
   scheduleTimelinePrompt(taskId: string, memberId: string, runAt: string): Promise<TimelinePromptJobRecord>;
   scheduleTimelineReset(memberId: string, date: string, timezone: string, runAt: string): Promise<TimelineResetJobRecord>;
   listJobs(): Promise<ReminderJobRecord[]>;
@@ -41,7 +41,7 @@ export class InMemoryReminderScheduler implements ReminderScheduler {
   private readonly timelinePromptJobs = new Map<string, TimelinePromptJobRecord>();
   private readonly timelineResetJobs = new Map<string, TimelineResetJobRecord>();
 
-  async scheduleForEntry(entry: Entry): Promise<ReminderJobRecord[]> {
+  async scheduleForEntry(entry: Entry, _familyId: string): Promise<ReminderJobRecord[]> {
     for (const [key, job] of this.jobs.entries()) {
       if (job.entryId === entry.id) {
         this.jobs.delete(key);
@@ -119,7 +119,7 @@ export class RedisReminderScheduler implements ReminderScheduler {
     });
   }
 
-  async scheduleForEntry(entry: Entry): Promise<ReminderJobRecord[]> {
+  async scheduleForEntry(entry: Entry, familyId: string): Promise<ReminderJobRecord[]> {
     const scheduledJobs = entry.reminders.map((reminder) => {
       const runAtDate = new Date(new Date(entry.startTime).getTime() - reminder.minutesBefore * 60_000);
       const job: ReminderJobRecord = {
@@ -139,7 +139,15 @@ export class RedisReminderScheduler implements ReminderScheduler {
       try {
         await this.queue.add(
           'reminder.triggered',
-          { entryId: job.entryId, reminderId: job.reminderId, runAt: job.runAt },
+          {
+            entryId: job.entryId,
+            reminderId: job.reminderId,
+            runAt: job.runAt,
+            familyId,
+            ownerMemberId: entry.ownerMemberId,
+            entryTitle: entry.title,
+            entryStart: entry.startTime,
+          },
           { delay, removeOnComplete: 100, removeOnFail: 100 },
         );
       } catch {

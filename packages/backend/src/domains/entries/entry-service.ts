@@ -11,6 +11,7 @@ export class EntryService {
     private readonly entryRepository: EntryRepository,
     private readonly eventBus: DomainEventBus,
     private readonly reminderScheduler: ReminderScheduler,
+    private readonly familyId: string = '',
   ) {}
 
   async listEntries(): Promise<Entry[]> {
@@ -273,7 +274,7 @@ export class EntryService {
   }
 
   private async scheduleReminders(entry: Entry): Promise<void> {
-    const jobs = await this.reminderScheduler.scheduleForEntry(entry);
+    const jobs = await this.reminderScheduler.scheduleForEntry(entry, this.familyId);
 
     for (const job of jobs) {
       this.eventBus.emit({

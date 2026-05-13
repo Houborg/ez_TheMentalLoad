@@ -168,7 +168,7 @@ export async function buildApp() {
     const settingsService = infrastructure.pool
       ? new SettingsService(infrastructure.pool, familyId)
       : (() => { throw new Error('SettingsService requires postgres'); })();
-    const entryService = new EntryService(repo.entryRepository, eventBus, reminderScheduler);
+    const entryService = new EntryService(repo.entryRepository, eventBus, reminderScheduler, familyId);
     const dailyTimelineService = new DailyTimelineService(dailyTimelineRepository, {
       listOccurrences: (from, to) => entryService.listOccurrences(from, to),
       findEntryById: (id) => repo.entryRepository.findById(id),
