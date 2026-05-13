@@ -30,8 +30,7 @@ function groupTasks(tasks: Entry[]): Group[] {
     const d = new Date(t.startTime);
     if (sameDay(d, now)) today.push(t);
     else if (d <= endOfWeek) thisWeek.push(t);
-    else if (d <= new Date(now.getTime() + 30 * 86400000)) upcoming.push(t);
-    else noDate.push(t);
+    else upcoming.push(t);
   }
 
   return [
