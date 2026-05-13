@@ -39,6 +39,29 @@ export class SystemMailService {
     await this.send(to, subject, body);
   }
 
+  async sendReminder(to: string, memberName: string, entryTitle: string, entryStart: string): Promise<void> {
+    const when = new Date(entryStart).toLocaleString('da-DK', {
+      timeZone: process.env.DEFAULT_TIMEZONE ?? 'Europe/Copenhagen',
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const subject = `Påmindelse: ${entryTitle}`;
+    const text = [
+      `Hej ${memberName}!`,
+      '',
+      `Dette er en påmindelse om: ${entryTitle}`,
+      `Tidspunkt: ${when}`,
+      '',
+      '— MentalLoad',
+    ].join('\n');
+
+    await this.send(to, subject, text);
+  }
+
   private async send(to: string, subject: string, text: string): Promise<void> {
     if (!this.isConfigured()) {
       console.log(`[system-mail-preview] To: ${to} | Subject: ${subject}`);
