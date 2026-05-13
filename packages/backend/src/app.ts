@@ -22,7 +22,6 @@ import type {
   SyncConnectRequest,
   SyncRunRequest,
   TestEmailRequest,
-  PullInboxToMailpitRequest,
   UpdateEntryRequest,
   UpdateMemberRequest,
   UpdateSettingsRequest,
@@ -32,7 +31,6 @@ import { AssistantService } from './domains/assistant/assistant-service';
 import { DomainEventBus } from './events/domain-event-bus';
 import { EntryService } from './domains/entries/entry-service';
 import { MailService } from './mail/mail-service';
-import { InboxBridgeService } from './mail/inbox-bridge-service';
 import { createRepositoryBundle, type RepositoryBundle } from './repositories/repository-factory';
 import type { MemberRepository } from './repositories/member-repository';
 import type { CalendarRepository } from './repositories/calendar-repository';
@@ -115,7 +113,6 @@ export async function buildApp() {
   }
 
   const mailService = new MailService();
-  const inboxBridgeService = new InboxBridgeService();
   const sockets = new Set<{ send: (message: string) => void }>();
   let appClosed = false;
 
@@ -241,33 +238,6 @@ export async function buildApp() {
   app.post<{ Body: TestEmailRequest }>('/api/v1/settings/test-email', async (request) => {
     const settings = await svc(request).settingsService.getSettings();
     return mailService.sendTestEmail(request.body?.to ?? settings.mail.testRecipient, settings.mail);
-  });
-
-  app.post<{ Body: PullInboxToMailpitRequest }>('/api/v1/mailpit/pull-inbox', async (request, reply) => {
-    const settings = await svc(request).settingsService.getSettings();
-    const storedUid = Number(settings.sync.configJson.mailpitLastUid ?? 0);
-    const requestedUid = Number(request.body?.sinceUid ?? storedUid);
-    const limit = Number(request.body?.limit ?? 20);
-
-    const result = await inboxBridgeService.pullInboxToMailpit(settings, Number.isFinite(requestedUid) ? requestedUid : 0, Number.isFinite(limit) ? limit : 20);
-    if (!result.ok) {
-      reply.code(400);
-      return result;
-    }
-
-    if (result.latestUid > storedUid) {
-      await svc(request).settingsService.updateSettings({
-        sync: {
-          ...settings.sync,
-          configJson: {
-            ...settings.sync.configJson,
-            mailpitLastUid: result.latestUid,
-          },
-        },
-      });
-    }
-
-    return result;
   });
 
   app.post<{ Body: SyncConnectRequest }>('/api/v1/sync/connect', async (request, reply) => {
