@@ -40,6 +40,7 @@ export function MobileFoodPlanner() {
   const [items, setItems] = useState<FoodPlanItem[]>([]);
   const [editDay, setEditDay] = useState<number | null>(null); // 0=Mon … 6=Sun
   const [editText, setEditText] = useState('');
+  const [editGroceries, setEditGroceries] = useState(''); // newline-separated grocery items
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -67,8 +68,10 @@ export function MobileFoodPlanner() {
   }
 
   function openEdit(dayIndex: number) {
+    const item = itemForDay(dayIndex);
     setEditDay(dayIndex);
-    setEditText(itemForDay(dayIndex)?.dishName ?? '');
+    setEditText(item?.dishName ?? '');
+    setEditGroceries((item?.groceryList ?? []).join('\n'));
   }
 
   async function saveEdit() {
@@ -77,7 +80,8 @@ export function MobileFoodPlanner() {
     setSaving(true);
     try {
       if (editText.trim()) {
-        await updateFoodPlan({ weekStart, day, dishName: editText.trim() });
+        const groceryList = editGroceries.split('\n').map(s => s.trim()).filter(Boolean);
+        await updateFoodPlan({ weekStart, day, dishName: editText.trim(), groceryList });
         setItems(prev => {
           const filtered = prev.filter(i => i.day !== day);
           const existing = prev.find(i => i.day === day);
@@ -87,7 +91,7 @@ export function MobileFoodPlanner() {
             weekStart,
             day,
             dishName: editText.trim(),
-            groceryList: existing?.groceryList ?? [],
+            groceryList,
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
           };
@@ -164,9 +168,14 @@ export function MobileFoodPlanner() {
                   {date.getUTCDate()}. {MONTHS_DA[date.getUTCMonth()]}
                 </div>
               </div>
-              <div className="text-sm text-right max-w-[55%] truncate">
+              <div className="text-sm text-right max-w-[55%]">
                 {item ? (
-                  <span>{item.dishName}</span>
+                  <div>
+                    <div className="truncate">{item.dishName}</div>
+                    {item.groceryList.length > 0 && (
+                      <div className="text-xs text-muted-foreground">{item.groceryList.length} varer</div>
+                    )}
+                  </div>
                 ) : (
                   <span className="text-muted-foreground/50">Ingen plan</span>
                 )}
@@ -190,9 +199,16 @@ export function MobileFoodPlanner() {
             autoFocus
             value={editText}
             onChange={e => setEditText(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && saveEdit()}
             placeholder="Hvad skal vi spise?"
             className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary mb-3"
+          />
+          <label className="block text-xs text-muted-foreground mb-1">Indkøbsliste (én vare pr. linje)</label>
+          <textarea
+            value={editGroceries}
+            onChange={e => setEditGroceries(e.target.value)}
+            placeholder={"Mælk\nÆg\nBrød"}
+            rows={4}
+            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary mb-3 resize-none"
           />
           <div className="flex gap-2">
             <button

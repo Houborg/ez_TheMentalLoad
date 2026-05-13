@@ -16,21 +16,11 @@ type Props = {
   calendars: Calendar[];
   onCreated: (entry: Entry) => void;
   onOpenFull: (draft?: Partial<AssistantDraft>) => void;
+  defaultType?: 'event' | 'task';
 };
 
-function formatDate(iso?: string): string {
-  if (!iso) return 'Dato';
-  const d = new Date(iso);
-  return d.toLocaleDateString('da-DK', { weekday: 'short', day: 'numeric', month: 'short' });
-}
 
-function formatTime(iso?: string): string {
-  if (!iso) return 'Tid';
-  const d = new Date(iso);
-  return d.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' });
-}
-
-export function MobileQuickAdd({ open, onClose, members, calendars, onCreated, onOpenFull }: Props) {
+export function MobileQuickAdd({ open, onClose, members, calendars, onCreated, onOpenFull, defaultType = 'event' }: Props) {
   const [stage, setStage] = useState<Stage>('ai');
   const [text, setText] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -149,7 +139,7 @@ export function MobileQuickAdd({ open, onClose, members, calendars, onCreated, o
           <>
             <div className="flex items-center justify-between mb-4">
               <h2 id="quick-add-title" className="font-semibold text-sm">
-                {draft?.title ? draft.title : 'Ny begivenhed'}
+                {draft?.title ? draft.title : defaultType === 'task' ? 'Ny opgave' : 'Ny begivenhed'}
               </h2>
               {parseError && <span className="text-xs text-destructive">{parseError}</span>}
             </div>
@@ -160,7 +150,7 @@ export function MobileQuickAdd({ open, onClose, members, calendars, onCreated, o
               value={draft?.title ?? ''}
               onChange={e => setDraft(d => {
                 const base: AssistantDraft = d ?? {
-                  type: 'event',
+                  type: defaultType,
                   title: '',
                   ownerMemberId: defaultMember?.id ?? '',
                   calendarId: defaultCalendar?.id ?? '',
@@ -174,14 +164,58 @@ export function MobileQuickAdd({ open, onClose, members, calendars, onCreated, o
               className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary mb-3"
             />
 
-            {/* Date + time display pills */}
+            {/* Date + time interactive inputs */}
             <div className="flex gap-2 mb-3">
-              <div className="flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted-foreground">
-                📅 {formatDate(draft?.startTime)}
-              </div>
-              <div className="flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted-foreground">
-                🕐 {formatTime(draft?.startTime)}
-              </div>
+              <input
+                type="date"
+                value={draft?.startTime ? new Date(draft.startTime).toISOString().slice(0, 10) : ''}
+                onChange={e => {
+                  const dateVal = e.target.value;
+                  if (!dateVal) return;
+                  setDraft(d => {
+                    const existing = d?.startTime ? new Date(d.startTime) : new Date();
+                    const [y, m, day] = dateVal.split('-').map(Number);
+                    existing.setFullYear(y, m - 1, day);
+                    const base: AssistantDraft = d ?? {
+                      type: defaultType,
+                      title: '',
+                      ownerMemberId: defaultMember?.id ?? '',
+                      calendarId: defaultCalendar?.id ?? '',
+                      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                      allDay: false,
+                      reminders: [],
+                    };
+                    const end = new Date(existing.getTime() + 3600000);
+                    return { ...base, startTime: existing.toISOString(), endTime: d?.endTime ?? end.toISOString() };
+                  });
+                }}
+                className="flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
+              />
+              <input
+                type="time"
+                value={draft?.startTime && !draft.allDay ? new Date(draft.startTime).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }) : ''}
+                onChange={e => {
+                  const timeVal = e.target.value;
+                  if (!timeVal) return;
+                  setDraft(d => {
+                    const existing = d?.startTime ? new Date(d.startTime) : new Date();
+                    const [h, min] = timeVal.split(':').map(Number);
+                    existing.setHours(h, min, 0, 0);
+                    const base: AssistantDraft = d ?? {
+                      type: defaultType,
+                      title: '',
+                      ownerMemberId: defaultMember?.id ?? '',
+                      calendarId: defaultCalendar?.id ?? '',
+                      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                      allDay: false,
+                      reminders: [],
+                    };
+                    const end = new Date(existing.getTime() + 3600000);
+                    return { ...base, startTime: existing.toISOString(), endTime: d?.endTime ?? end.toISOString() };
+                  });
+                }}
+                className="flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
+              />
             </div>
 
             {/* Member avatar selector */}
@@ -192,7 +226,7 @@ export function MobileQuickAdd({ open, onClose, members, calendars, onCreated, o
                   type="button"
                   onClick={() => setDraft(d => {
                     const base: AssistantDraft = d ?? {
-                      type: 'event',
+                      type: defaultType,
                       title: '',
                       ownerMemberId: m.id,
                       calendarId: defaultCalendar?.id ?? '',

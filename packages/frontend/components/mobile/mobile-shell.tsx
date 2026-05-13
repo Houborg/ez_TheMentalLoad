@@ -21,6 +21,7 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
   const [activeTab, setActiveTab] = useState<MobileTab>('kalender');
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddType, setQuickAddType] = useState<'event' | 'task'>('event');
   const [moreOpen, setMoreOpen] = useState(false);
   const [moreSection, setMoreSection] = useState<MoreSection | null>(null);
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
@@ -108,7 +109,7 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
           <MobileCalendarView
             members={members}
             calendars={calendars}
-            onAddEntry={() => setQuickAddOpen(true)}
+            onAddEntry={() => { setQuickAddType('event'); setQuickAddOpen(true); }}
             onSelectEntry={setSelectedEntry}
             refreshKey={calendarRefreshKey}
           />
@@ -116,7 +117,7 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
         {activeTab === 'opgaver' && (
           <MobileTaskList
             members={members}
-            onAddTask={() => setQuickAddOpen(true)}
+            onAddTask={() => { setQuickAddType('task'); setQuickAddOpen(true); }}
             onSelectEntry={setSelectedEntry}
           />
         )}
@@ -145,6 +146,7 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
         members={members}
         calendars={calendars}
         onCreated={handleEntryCreated}
+        defaultType={quickAddType}
         onOpenFull={(_draft?: Partial<AssistantDraft>) => {
           setQuickAddOpen(false);
           onNavigateDesktopSection('dashboard');

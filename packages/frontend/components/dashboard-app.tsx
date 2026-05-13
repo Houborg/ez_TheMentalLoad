@@ -145,6 +145,7 @@ export function DashboardApp() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isMobile = useMobile();
+  const [mobileDesktopOverride, setMobileDesktopOverride] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -1676,7 +1677,7 @@ export function DashboardApp() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {isMobile ? (
+      {isMobile && !mobileDesktopOverride ? (
         <MobileShell
           members={dashboard.members}
           calendars={dashboard.calendars}
@@ -1687,10 +1688,22 @@ export function DashboardApp() {
           }}
           onNavigateDesktopSection={(section) => {
             setActiveNav(section as NavSection);
+            setMobileDesktopOverride(true);
           }}
         />
       ) : (
       <>
+      {isMobile && mobileDesktopOverride && (
+        <div className="sticky top-0 z-50 flex items-center gap-2 border-b border-border bg-background/95 backdrop-blur px-4 py-2">
+          <button
+            type="button"
+            onClick={() => setMobileDesktopOverride(false)}
+            className="text-sm text-primary font-medium"
+          >
+            ← Mobil
+          </button>
+        </div>
+      )}
       <div className="flex min-h-screen">
         <aside
           className={cn(
