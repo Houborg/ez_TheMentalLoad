@@ -61,6 +61,8 @@ import {
 } from '@/lib/api';
 import { TodayTimelineBoard } from '@/components/today-timeline-board';
 import { MobileNav } from '@/components/mobile-nav';
+import { useMobile } from '@/lib/use-mobile';
+import { MobileShell } from '@/components/mobile/mobile-shell';
 import { cn } from '@/lib/utils';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
@@ -143,6 +145,7 @@ const REMINDER_OPTIONS: Array<{ value: Exclude<ReminderDraftMode, 'custom'>; lab
 export function DashboardApp() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isMobile = useMobile();
   const [currentMonth, setCurrentMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -1674,7 +1677,21 @@ export function DashboardApp() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <MobileNav activeSection={activeNav} />
+      {isMobile ? (
+        <MobileShell
+          members={dashboard.members}
+          calendars={dashboard.calendars}
+          onRefresh={() => {
+            loadMonthOccurrences(currentMonth).then(entries =>
+              setDashboard(d => ({ ...d, entries }))
+            ).catch(console.error);
+          }}
+          onNavigateDesktopSection={(section) => {
+            setActiveNav(section as NavSection);
+          }}
+        />
+      ) : (
+      <>
       <div className="flex min-h-screen">
         <aside
           className={cn(
@@ -3777,6 +3794,8 @@ export function DashboardApp() {
           </div>
         </OverlayPanel>
       ) : null}
+      </>
+      )}
     </div>
   );
 }
