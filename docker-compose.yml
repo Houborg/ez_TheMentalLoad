@@ -98,8 +98,7 @@ services:
       PERSISTENCE_DRIVER: postgres
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/mental_load
       REDIS_URL: redis://redis:6379
-      SMTP_HOST: mailpit
-      SMTP_PORT: 1025
+      DEFAULT_TIMEZONE: Europe/Copenhagen
     command: ["npm", "--workspace", "@mental-load/backend", "run", "start:worker"]
 
   frontend:
