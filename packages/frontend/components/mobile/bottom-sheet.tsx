@@ -3,20 +3,31 @@
 import { useEffect } from 'react';
 import { cn } from '@/lib/utils';
 
+// z-50: intentional. MobileShell ensures only one BottomSheet is mounted open at a time.
+// Do not use outside the mobile shell guard (useMobile) to avoid z-index conflicts with desktop modals.
+
 type BottomSheetProps = {
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
   className?: string;
+  ariaLabelledby?: string;
 };
 
-export function BottomSheet({ open, onClose, children, className }: BottomSheetProps) {
+export function BottomSheet({ open, onClose, children, className, ariaLabelledby }: BottomSheetProps) {
   // Prevent body scroll while open
   useEffect(() => {
     if (open) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = '';
     return () => { document.body.style.overflow = ''; };
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -37,9 +48,10 @@ export function BottomSheet({ open, onClose, children, className }: BottomSheetP
         )}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={ariaLabelledby}
       >
         {/* Drag handle */}
-        <div className="mx-auto mt-3 mb-1 h-1 w-8 rounded-full bg-muted-foreground/30" />
+        <div aria-hidden="true" className="mx-auto mt-3 mb-1 h-1 w-8 rounded-full bg-muted-foreground/30" />
         {children}
       </div>
     </div>
