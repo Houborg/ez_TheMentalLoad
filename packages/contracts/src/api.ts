@@ -111,18 +111,6 @@ export interface MailActionResponse {
   message: string;
 }
 
-export interface PullInboxToMailpitRequest {
-  sinceUid?: number;
-  limit?: number;
-}
-
-export interface PullInboxToMailpitResponse {
-  ok: boolean;
-  importedCount: number;
-  latestUid: number;
-  message: string;
-}
-
 export interface SyncConnectRequest {
   provider: SyncProvider;
   configJson: Record<string, unknown>;

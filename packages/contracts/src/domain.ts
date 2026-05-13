@@ -2,7 +2,7 @@ export type MemberRole = 'parent' | 'child';
 export type EntryType = 'event' | 'task';
 export type EntryStatus = 'active' | 'completed' | 'cancelled';
 export type SupportedLanguage = 'en' | 'da';
-export type SyncProvider = 'none' | 'apple' | 'invite-mail' | 'google' | 'outlook';
+export type SyncProvider = 'none' | 'apple' | 'google' | 'outlook';
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type ThemeAppearance = 'classic' | 'glass';
 export type TimelineTaskStatus = 'pending' | 'waiting_confirmation' | 'completed' | 'skipped';
@@ -101,14 +101,8 @@ export interface MailSettings {
   smtpUser: string;
   smtpPass: string;
   smtpFrom: string;
-  imapHost: string;
-  imapPort: number;
-  imapUser: string;
-  imapPass: string;
-  imapSecure: boolean;
   testRecipient: string;
   previewMode: boolean;
-  inboxSource?: string;
   lastSyncAt?: string;
 }
 

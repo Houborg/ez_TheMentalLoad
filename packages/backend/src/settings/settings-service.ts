@@ -117,19 +117,13 @@ function mergeWithDefaults(stored: Record<string, unknown>): AppSettings {
       smtpUser: process.env.SMTP_USER ?? '',
       smtpPass: process.env.SMTP_PASS ?? '',
       smtpFrom: process.env.SMTP_FROM ?? 'mental-load@local.test',
-      imapHost: process.env.IMAP_HOST ?? '',
-      imapPort: Number(process.env.IMAP_PORT ?? 993),
-      imapUser: process.env.IMAP_USER ?? '',
-      imapPass: process.env.IMAP_PASS ?? '',
-      imapSecure: (process.env.IMAP_SECURE ?? 'true') !== 'false',
       testRecipient: process.env.REMINDER_TEST_EMAIL ?? 'family@local.test',
       previewMode: !process.env.SMTP_HOST,
-      inboxSource: '',
     },
     sync: {
       id: 'sync-default',
       provider: 'none',
-      configJson: { mailpitPullMinutes: 1, mailpitAutoPullEnabled: false, mailpitLastUid: 0 },
+      configJson: {},
       isConnected: true,
     },
     weather: {
@@ -205,13 +199,6 @@ function validateSyncProvider(
   const hasConfig = stringValues.length > 0;
   const hasFeedUrl = typeof configJson.feedUrl === 'string' && configJson.feedUrl.trim().length > 0;
   const hasCalendarId = typeof configJson.calendarId === 'string' && configJson.calendarId.trim().length > 0;
-  const hasInboxSource = typeof configJson.inboxSource === 'string' && configJson.inboxSource.includes('BEGIN:VCALENDAR');
-  const hasMailConnection = Boolean(settings.mail.imapHost || settings.mail.smtpHost);
-
-  if (provider === 'invite-mail') {
-    const ok = hasInboxSource || hasMailConnection || hasConfig;
-    return { ok, isConnected: ok, provider, message: ok ? 'Invite-mail sync is connected.' : 'Add IMAP/SMTP details or a sample invite source first.' };
-  }
 
   const ok = hasFeedUrl || hasCalendarId || hasConfig;
   return { ok, isConnected: ok, provider, message: ok ? `${provider} sync is connected.` : `Add ${provider} calendar details before connecting.` };
