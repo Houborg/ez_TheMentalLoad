@@ -60,7 +60,6 @@ import {
   type WeatherForecastResponse,
 } from '@/lib/api';
 import { TodayTimelineBoard } from '@/components/today-timeline-board';
-import { MobileNav } from '@/components/mobile-nav';
 import { useMobile } from '@/lib/use-mobile';
 import { MobileShell } from '@/components/mobile/mobile-shell';
 import { cn } from '@/lib/utils';
