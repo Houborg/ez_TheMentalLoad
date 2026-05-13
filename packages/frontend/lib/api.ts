@@ -14,8 +14,6 @@ import type {
   Entry,
   ListFoodPlanResponse,
   CreateEntryRequest,
-  PullInboxToMailpitRequest,
-  PullInboxToMailpitResponse,
   SyncConnectRequest,
   SyncConnectResponse,
   SyncRunRequest,
@@ -238,12 +236,6 @@ export async function sendTestEmail(payload: TestEmailRequest) {
   });
 }
 
-export async function pullInboxToMailpit(payload: PullInboxToMailpitRequest = {}) {
-  return fetchJson<PullInboxToMailpitResponse>('/api/v1/mailpit/pull-inbox', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
 
 export async function connectSync(payload: SyncConnectRequest) {
   return fetchJson<SyncConnectResponse>('/api/v1/sync/connect', {

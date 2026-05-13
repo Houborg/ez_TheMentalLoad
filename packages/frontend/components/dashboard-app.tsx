@@ -45,7 +45,6 @@ import {
   loadWeatherForecast,
   loadUpcomingOccurrences,
   parseAssistant,
-  pullInboxToMailpit,
   respondToInvitation,
   runSync,
   saveSettings,
@@ -1399,18 +1398,6 @@ export function DashboardApp() {
     }
   }
 
-  async function handlePullInbox() {
-    try {
-      setErrorText('');
-      setMailActionBusy(true);
-      const result = await pullInboxToMailpit({ limit: 25 });
-      setSettingsMessage(`Imported ${result.importedCount} inbox messages.`);
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Could not pull inbox to mailpit');
-    } finally {
-      setMailActionBusy(false);
-    }
-  }
 
   async function handleConnectSync() {
     if (!settings) {
@@ -3273,7 +3260,7 @@ export function DashboardApp() {
             {settingsTab === 'mail' ? (
               <div className="space-y-3">
                 <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm text-muted-foreground">
-                  Configure SMTP for sending reminders/invites and IMAP for inbox sync.
+                  Configure SMTP for sending reminders and calendar invites.
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-2 sm:col-span-2">
@@ -3323,55 +3310,6 @@ export function DashboardApp() {
                     />
                   </label>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-2 sm:col-span-2">
-                    <span className="text-sm font-medium">IMAP host</span>
-                    <input
-                      value={settings.mail.imapHost}
-                      onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, imapHost: event.target.value } } : current)}
-                      placeholder="imap.example.com"
-                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    <span className="text-sm font-medium">IMAP port</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={settings.mail.imapPort}
-                      onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, imapPort: Number(event.target.value) || 0 } } : current)}
-                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    <span className="text-sm font-medium">IMAP secure</span>
-                    <select
-                      value={settings.mail.imapSecure ? 'yes' : 'no'}
-                      onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, imapSecure: event.target.value === 'yes' } } : current)}
-                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                    >
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
-                  </label>
-                  <label className="grid gap-2">
-                    <span className="text-sm font-medium">IMAP user</span>
-                    <input
-                      value={settings.mail.imapUser}
-                      onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, imapUser: event.target.value } } : current)}
-                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    <span className="text-sm font-medium">IMAP password</span>
-                    <input
-                      type="password"
-                      value={settings.mail.imapPass}
-                      onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, imapPass: event.target.value } } : current)}
-                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                    />
-                  </label>
-                </div>
                 <label className="grid gap-2">
                   <span className="text-sm font-medium">Test recipient</span>
                   <input
@@ -3400,58 +3338,6 @@ export function DashboardApp() {
                   >
                     Send test email
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => void handlePullInbox()}
-                    disabled={mailActionBusy}
-                    className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60 disabled:opacity-60"
-                  >
-                    Pull inbox to mailpit
-                  </button>
-                </div>
-                <div className="grid gap-3 rounded-2xl border border-border/60 bg-background/30 p-4 sm:grid-cols-2">
-                  <label className="grid gap-2">
-                    <span className="text-sm font-medium">Auto pull IMAP inbox</span>
-                    <select
-                      value={settings.sync.configJson.mailpitAutoPullEnabled === false ? 'no' : 'yes'}
-                      onChange={(event) => setSettings((current) => current ? {
-                        ...current,
-                        sync: {
-                          ...current.sync,
-                          configJson: {
-                            ...current.sync.configJson,
-                            mailpitAutoPullEnabled: event.target.value === 'yes',
-                          },
-                        },
-                      } : current)}
-                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                    >
-                      <option value="no">No (recommended)</option>
-                      <option value="yes">Yes</option>
-                    </select>
-                  </label>
-                  <label className="grid gap-2">
-                    <span className="text-sm font-medium">Auto pull interval (minutes)</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={Number(settings.sync.configJson.mailpitPullMinutes ?? 1)}
-                      onChange={(event) => setSettings((current) => current ? {
-                        ...current,
-                        sync: {
-                          ...current.sync,
-                          configJson: {
-                            ...current.sync.configJson,
-                            mailpitPullMinutes: Math.max(1, Number(event.target.value) || 1),
-                          },
-                        },
-                      } : current)}
-                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                    />
-                  </label>
-                  <div className="sm:col-span-2 text-xs text-muted-foreground">
-                    Auto pull runs only when Sync provider is set to invite-mail and this toggle is enabled.
-                  </div>
                 </div>
               </div>
             ) : null}
@@ -3469,7 +3355,6 @@ export function DashboardApp() {
                     <option value="apple">apple</option>
                     <option value="google">google</option>
                     <option value="outlook">outlook</option>
-                    <option value="invite-mail">invite-mail</option>
                   </select>
                 </label>
                 <label className="grid gap-2">
@@ -3486,14 +3371,6 @@ export function DashboardApp() {
                     <input
                       value={String(settings.sync.configJson.calendarId ?? '')}
                       onChange={(event) => setSettings((current) => current ? { ...current, sync: { ...current.sync, configJson: { ...current.sync.configJson, calendarId: event.target.value } } } : current)}
-                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    <span className="text-sm font-medium">Inbox source</span>
-                    <input
-                      value={String(settings.sync.configJson.inboxSource ?? '')}
-                      onChange={(event) => setSettings((current) => current ? { ...current, sync: { ...current.sync, configJson: { ...current.sync.configJson, inboxSource: event.target.value } } } : current)}
                       className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
                     />
                   </label>
