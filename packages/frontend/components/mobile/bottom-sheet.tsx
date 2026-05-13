@@ -6,6 +6,9 @@ import { cn } from '@/lib/utils';
 // z-50: intentional. MobileShell ensures only one BottomSheet is mounted open at a time.
 // Do not use outside the mobile shell guard (useMobile) to avoid z-index conflicts with desktop modals.
 
+// Module-level ref counter — safe because BottomSheet only runs client-side ('use client')
+let openCount = 0;
+
 type BottomSheetProps = {
   open: boolean;
   onClose: () => void;
@@ -15,11 +18,18 @@ type BottomSheetProps = {
 };
 
 export function BottomSheet({ open, onClose, children, className, ariaLabelledby }: BottomSheetProps) {
-  // Prevent body scroll while open
+  // Prevent body scroll while open — ref-counted so multiple sheets don't fight each other
   useEffect(() => {
-    if (open) document.body.style.overflow = 'hidden';
-    else document.body.style.overflow = '';
-    return () => { document.body.style.overflow = ''; };
+    if (open) {
+      openCount++;
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      if (open) {
+        openCount--;
+        if (openCount === 0) document.body.style.overflow = '';
+      }
+    };
   }, [open]);
 
   useEffect(() => {
