@@ -23,6 +23,7 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [moreSection, setMoreSection] = useState<MoreSection | null>(null);
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
 
   function handleTabSelect(tab: MobileTab) {
     if (tab === 'mere') {
@@ -40,11 +41,13 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
   function handleEntryCreated(_entry: Entry) {
     onRefresh();
     setQuickAddOpen(false);
+    setCalendarRefreshKey(k => k + 1);
   }
 
   function handleEntryDeleted() {
     onRefresh();
     setSelectedEntry(null);
+    setCalendarRefreshKey(k => k + 1);
   }
 
   // "Mere" sub-sections: full-screen overlays with a back button
@@ -107,6 +110,7 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
             calendars={calendars}
             onAddEntry={() => setQuickAddOpen(true)}
             onSelectEntry={setSelectedEntry}
+            refreshKey={calendarRefreshKey}
           />
         )}
         {activeTab === 'opgaver' && (
