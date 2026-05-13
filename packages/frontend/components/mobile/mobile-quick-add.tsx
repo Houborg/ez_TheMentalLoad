@@ -37,6 +37,7 @@ export function MobileQuickAdd({ open, onClose, members, calendars, onCreated, o
   const [draft, setDraft] = useState<AssistantDraft | null>(null);
   const [saving, setSaving] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [draftFromAI, setDraftFromAI] = useState(false);
 
   const defaultMember = members[0];
   const defaultCalendar = calendars[0];
@@ -46,6 +47,7 @@ export function MobileQuickAdd({ open, onClose, members, calendars, onCreated, o
     setDraft(null);
     setStage('ai');
     setParseError(null);
+    setDraftFromAI(false);
     onClose();
   }
 
@@ -60,6 +62,7 @@ export function MobileQuickAdd({ open, onClose, members, calendars, onCreated, o
         calendarId: defaultCalendar.id,
       });
       setDraft(res.draft);
+      setDraftFromAI(true);
       setStage('quick');
     } catch {
       setParseError('Kunne ikke fortolke teksten. Udfyld manuelt.');
@@ -75,9 +78,9 @@ export function MobileQuickAdd({ open, onClose, members, calendars, onCreated, o
     setSaving(true);
     try {
       let entry: Entry;
-      // If the draft came from a successful AI parse, confirm via confirmAssistant.
+      // If the draft came from a successful AI parse and has a startTime, confirm via confirmAssistant.
       // Otherwise create directly via createEntry.
-      if (draft && !parseError) {
+      if (draftFromAI && draft.startTime) {
         entry = await confirmAssistant({ draft });
       } else {
         const now = new Date();
