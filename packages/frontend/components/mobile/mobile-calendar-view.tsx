@@ -15,9 +15,10 @@ type Props = {
   calendars: Calendar[];
   onAddEntry: () => void;
   onSelectEntry: (entry: Entry) => void;
+  refreshKey?: number;
 };
 
-export function MobileCalendarView({ members, calendars, onAddEntry, onSelectEntry }: Props) {
+export function MobileCalendarView({ members, calendars, onAddEntry, onSelectEntry, refreshKey }: Props) {
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -25,7 +26,7 @@ export function MobileCalendarView({ members, calendars, onAddEntry, onSelectEnt
 
   useEffect(() => {
     loadMonthOccurrences(currentMonth).then(setEntries).catch(console.error);
-  }, [currentMonth]);
+  }, [currentMonth, refreshKey]);
 
   const monthGrid = useMemo(() => buildMonthGrid(currentMonth), [currentMonth]);
 

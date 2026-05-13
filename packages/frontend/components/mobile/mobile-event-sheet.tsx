@@ -139,6 +139,7 @@ export function MobileEventSheet({ entry, members, calendars, onClose, onEdit, o
             type="button"
             onClick={handleDelete}
             disabled={deleting}
+            aria-label={confirmDelete ? 'Bekræft sletning af begivenhed' : 'Slet begivenhed'}
             className={cn(
               'flex items-center justify-center gap-1.5 rounded-xl px-4 py-3 text-sm font-medium transition-colors',
               confirmDelete
