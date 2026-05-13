@@ -1,6 +1,7 @@
 'use client';
 
 import { CalendarDays, CheckSquare, ChefHat, MoreHorizontal } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type MobileTab = 'kalender' | 'opgaver' | 'mad' | 'mere';
@@ -10,7 +11,7 @@ type MobileNavProps = {
   onSelect: (tab: MobileTab) => void;
 };
 
-const TABS: Array<{ key: MobileTab; label: string; Icon: typeof CalendarDays }> = [
+const TABS: Array<{ key: MobileTab; label: string; Icon: LucideIcon }> = [
   { key: 'kalender', label: 'Kalender', Icon: CalendarDays },
   { key: 'opgaver',  label: 'Opgaver',  Icon: CheckSquare },
   { key: 'mad',      label: 'Mad',      Icon: ChefHat },
@@ -20,6 +21,7 @@ const TABS: Array<{ key: MobileTab; label: string; Icon: typeof CalendarDays }> 
 export function MobileNav({ active, onSelect }: MobileNavProps) {
   return (
     <nav
+      role="tablist"
       className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-card/95 backdrop-blur pb-safe"
       aria-label="Mobilnavigation"
     >
@@ -29,10 +31,11 @@ export function MobileNav({ active, onSelect }: MobileNavProps) {
           type="button"
           onClick={() => onSelect(key)}
           className={cn(
-            'flex flex-1 flex-col items-center justify-center gap-1 py-2 min-h-[56px] text-[10px] font-medium transition-colors',
+            'flex flex-1 flex-col items-center justify-center gap-1 py-2 min-h-[56px] text-[11px] font-medium transition-colors',
             active === key ? 'text-primary' : 'text-muted-foreground',
           )}
-          aria-current={active === key ? 'page' : undefined}
+          role="tab"
+          aria-selected={active === key}
         >
           <Icon className="h-5 w-5" />
           <span>{label}</span>
