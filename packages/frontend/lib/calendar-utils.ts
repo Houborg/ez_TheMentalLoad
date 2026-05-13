@@ -10,6 +10,7 @@ export function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
+/** Returns midnight (00:00) on the last day of the month. Use .getDate() for day count; do not use for inclusive timestamp range queries. */
 export function endOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0);
 }
@@ -33,7 +34,7 @@ export function isToday(date: Date): boolean {
 }
 
 /**
- * Returns a 6-row × 7-col grid. Cells are day numbers (1-31) or null for padding.
+ * Returns a 4–6 row × 7-col grid. Cells are day numbers (1-31) or null for padding.
  * Week starts on Monday.
  */
 export function buildMonthGrid(date: Date): (number | null)[][] {
