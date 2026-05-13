@@ -15,7 +15,7 @@ export class SyncService {
   async run(input: SyncRunRequest): Promise<SyncRunResponse> {
     const settings = await this.settingsService.getSettings();
     const provider = input.provider ?? settings.sync.provider;
-    const rawSource = await resolveSyncSource(provider, input, settings.sync.configJson, settings.mail.inboxSource);
+    const rawSource = await resolveSyncSource(provider, input, settings.sync.configJson);
     const ics = extractIcs(rawSource);
     const lastSyncAt = new Date().toISOString();
 
@@ -25,7 +25,7 @@ export class SyncService {
         provider,
         importedCount: 0,
         lastSyncAt,
-        message: 'No ICS invite or calendar payload was available to import.',
+        message: 'No ICS calendar payload was available to import.',
       };
     }
 
@@ -54,7 +54,6 @@ async function resolveSyncSource(
   provider: SyncProvider,
   input: SyncRunRequest,
   configJson: Record<string, unknown>,
-  inboxSource?: string,
 ): Promise<string> {
   if (input.rawContent?.trim()) {
     return input.rawContent;
@@ -74,16 +73,6 @@ async function resolveSyncSource(
       }
     } catch {
       // fall back to locally configured content
-    }
-  }
-
-  if (provider === 'invite-mail') {
-    if (typeof configJson.inboxSource === 'string' && configJson.inboxSource.trim()) {
-      return configJson.inboxSource;
-    }
-
-    if (inboxSource?.trim()) {
-      return inboxSource;
     }
   }
 
