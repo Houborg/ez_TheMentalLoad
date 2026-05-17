@@ -63,6 +63,7 @@ import { TodayTimelineBoard } from '@/components/today-timeline-board';
 import { useMobile } from '@/lib/use-mobile';
 import { MobileShell } from '@/components/mobile/mobile-shell';
 import { cn } from '@/lib/utils';
+import { deduplicateRecurringTasks } from '@/lib/entry-utils';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
 type RecurrenceFreq = 'none' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
@@ -397,12 +398,16 @@ export function DashboardApp() {
   }, [birthdays, dashboard.calendars, dashboard.members]);
 
   const monthEntriesForView = useMemo(
-    () => [...monthOccurrences, ...birthdayMonthOccurrences].sort((left, right) => left.startTime.localeCompare(right.startTime)),
+    () => deduplicateRecurringTasks(
+      [...monthOccurrences, ...birthdayMonthOccurrences].sort((left, right) => left.startTime.localeCompare(right.startTime))
+    ),
     [birthdayMonthOccurrences, monthOccurrences],
   );
 
   const upcomingEntriesForView = useMemo(
-    () => [...upcomingOccurrences, ...birthdayUpcomingOccurrences].sort((left, right) => left.startTime.localeCompare(right.startTime)),
+    () => deduplicateRecurringTasks(
+      [...upcomingOccurrences, ...birthdayUpcomingOccurrences].sort((left, right) => left.startTime.localeCompare(right.startTime))
+    ),
     [birthdayUpcomingOccurrences, upcomingOccurrences],
   );
 

@@ -8,6 +8,7 @@ import {
   buildMonthGrid, DAYS_DA, MONTHS_DA,
   nextMonth, previousMonth, sameDay, formatDayHeading, formatTimeRange,
 } from '@/lib/calendar-utils';
+import { deduplicateRecurringTasks } from '@/lib/entry-utils';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -25,7 +26,7 @@ export function MobileCalendarView({ members, calendars, onAddEntry, onSelectEnt
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    loadMonthOccurrences(currentMonth).then(setEntries).catch(console.error);
+    loadMonthOccurrences(currentMonth).then(e => setEntries(deduplicateRecurringTasks(e))).catch(console.error);
   }, [currentMonth, refreshKey]);
 
   const monthGrid = useMemo(() => buildMonthGrid(currentMonth), [currentMonth]);
