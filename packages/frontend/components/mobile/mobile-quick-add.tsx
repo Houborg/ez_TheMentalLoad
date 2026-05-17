@@ -6,6 +6,7 @@ import type { AssistantDraft, Calendar, Entry, Member } from '@mental-load/contr
 import { parseAssistant, confirmAssistant, createEntry } from '@/lib/api';
 import { BottomSheet } from './bottom-sheet';
 import { cn } from '@/lib/utils';
+import type { MobileEntryDraft } from './mobile-entry-draft';
 
 type Stage = 'ai' | 'quick';
 
@@ -15,9 +16,22 @@ type Props = {
   members: Member[];
   calendars: Calendar[];
   onCreated: (entry: Entry) => void;
-  onOpenFull: (draft?: Partial<AssistantDraft>) => void;
+  onOpenFull: (draft?: Partial<MobileEntryDraft>) => void;
   defaultType?: 'event' | 'task';
 };
+
+function assistantDraftToMobileDraft(d: AssistantDraft): Partial<MobileEntryDraft> {
+  return {
+    title: d.title,
+    type: d.type,
+    ownerMemberId: d.ownerMemberId,
+    calendarId: d.calendarId,
+    startTime: d.startTime,
+    endTime: d.endTime,
+    allDay: d.allDay,
+    location: d.location ?? '',
+  };
+}
 
 
 export function MobileQuickAdd({ open, onClose, members, calendars, onCreated, onOpenFull, defaultType = 'event' }: Props) {
@@ -260,7 +274,7 @@ export function MobileQuickAdd({ open, onClose, members, calendars, onCreated, o
               </button>
               <button
                 type="button"
-                onClick={() => onOpenFull(draft ?? undefined)}
+                onClick={() => onOpenFull(draft ? assistantDraftToMobileDraft(draft) : undefined)}
                 className="rounded-xl border border-border px-4 py-3 text-sm text-muted-foreground"
               >
                 Mere
