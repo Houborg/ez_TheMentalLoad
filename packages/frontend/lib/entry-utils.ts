@@ -59,6 +59,9 @@ export function toReminderPayload(
 /**
  * For recurring tasks, keep only the earliest occurrence per parent entry.
  * Events are returned unchanged — all occurrences belong on the calendar.
+ *
+ * Recurring occurrence IDs are formatted as "parentId:occurrenceDate".
+ * parentEntryId may not be populated, so we extract the parent from the ID.
  */
 export function deduplicateRecurringTasks<T extends { type: string; startTime: string; parentEntryId?: string; id: string }>(
   entries: T[],
@@ -67,7 +70,9 @@ export function deduplicateRecurringTasks<T extends { type: string; startTime: s
   const sorted = [...entries].sort((a, b) => a.startTime.localeCompare(b.startTime));
   for (const entry of sorted) {
     if (entry.type !== 'task') continue;
-    const key = entry.parentEntryId ?? entry.id;
+    // Extract parent key: use parentEntryId, or the part of the ID before the first ':'
+    const colonIdx = entry.id.indexOf(':');
+    const key = entry.parentEntryId ?? (colonIdx >= 0 ? entry.id.slice(0, colonIdx) : entry.id);
     if (!seen.has(key)) seen.set(key, entry);
   }
   const keep = new Set(seen.values());
