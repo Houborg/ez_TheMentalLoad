@@ -56,6 +56,24 @@ export function toReminderPayload(
   return { minutesBefore: Number(mode) };
 }
 
+/**
+ * For recurring tasks, keep only the earliest occurrence per parent entry.
+ * Events are returned unchanged — all occurrences belong on the calendar.
+ */
+export function deduplicateRecurringTasks<T extends { type: string; startTime: string; parentEntryId?: string; id: string }>(
+  entries: T[],
+): T[] {
+  const seen = new Map<string, T>();
+  const sorted = [...entries].sort((a, b) => a.startTime.localeCompare(b.startTime));
+  for (const entry of sorted) {
+    if (entry.type !== 'task') continue;
+    const key = entry.parentEntryId ?? entry.id;
+    if (!seen.has(key)) seen.set(key, entry);
+  }
+  const keep = new Set(seen.values());
+  return entries.filter(e => e.type !== 'task' || keep.has(e));
+}
+
 export function buildRemindersPayload(
   mode1: ReminderDraftMode,
   hours1: string,
