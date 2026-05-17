@@ -135,7 +135,7 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
           <MobileCalendarView
             members={members}
             calendars={calendars}
-            onAddEntry={() => { setQuickAddType('event'); setQuickAddOpen(true); }}
+            onAddEntry={(date) => setEntrySheet({ mode: 'create', draft: { type: 'event', startTime: date.toISOString() } })}
             onSelectEntry={setSelectedEntry}
             refreshKey={calendarRefreshKey}
           />

@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 type Props = {
   members: Member[];
   calendars: Calendar[];
-  onAddEntry: () => void;
+  onAddEntry: (date: Date) => void;
   onSelectEntry: (entry: Entry) => void;
   refreshKey?: number;
 };
@@ -32,7 +32,8 @@ export function MobileCalendarView({ members, calendars, onAddEntry, onSelectEnt
 
   const dotsForDay = useCallback((day: number) => {
     const d = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    const dayEntries = entries.filter(e => sameDay(new Date(e.startTime), d));
+    // Only show event dots — task occurrences don't clutter the grid
+    const dayEntries = entries.filter(e => e.type === 'event' && sameDay(new Date(e.startTime), d));
     const colors = [...new Set(
       dayEntries
         .map(e => calendars.find(c => c.id === e.calendarId)?.color)
@@ -91,7 +92,7 @@ export function MobileCalendarView({ members, calendars, onAddEntry, onSelectEnt
           </button>
           <button
             type="button"
-            onClick={onAddEntry}
+            onClick={() => onAddEntry(selectedDate)}
             className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground ml-1"
             aria-label="Tilføj begivenhed"
           >
@@ -176,7 +177,14 @@ export function MobileCalendarView({ members, calendars, onAddEntry, onSelectEnt
                   style={{ background: calendarColor(entry) }}
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm truncate">{entry.title}</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-sm truncate">{entry.title}</span>
+                    {entry.type === 'task' && (
+                      <span className="flex-shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        opgave
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
                     {entry.allDay ? 'Heldagsbegivenhed' : formatTimeRange(entry.startTime, entry.endTime)}
                     {memberName(entry) ? ` · ${memberName(entry)}` : ''}
