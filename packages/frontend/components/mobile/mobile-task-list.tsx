@@ -48,7 +48,18 @@ export function MobileTaskList({ members, onAddTask, onSelectEntry }: Props) {
 
   useEffect(() => {
     loadUpcomingOccurrences(60)
-      .then(entries => setAllTasks(entries.filter(e => e.type === 'task')))
+      .then(entries => {
+        const tasks = entries
+          .filter(e => e.type === 'task')
+          .sort((a, b) => a.startTime.localeCompare(b.startTime));
+        // For recurring tasks keep only the next (earliest) occurrence per parent
+        const seen = new Map<string, Entry>();
+        for (const task of tasks) {
+          const key = task.parentEntryId ?? task.id;
+          if (!seen.has(key)) seen.set(key, task);
+        }
+        setAllTasks([...seen.values()]);
+      })
       .catch(console.error);
   }, []);
 

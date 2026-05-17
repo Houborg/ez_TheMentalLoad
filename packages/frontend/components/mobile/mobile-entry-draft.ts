@@ -79,6 +79,10 @@ export function entryToDraft(entry: Entry, members: Member[]): MobileEntryDraft 
 
 export function emptyDraft(ownerMemberId: string, calendarId: string, date = new Date()): MobileEntryDraft {
   const start = new Date(date);
+  // Round up to the nearest full hour
+  if (start.getMinutes() > 0 || start.getSeconds() > 0) {
+    start.setHours(start.getHours() + 1);
+  }
   start.setMinutes(0, 0, 0);
   const end = new Date(start.getTime() + 3_600_000);
   return {
