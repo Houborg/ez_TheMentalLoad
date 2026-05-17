@@ -8,6 +8,7 @@ import { AgendaView } from '@/components/agenda-view';
 import { AppSidebar } from '@/components/app-sidebar';
 import { EntryDetailsPopup } from '@/components/entry-details-popup';
 import { cn } from '@/lib/utils';
+import { deduplicateRecurringTasks } from '@/lib/entry-utils';
 import {
   deleteEntry,
   deleteFoodPlan,
@@ -86,7 +87,7 @@ export default function PlannerPage() {
         }
 
         setMembers(snapshot.members);
-        setEntries(upcoming);
+        setEntries(deduplicateRecurringTasks(upcoming));
         setWeatherConfig(resolvedWeather);
         setFoodPlan(weekFoodPlan.items);
       } catch (error) {
@@ -400,12 +401,12 @@ export default function PlannerPage() {
           onSave={async (patch) => {
             await updateEntry(getEntryMutationId(selectedEntry.id), patch);
             const refreshed = await loadUpcomingOccurrences(7);
-            setEntries(refreshed);
+            setEntries(deduplicateRecurringTasks(refreshed));
           }}
           onDelete={async () => {
             await deleteEntry(getEntryMutationId(selectedEntry.id));
             const refreshed = await loadUpcomingOccurrences(7);
-            setEntries(refreshed);
+            setEntries(deduplicateRecurringTasks(refreshed));
           }}
         />
       ) : null}
