@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { AssistantDraft, Calendar, Entry, Member } from '@mental-load/contracts';
+import type { Calendar, Entry, Member } from '@mental-load/contracts';
 import { MobileNav, type MobileTab } from './mobile-nav';
 import { MobileCalendarView } from './mobile-calendar-view';
 import { MobileTaskList } from './mobile-task-list';
@@ -9,6 +9,12 @@ import { MobileFoodPlanner } from './mobile-food-planner';
 import { MobileEventSheet } from './mobile-event-sheet';
 import { MobileQuickAdd } from './mobile-quick-add';
 import { MobileMoreSheet, type MoreSection } from './mobile-more-sheet';
+import { MobileEntrySheet } from './mobile-entry-sheet';
+import type { MobileEntryDraft } from './mobile-entry-draft';
+
+type EntrySheetState =
+  | { mode: 'create'; draft?: Partial<MobileEntryDraft> }
+  | { mode: 'edit'; entry: Entry };
 
 type Props = {
   members: Member[];
@@ -25,6 +31,7 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
   const [moreOpen, setMoreOpen] = useState(false);
   const [moreSection, setMoreSection] = useState<MoreSection | null>(null);
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
+  const [entrySheet, setEntrySheet] = useState<EntrySheetState | null>(null);
 
   function handleTabSelect(tab: MobileTab) {
     if (tab === 'mere') {
@@ -49,6 +56,27 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
     onRefresh();
     setSelectedEntry(null);
     setCalendarRefreshKey(k => k + 1);
+  }
+
+  function handleEditEntry(entry: Entry) {
+    setSelectedEntry(null);
+    setEntrySheet({ mode: 'edit', entry });
+  }
+
+  function handleEntrySaved(saved: Entry) {
+    setEntrySheet(null);
+    onRefresh();
+    setCalendarRefreshKey(k => k + 1);
+
+    // If we were editing, reopen the detail sheet with the freshly saved entry
+    if (entrySheet?.mode === 'edit') {
+      setSelectedEntry(saved);
+    }
+  }
+
+  function handleOpenFull(draft?: Partial<MobileEntryDraft>) {
+    setQuickAddOpen(false);
+    setEntrySheet({ mode: 'create', draft });
   }
 
   // "Mere" sub-sections: full-screen overlays with a back button
@@ -78,8 +106,6 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
         {/* Content */}
         <div className="flex-1 overflow-auto">
           {moreSection === 'idag' ? (
-            // TodayTimelineBoard requires timelinesByMemberId, onConfirmTask, etc. which are
-            // not available in MobileShell's scope — showing a contextual placeholder instead.
             <div className="p-4 text-sm text-muted-foreground">
               I dag-visning (timeline)
             </div>
@@ -127,19 +153,29 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
       {/* Bottom nav */}
       <MobileNav active={activeTab} onSelect={handleTabSelect} />
 
-      {/* Sheets */}
+      {/* Event detail sheet */}
       <MobileEventSheet
         entry={selectedEntry}
         members={members}
         calendars={calendars}
         onClose={() => setSelectedEntry(null)}
-        onEdit={(_entry: Entry) => {
-          setSelectedEntry(null);
-          onNavigateDesktopSection('dashboard');
-        }}
+        onEdit={handleEditEntry}
         onDeleted={handleEntryDeleted}
       />
 
+      {/* Full entry form sheet (create + edit) */}
+      <MobileEntrySheet
+        open={entrySheet !== null}
+        mode={entrySheet?.mode ?? 'create'}
+        entry={entrySheet?.mode === 'edit' ? entrySheet.entry : undefined}
+        initialDraft={entrySheet?.mode === 'create' ? entrySheet.draft : undefined}
+        members={members}
+        calendars={calendars}
+        onClose={() => setEntrySheet(null)}
+        onSaved={handleEntrySaved}
+      />
+
+      {/* Quick-add sheet */}
       <MobileQuickAdd
         open={quickAddOpen}
         onClose={() => setQuickAddOpen(false)}
@@ -147,10 +183,7 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
         calendars={calendars}
         onCreated={handleEntryCreated}
         defaultType={quickAddType}
-        onOpenFull={(_draft?: Partial<AssistantDraft>) => {
-          setQuickAddOpen(false);
-          onNavigateDesktopSection('dashboard');
-        }}
+        onOpenFull={handleOpenFull}
       />
 
       <MobileMoreSheet
