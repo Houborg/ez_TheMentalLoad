@@ -42,8 +42,18 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
   }
 
   function handleMoreNavigate(section: MoreSection) {
-    setMoreSection(section);
     setMoreOpen(false);
+    // idag is rendered in-shell; familie/assistent/indstillinger go to desktop sections
+    if (section === 'idag') {
+      setMoreSection(section);
+    } else {
+      const sectionMap: Record<string, string> = {
+        familie: 'family',
+        assistent: 'dashboard', // assistant chat lives on the dashboard
+        indstillinger: 'settings',
+      };
+      onNavigateDesktopSection(sectionMap[section] ?? section);
+    }
   }
 
   function handleEntryCreated(_entry: Entry) {
