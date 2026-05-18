@@ -63,7 +63,8 @@ import { TodayTimelineBoard } from '@/components/today-timeline-board';
 import { useMobile } from '@/lib/use-mobile';
 import { MobileShell } from '@/components/mobile/mobile-shell';
 import { cn } from '@/lib/utils';
-import { deduplicateRecurringTasks } from '@/lib/entry-utils';
+import { deduplicateRecurringTasks, WEEKDAY_OPTIONS } from '@/lib/entry-utils';
+import { SettingsHolidays } from '@/components/settings-holidays';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
 type RecurrenceFreq = 'none' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
@@ -98,6 +99,7 @@ type EventDraft = {
   location: string;
   recurrenceFreq: RecurrenceFreq;
   recurrenceCount: string;
+  recurrenceDays: string[];
   tasks: TaskDraftItem[];
   invitees: InviteeDraft[];
   reminder1Mode: ReminderDraftMode;
@@ -182,7 +184,7 @@ export function DashboardApp() {
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [assistantSuggestionBusy, setAssistantSuggestionBusy] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'calendars' | 'mail' | 'sync' | 'recurring' | 'birthdays' | 'weather' | 'assistant' | 'developer'>('theme');
+  const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'calendars' | 'mail' | 'sync' | 'recurring' | 'birthdays' | 'weather' | 'assistant' | 'holidays' | 'developer'>('theme');
   const [updateInProgress, setUpdateInProgress] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
   const [serverVersion, setServerVersion] = useState<{ version: string; commit: string; deployedAt: string | null } | null>(null);
@@ -615,7 +617,7 @@ export function DashboardApp() {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         allDay: draft.allDay,
         location: draft.location.trim() || undefined,
-        recurrenceRule: buildRecurrenceRule(draft.recurrenceFreq, draft.recurrenceCount) || undefined,
+        recurrenceRule: buildRecurrenceRule(draft.recurrenceFreq, draft.recurrenceCount, draft.recurrenceDays) || undefined,
         reminders,
         checklist: draft.tasks
           .map((task) => ({ text: task.text, isCompleted: false, assignedToMemberId: task.assignedToMemberId }))
@@ -807,7 +809,7 @@ export function DashboardApp() {
 
     setEditingEntryId(getEntryMutationId(entry));
     const [firstReminder, secondReminder] = entry.reminders;
-    const { freq, count } = parseRecurrenceRule(entry.recurrenceRule);
+    const { freq, count, days } = parseRecurrenceRule(entry.recurrenceRule);
     setDraft({
       title: entry.title,
       type: entry.type,
@@ -819,6 +821,7 @@ export function DashboardApp() {
       location: entry.location || '',
       recurrenceFreq: freq,
       recurrenceCount: count,
+      recurrenceDays: days,
       tasks: entry.checklist.map((item) => ({ text: item.text, assignedToMemberId: item.assignedToMemberId })),
       invitees: entry.invitees.map((inv) => {
         const knownMember = dashboard.members.find((m) => m.email?.toLowerCase() === inv.email.toLowerCase());
@@ -2812,6 +2815,33 @@ export function DashboardApp() {
                     </select>
                   ) : null}
                 </div>
+                {draft.recurrenceFreq === 'WEEKLY' && (
+                  <div className="flex gap-1.5 flex-wrap mt-1">
+                    {WEEKDAY_OPTIONS.map(({ code, label }) => {
+                      const active = draft.recurrenceDays.includes(code);
+                      return (
+                        <button
+                          key={code}
+                          type="button"
+                          onClick={() => setDraft(cur => ({
+                            ...cur,
+                            recurrenceDays: active
+                              ? cur.recurrenceDays.filter(d => d !== code)
+                              : [...cur.recurrenceDays, code],
+                          }))}
+                          className={cn(
+                            'h-7 w-9 rounded-lg text-xs font-semibold transition-colors border',
+                            active
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'bg-background/60 text-muted-foreground border-border/60 hover:border-primary/40',
+                          )}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <label className="grid gap-1.5 md:col-span-2">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Invitees</span>
@@ -3101,6 +3131,7 @@ export function DashboardApp() {
               { id: 'birthdays', label: 'Birthdays' },
               { id: 'weather', label: 'Weather' },
               { id: 'assistant', label: 'Assistent' },
+              { id: 'holidays', label: 'Helligdage' },
               { id: 'developer', label: 'Developer' },
             ].map(({ id, label }) => (
               <button
@@ -3704,6 +3735,16 @@ export function DashboardApp() {
               </div>
             ) : null}
 
+            {settingsTab === 'holidays' ? (
+              <div className="space-y-3">
+                <div>
+                  <h3 className="text-base font-semibold">Danske helligdage</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">Hent officielle danske helligdage og tilføj dem til en kalender.</p>
+                </div>
+                <SettingsHolidays calendars={dashboard.calendars} />
+              </div>
+            ) : null}
+
             {settingsTab === 'developer' ? (
               <div className="space-y-4">
                 {/* Version comparison card */}
@@ -3989,6 +4030,7 @@ function applyRecurringDefaultsToDraft(
       ...draft,
       recurrenceFreq: 'none',
       recurrenceCount: '',
+      recurrenceDays: [],
     };
   }
 
@@ -3996,6 +4038,7 @@ function applyRecurringDefaultsToDraft(
     ...draft,
     recurrenceFreq: defaults.freq,
     recurrenceCount: defaults.count,
+    recurrenceDays: [],
   };
 }
 
@@ -4122,6 +4165,7 @@ function createDefaultDraft(ownerMemberId = '', calendarId = '', date = new Date
     location: '',
     recurrenceFreq: 'none',
     recurrenceCount: '',
+    recurrenceDays: [],
     tasks: [],
     invitees: [],
     reminder1Mode: 'none',
@@ -4141,26 +4185,29 @@ function buildDefaultTimeRange(date = new Date()) {
   return { start, end };
 }
 
-function buildRecurrenceRule(freq: RecurrenceFreq, count: string): string | undefined {
+function buildRecurrenceRule(freq: RecurrenceFreq, count: string, days: string[] = []): string | undefined {
   if (freq === 'none') {
     return undefined;
   }
 
   const countNum = Number(count);
   const countPart = Number.isFinite(countNum) && countNum > 0 ? `;COUNT=${countNum}` : '';
-  return `FREQ=${freq}${countPart}`;
+  const daysPart = freq === 'WEEKLY' && days.length > 0 ? `;BYDAY=${days.join(',')}` : '';
+  return `FREQ=${freq}${countPart}${daysPart}`;
 }
 
-function parseRecurrenceRule(rule?: string): { freq: RecurrenceFreq; count: string } {
+function parseRecurrenceRule(rule?: string): { freq: RecurrenceFreq; count: string; days: string[] } {
   if (!rule) {
-    return { freq: 'none', count: '' };
+    return { freq: 'none', count: '', days: [] };
   }
 
   const freqMatch = rule.match(/FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)/);
   const countMatch = rule.match(/COUNT=(\d+)/);
+  const bydayMatch = rule.match(/BYDAY=([A-Z,]+)/);
   return {
     freq: (freqMatch?.[1] as RecurrenceFreq | undefined) ?? 'none',
     count: countMatch?.[1] ?? '',
+    days: bydayMatch ? bydayMatch[1].split(',') : [],
   };
 }
 

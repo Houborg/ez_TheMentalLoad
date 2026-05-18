@@ -19,21 +19,34 @@ export const RECURRENCE_OPTIONS_DA: Array<{ value: RecurrenceFreq; label: string
   { value: 'YEARLY', label: 'Årligt' },
 ];
 
-export function parseRecurrenceRule(rule?: string): { freq: RecurrenceFreq; count: string } {
-  if (!rule) return { freq: 'none', count: '' };
+export const WEEKDAY_OPTIONS = [
+  { code: 'MO', label: 'Man' },
+  { code: 'TU', label: 'Tir' },
+  { code: 'WE', label: 'Ons' },
+  { code: 'TH', label: 'Tor' },
+  { code: 'FR', label: 'Fre' },
+  { code: 'SA', label: 'Lør' },
+  { code: 'SU', label: 'Søn' },
+] as const;
+
+export function parseRecurrenceRule(rule?: string): { freq: RecurrenceFreq; count: string; days: string[] } {
+  if (!rule) return { freq: 'none', count: '', days: [] };
   const freqMatch = rule.match(/FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)/);
   const countMatch = rule.match(/COUNT=(\d+)/);
+  const bydayMatch = rule.match(/BYDAY=([A-Z,]+)/);
   return {
     freq: (freqMatch?.[1] as RecurrenceFreq | undefined) ?? 'none',
     count: countMatch?.[1] ?? '',
+    days: bydayMatch ? bydayMatch[1].split(',') : [],
   };
 }
 
-export function buildRecurrenceRule(freq: RecurrenceFreq, count: string): string | undefined {
+export function buildRecurrenceRule(freq: RecurrenceFreq, count: string, days: string[] = []): string | undefined {
   if (freq === 'none') return undefined;
   const countNum = Number(count);
   const countPart = Number.isFinite(countNum) && countNum > 0 ? `;COUNT=${countNum}` : '';
-  return `FREQ=${freq}${countPart}`;
+  const daysPart = freq === 'WEEKLY' && days.length > 0 ? `;BYDAY=${days.join(',')}` : '';
+  return `FREQ=${freq}${countPart}${daysPart}`;
 }
 
 export function toReminderDraft(minutesBefore?: number): { mode: ReminderDraftMode; customHours: string } {
