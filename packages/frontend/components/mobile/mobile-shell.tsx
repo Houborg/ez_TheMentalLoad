@@ -44,11 +44,6 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
 
   function handleMoreNavigate(section: MoreSection) {
     setMoreOpen(false);
-    // Settings opens the full desktop settings panel (all tabs)
-    if (section === 'indstillinger') {
-      onNavigateDesktopSection('settings');
-      return;
-    }
     setMoreSection(section);
   }
 
@@ -115,7 +110,11 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
             <div className="p-4 text-sm text-muted-foreground">I dag-visning (timeline)</div>
           )}
           {moreSection === 'indstillinger' && (
-            <MobileSettingsContent />
+            <MobileSettingsContent
+              members={members}
+              calendars={calendars}
+              onRefresh={() => { onRefresh(); setCalendarRefreshKey(k => k + 1); }}
+            />
           )}
           {moreSection === 'familie' && (
             <div className="p-4 flex flex-col gap-3">
