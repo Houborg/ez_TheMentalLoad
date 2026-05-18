@@ -5,6 +5,7 @@ import { Plus } from 'lucide-react';
 import type { Entry, Member } from '@mental-load/contracts';
 import { loadUpcomingOccurrences, updateEntry } from '@/lib/api';
 import { sameDay } from '@/lib/calendar-utils';
+import { deduplicateRecurringTasks } from '@/lib/entry-utils';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -50,16 +51,7 @@ export function MobileTaskList({ members, onAddTask, onSelectEntry, refreshKey =
   useEffect(() => {
     loadUpcomingOccurrences(60)
       .then(entries => {
-        const tasks = entries
-          .filter(e => e.type === 'task')
-          .sort((a, b) => a.startTime.localeCompare(b.startTime));
-        // For recurring tasks keep only the next (earliest) occurrence per parent
-        const seen = new Map<string, Entry>();
-        for (const task of tasks) {
-          const key = task.parentEntryId ?? task.id;
-          if (!seen.has(key)) seen.set(key, task);
-        }
-        setAllTasks([...seen.values()]);
+        setAllTasks(deduplicateRecurringTasks(entries).filter(e => e.type === 'task'));
       })
       .catch(console.error);
   }, [refreshKey]);
