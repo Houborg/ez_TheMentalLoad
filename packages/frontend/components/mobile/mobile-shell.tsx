@@ -44,6 +44,11 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
 
   function handleMoreNavigate(section: MoreSection) {
     setMoreOpen(false);
+    // Settings opens the full desktop settings panel (all tabs)
+    if (section === 'indstillinger') {
+      onNavigateDesktopSection('settings');
+      return;
+    }
     setMoreSection(section);
   }
 
