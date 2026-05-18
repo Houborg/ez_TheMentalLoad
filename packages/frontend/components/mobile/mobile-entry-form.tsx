@@ -3,7 +3,7 @@
 import { MapPin, Plus, Trash2, RefreshCw, Bell, User } from 'lucide-react';
 import type { Calendar, Member } from '@mental-load/contracts';
 import type { MobileEntryDraft, MobileChecklistItem, MobileInvitee } from './mobile-entry-draft';
-import { REMINDER_OPTIONS_DA, RECURRENCE_OPTIONS_DA } from '@/lib/entry-utils';
+import { REMINDER_OPTIONS_DA, RECURRENCE_OPTIONS_DA, WEEKDAY_OPTIONS } from '@/lib/entry-utils';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -237,6 +237,31 @@ export function MobileEntryForm({ draft, onChange, members, calendars }: Props) 
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
+        {draft.recurrenceFreq === 'WEEKLY' && (
+          <div className="flex gap-1.5 mt-2 flex-wrap">
+            {WEEKDAY_OPTIONS.map(({ code, label }) => {
+              const active = draft.recurrenceDays.includes(code);
+              return (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => {
+                    const next = active
+                      ? draft.recurrenceDays.filter(d => d !== code)
+                      : [...draft.recurrenceDays, code];
+                    onChange({ recurrenceDays: next });
+                  }}
+                  className={cn(
+                    'h-8 w-10 rounded-lg text-xs font-semibold transition-colors',
+                    active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {draft.recurrenceFreq !== 'none' && (
           <div className="flex items-center gap-2 mt-2">
             <input
