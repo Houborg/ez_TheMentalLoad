@@ -1,0 +1,169 @@
+<h2>Adding a new event or task — how does it feel?</h2>
+<p class="subtitle">The current form is a big desktop modal. On mobile it needs to be rethought.</p>
+
+<div class="cards">
+
+  <!-- Option A: Bottom sheet -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 16px; background: #0a0a0a; display: flex; justify-content: center;">
+      <div style="width: 180px; font-family: system-ui, sans-serif; position: relative;">
+        <!-- Phone with dimmed calendar behind -->
+        <div style="background: #1a1a1a; border-radius: 20px; border: 1px solid #333; overflow: hidden; position: relative;">
+          <!-- Dimmed calendar bg -->
+          <div style="padding: 10px 12px; opacity: 0.3;">
+            <div style="font-size: 10px; font-weight: 700; color: #fff; margin-bottom: 6px;">Maj 2026</div>
+            <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;">
+              <div style="text-align:center; font-size: 7px; color: #555; padding: 2px;">M</div>
+              <div style="text-align:center; font-size: 7px; color: #555; padding: 2px;">T</div>
+              <div style="text-align:center; font-size: 7px; color: #555; padding: 2px;">O</div>
+              <div style="text-align:center; font-size: 7px; color: #555; padding: 2px;">T</div>
+              <div style="text-align:center; font-size: 7px; color: #555; padding: 2px;">F</div>
+              <div style="text-align:center; font-size: 7px; color: #555; padding: 2px;">L</div>
+              <div style="text-align:center; font-size: 7px; color: #555; padding: 2px;">S</div>
+              <div style="text-align:center; font-size: 7px; color: #444; padding: 2px;"></div>
+              <div style="text-align:center; font-size: 7px; color: #444; padding: 2px;"></div>
+              <div style="text-align:center; font-size: 7px; color: #444; padding: 2px;"></div>
+              <div style="text-align:center; font-size: 7px; color: #444; padding: 2px;">1</div>
+              <div style="text-align:center; font-size: 7px; color: #444; padding: 2px;">2</div>
+              <div style="text-align:center; font-size: 7px; color: #444; padding: 2px;">3</div>
+              <div style="text-align:center; font-size: 7px; color: #444; padding: 2px;">4</div>
+              <div style="text-align:center; font-size: 7px; color: #444; padding: 2px;">5</div>
+              <div style="text-align:center; font-size: 7px; color: #444; padding: 2px;">6</div>
+              <div style="text-align:center; font-size: 7px; color: #444; padding: 2px;">7</div>
+            </div>
+          </div>
+          <!-- Dark overlay -->
+          <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.5);"></div>
+          <!-- Bottom sheet sliding up -->
+          <div style="position: relative; background: #1e1e2e; border-radius: 16px 16px 0 0; border-top: 1px solid #333; padding: 10px 12px 14px; margin-top: 60px;">
+            <!-- Drag handle -->
+            <div style="width: 28px; height: 3px; background: #444; border-radius: 2px; margin: 0 auto 10px;"></div>
+            <!-- Type selector -->
+            <div style="display: flex; gap: 4px; margin-bottom: 8px;">
+              <div style="flex:1; background: #6d5efc; border-radius: 6px; padding: 4px; text-align: center; font-size: 8px; color: #fff; font-weight: 600;">Begivenhed</div>
+              <div style="flex:1; background: #2a2a3a; border-radius: 6px; padding: 4px; text-align: center; font-size: 8px; color: #666;">Opgave</div>
+              <div style="flex:1; background: #2a2a3a; border-radius: 6px; padding: 4px; text-align: center; font-size: 8px; color: #666;">Mad</div>
+            </div>
+            <!-- Title input -->
+            <div style="background: #2a2a3a; border-radius: 8px; padding: 7px 10px; margin-bottom: 6px; font-size: 9px; color: #aaa; border: 1px solid #3a3a4a;">Hvad sker der?</div>
+            <!-- Date + time row -->
+            <div style="display: flex; gap: 4px; margin-bottom: 6px;">
+              <div style="flex:1; background: #2a2a3a; border-radius: 8px; padding: 6px 8px; font-size: 8px; color: #888; text-align:center;">📅 I dag</div>
+              <div style="flex:1; background: #2a2a3a; border-radius: 8px; padding: 6px 8px; font-size: 8px; color: #888; text-align:center;">🕐 10:00</div>
+            </div>
+            <!-- Member picker row -->
+            <div style="display: flex; gap: 4px; margin-bottom: 8px;">
+              <div style="width: 24px; height: 24px; background: #6d5efc; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #fff;">M</div>
+              <div style="width: 24px; height: 24px; background: #f97316; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #fff;">S</div>
+              <div style="width: 24px; height: 24px; background: #2a2a3a; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #666;">+</div>
+            </div>
+            <!-- Save button -->
+            <div style="background: #6d5efc; border-radius: 8px; padding: 7px; text-align: center; font-size: 9px; color: #fff; font-weight: 600;">Gem begivenhed</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Bottom sheet</h3>
+      <p>Slides up over the calendar. Quick fields only — title, date/time, who. Drag handle to dismiss. Feels native iOS/Android. For advanced details, a "More options" link opens full form.</p>
+    </div>
+  </div>
+
+  <!-- Option B: Full screen -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 16px; background: #0a0a0a; display: flex; justify-content: center;">
+      <div style="width: 180px; font-family: system-ui, sans-serif;">
+        <div style="background: #1a1a1a; border-radius: 20px; border: 1px solid #333; overflow: hidden;">
+          <!-- Top bar -->
+          <div style="padding: 10px 12px 8px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2a2a2a;">
+            <span style="font-size: 9px; color: #6d5efc;">Annuller</span>
+            <span style="font-size: 10px; font-weight: 700; color: #fff;">Ny begivenhed</span>
+            <span style="font-size: 9px; color: #6d5efc; font-weight: 600;">Gem</span>
+          </div>
+          <!-- Form fields -->
+          <div style="padding: 8px 12px;">
+            <div style="background: #2a2a3a; border-radius: 8px; padding: 7px 10px; margin-bottom: 4px; font-size: 9px; color: #aaa;">Titel</div>
+            <div style="background: #2a2a3a; border-radius: 8px; padding: 7px 10px; margin-bottom: 4px; font-size: 9px; color: #aaa;">Placering</div>
+            <div style="height: 1px; background: #2a2a2a; margin: 6px 0;"></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #222;">
+              <span style="font-size: 8px; color: #aaa;">Heldagsbegivenhed</span>
+              <div style="width: 24px; height: 14px; background: #6d5efc; border-radius: 7px; position: relative;"><div style="width: 10px; height: 10px; background: #fff; border-radius: 50%; position: absolute; right: 2px; top: 2px;"></div></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #222;">
+              <span style="font-size: 8px; color: #aaa;">Starter</span>
+              <span style="font-size: 8px; color: #6d5efc;">13. maj, 10:00</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #222;">
+              <span style="font-size: 8px; color: #aaa;">Slutter</span>
+              <span style="font-size: 8px; color: #6d5efc;">13. maj, 11:00</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #222;">
+              <span style="font-size: 8px; color: #aaa;">Gentages</span>
+              <span style="font-size: 8px; color: #888;">Aldrig</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #222;">
+              <span style="font-size: 8px; color: #aaa;">Påmindelse</span>
+              <span style="font-size: 8px; color: #888;">Ingen</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 5px 0;">
+              <span style="font-size: 8px; color: #aaa;">Kalender</span>
+              <span style="font-size: 8px; color: #888;">Familie</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Full screen form</h3>
+      <p>Takes over the whole screen, Cancel/Save in the top bar. More like the native iOS Calendar "new event" screen. Every field visible at once — nothing hidden behind "More".</p>
+    </div>
+  </div>
+
+  <!-- Option C: AI quick-add -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 16px; background: #0a0a0a; display: flex; justify-content: center;">
+      <div style="width: 180px; font-family: system-ui, sans-serif;">
+        <div style="background: #1a1a1a; border-radius: 20px; border: 1px solid #333; overflow: hidden;">
+          <!-- Dimmed bg -->
+          <div style="padding: 10px 12px; opacity: 0.25; height: 80px; overflow: hidden;">
+            <div style="font-size: 10px; font-weight: 700; color: #fff; margin-bottom: 6px;">Maj 2026</div>
+            <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;">
+              <div style="text-align:center; font-size: 7px; color: #555;">M</div>
+              <div style="text-align:center; font-size: 7px; color: #555;">T</div>
+              <div style="text-align:center; font-size: 7px; color: #555;">O</div>
+              <div style="text-align:center; font-size: 7px; color: #555;">T</div>
+              <div style="text-align:center; font-size: 7px; color: #555;">F</div>
+              <div style="text-align:center; font-size: 7px; color: #555;">L</div>
+              <div style="text-align:center; font-size: 7px; color: #555;">S</div>
+            </div>
+          </div>
+          <div style="position: relative; background: #1e1e2e; border-radius: 16px 16px 0 0; border-top: 1px solid #333; padding: 10px 12px 14px;">
+            <div style="width: 28px; height: 3px; background: #444; border-radius: 2px; margin: 0 auto 10px;"></div>
+            <!-- AI input -->
+            <div style="font-size: 8px; color: #888; margin-bottom: 6px;">Fortæl hvad der skal ske:</div>
+            <div style="background: #2a2a3a; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; border: 1px solid #6d5efc55;">
+              <div style="font-size: 9px; color: #fff;">"Tandlæge fredag kl 14 med Lars"</div>
+              <div style="width: 1px; height: 12px; background: #6d5efc; display: inline-block; animation: blink 1s infinite; margin-left: 1px;"></div>
+            </div>
+            <!-- Parsed result -->
+            <div style="background: #6d5efc15; border: 1px solid #6d5efc44; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px;">
+              <div style="font-size: 7px; color: #6d5efc; font-weight: 600; margin-bottom: 4px;">✨ FORTOLKET SOM</div>
+              <div style="font-size: 8px; color: #fff; font-weight: 600;">Tandlæge</div>
+              <div style="font-size: 7px; color: #888; margin-top: 2px;">Fredag 16. maj · 14:00 · Lars</div>
+            </div>
+            <div style="display: flex; gap: 4px;">
+              <div style="flex:1; background: #2a2a3a; border-radius: 8px; padding: 6px; text-align: center; font-size: 8px; color: #888;">Ret</div>
+              <div style="flex:2; background: #6d5efc; border-radius: 8px; padding: 6px; text-align: center; font-size: 8px; color: #fff; font-weight: 600;">Gem ✓</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — AI quick-add (type naturally)</h3>
+      <p>Type in plain Danish: "Tandlæge fredag kl 14 med Lars." The assistant (already built!) parses it, shows a preview, you confirm. Fastest possible entry. "Ret" opens full form if needed.</p>
+    </div>
+  </div>
+
+</div>
+<p class="subtitle" style="margin-top: 16px;">These aren't mutually exclusive — C could be the default with A as fallback for complex events.</p>

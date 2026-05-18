@@ -1,0 +1,123 @@
+<h2>Bottom navigation — what are the 4 tabs?</h2>
+<p class="subtitle">MentalLoad has: calendar, tasks/timeline, food planner, family, and settings. 5 things, 4 slots. How do we split them?</p>
+
+<div class="cards">
+
+  <!-- Option A: Calendar + Timeline + Food + Family, settings in ··· -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 20px 16px; background: #0a0a0a; display: flex; justify-content: center;">
+      <div style="width: 220px; font-family: system-ui, sans-serif;">
+        <!-- Phone bottom strip -->
+        <div style="background: #1a1a1a; border-radius: 16px; border: 1px solid #333; overflow: hidden;">
+          <!-- Nav bar -->
+          <div style="display: flex; border-top: 1px solid #2a2a2a; padding: 10px 0 14px;">
+            <div style="flex: 1; text-align: center;">
+              <div style="width: 36px; height: 36px; background: #6d5efc22; border-radius: 10px; margin: 0 auto 3px; display: flex; align-items: center; justify-content: center; font-size: 18px;">📅</div>
+              <div style="font-size: 9px; color: #6d5efc; font-weight: 600;">Kalender</div>
+            </div>
+            <div style="flex: 1; text-align: center;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; margin: 0 auto 3px; display: flex; align-items: center; justify-content: center; font-size: 18px;">⏱️</div>
+              <div style="font-size: 9px; color: #555;">I dag</div>
+            </div>
+            <div style="flex: 1; text-align: center;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; margin: 0 auto 3px; display: flex; align-items: center; justify-content: center; font-size: 18px;">🍽️</div>
+              <div style="font-size: 9px; color: #555;">Mad</div>
+            </div>
+            <div style="flex: 1; text-align: center;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; margin: 0 auto 3px; display: flex; align-items: center; justify-content: center; font-size: 18px;">👨‍👩‍👧</div>
+              <div style="font-size: 9px; color: #555;">Familie</div>
+            </div>
+          </div>
+        </div>
+        <p style="font-size: 10px; color: #666; margin: 8px 0 0; text-align: center;">Indstillinger skjult under Familie → ⚙️ ikon øverst til højre</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Kalender · I dag · Mad · Familie</h3>
+      <p>The 4 daily-use views. Settings moves to a gear icon in the top-right corner of Family. Clean, no clutter.</p>
+    </div>
+  </div>
+
+  <!-- Option B: FAB in the middle -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 20px 16px; background: #0a0a0a; display: flex; justify-content: center;">
+      <div style="width: 220px; font-family: system-ui, sans-serif; position: relative;">
+        <div style="background: #1a1a1a; border-radius: 16px; border: 1px solid #333; overflow: hidden;">
+          <div style="display: flex; border-top: 1px solid #2a2a2a; padding: 10px 0 14px; position: relative;">
+            <div style="flex: 1; text-align: center;">
+              <div style="width: 36px; height: 36px; background: #6d5efc22; border-radius: 10px; margin: 0 auto 3px; display: flex; align-items: center; justify-content: center; font-size: 18px;">📅</div>
+              <div style="font-size: 9px; color: #6d5efc; font-weight: 600;">Kalender</div>
+            </div>
+            <div style="flex: 1; text-align: center;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; margin: 0 auto 3px; display: flex; align-items: center; justify-content: center; font-size: 18px;">⏱️</div>
+              <div style="font-size: 9px; color: #555;">I dag</div>
+            </div>
+            <!-- FAB in center -->
+            <div style="flex: 1; text-align: center; position: relative;">
+              <div style="width: 48px; height: 48px; background: #6d5efc; border-radius: 50%; margin: -16px auto 0; display: flex; align-items: center; justify-content: center; font-size: 22px; box-shadow: 0 4px 16px #6d5efc66; color: white; font-weight: 300;">+</div>
+              <div style="font-size: 9px; color: #555; margin-top: 6px;">Tilføj</div>
+            </div>
+            <div style="flex: 1; text-align: center;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; margin: 0 auto 3px; display: flex; align-items: center; justify-content: center; font-size: 18px;">🍽️</div>
+              <div style="font-size: 9px; color: #555;">Mad</div>
+            </div>
+            <div style="flex: 1; text-align: center;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; margin: 0 auto 3px; display: flex; align-items: center; justify-content: center; font-size: 18px;">👨‍👩‍👧</div>
+              <div style="font-size: 9px; color: #555;">Familie</div>
+            </div>
+          </div>
+        </div>
+        <p style="font-size: 10px; color: #666; margin: 8px 0 0; text-align: center;">+ knap åbner "Ny begivenhed / opgave / mad" modal</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — FAB in the middle</h3>
+      <p>Floating action button as the centre tab. Tap it to add anything — event, task, or meal. Common in modern apps (Notion, Todoist). Makes adding things very fast.</p>
+    </div>
+  </div>
+
+  <!-- Option C: Kalender + Opgaver + Mad + Mere -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 20px 16px; background: #0a0a0a; display: flex; justify-content: center;">
+      <div style="width: 220px; font-family: system-ui, sans-serif;">
+        <div style="background: #1a1a1a; border-radius: 16px; border: 1px solid #333; overflow: hidden;">
+          <div style="display: flex; border-top: 1px solid #2a2a2a; padding: 10px 0 14px;">
+            <div style="flex: 1; text-align: center;">
+              <div style="width: 36px; height: 36px; background: #6d5efc22; border-radius: 10px; margin: 0 auto 3px; display: flex; align-items: center; justify-content: center; font-size: 18px;">📅</div>
+              <div style="font-size: 9px; color: #6d5efc; font-weight: 600;">Kalender</div>
+            </div>
+            <div style="flex: 1; text-align: center;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; margin: 0 auto 3px; display: flex; align-items: center; justify-content: center; font-size: 18px;">✅</div>
+              <div style="font-size: 9px; color: #555;">Opgaver</div>
+            </div>
+            <div style="flex: 1; text-align: center;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; margin: 0 auto 3px; display: flex; align-items: center; justify-content: center; font-size: 18px;">🍽️</div>
+              <div style="font-size: 9px; color: #555;">Mad</div>
+            </div>
+            <div style="flex: 1; text-align: center;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; margin: 0 auto 3px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff;">···</div>
+              <div style="font-size: 9px; color: #555;">Mere</div>
+            </div>
+          </div>
+        </div>
+        <!-- "Mere" expanded sheet -->
+        <div style="background: #1e1e2e; border-radius: 12px; margin-top: 8px; padding: 10px 12px; border: 1px solid #333;">
+          <div style="font-size: 9px; color: #888; margin-bottom: 6px; font-weight: 600;">MERE →</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+            <div style="background: #2a2a3a; border-radius: 8px; padding: 8px; text-align: center; font-size: 9px; color: #aaa;">⏱️ I dag</div>
+            <div style="background: #2a2a3a; border-radius: 8px; padding: 8px; text-align: center; font-size: 9px; color: #aaa;">👨‍👩‍👧 Familie</div>
+            <div style="background: #2a2a3a; border-radius: 8px; padding: 8px; text-align: center; font-size: 9px; color: #aaa;">⚙️ Indstillinger</div>
+            <div style="background: #2a2a3a; border-radius: 8px; padding: 8px; text-align: center; font-size: 9px; color: #aaa;">🤖 Assistent</div>
+          </div>
+        </div>
+        <p style="font-size: 10px; color: #666; margin: 6px 0 0; text-align: center;">"Mere" åbner en bundmenu med resten</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Kalender · Opgaver · Mad · Mere</h3>
+      <p>Top 3 daily views as tabs, everything else in a "More" sheet. Keeps the nav minimal but hides I dag (timeline) and Family one tap deeper.</p>
+    </div>
+  </div>
+
+</div>
+<p class="subtitle" style="margin-top: 16px;">Click your pick — or mix (e.g. A with the FAB from B).</p>

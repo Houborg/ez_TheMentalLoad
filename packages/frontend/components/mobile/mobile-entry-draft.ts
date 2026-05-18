@@ -32,6 +32,7 @@ export type MobileEntryDraft = {
   location: string;
   recurrenceFreq: RecurrenceFreq;
   recurrenceCount: string;
+  recurrenceDays: string[];
   checklist: MobileChecklistItem[];
   invitees: MobileInvitee[];
   reminder1Mode: ReminderDraftMode;
@@ -41,7 +42,7 @@ export type MobileEntryDraft = {
 };
 
 export function entryToDraft(entry: Entry, members: Member[]): MobileEntryDraft {
-  const { freq, count } = parseRecurrenceRule(entry.recurrenceRule);
+  const { freq, count, days } = parseRecurrenceRule(entry.recurrenceRule);
   const [r1, r2] = entry.reminders;
   const rem1 = toReminderDraft(r1?.minutesBefore);
   const rem2 = toReminderDraft(r2?.minutesBefore);
@@ -57,6 +58,7 @@ export function entryToDraft(entry: Entry, members: Member[]): MobileEntryDraft 
     location: entry.location ?? '',
     recurrenceFreq: freq,
     recurrenceCount: count,
+    recurrenceDays: days,
     checklist: entry.checklist.map(item => ({
       text: item.text,
       isCompleted: item.isCompleted,
@@ -96,6 +98,7 @@ export function emptyDraft(ownerMemberId: string, calendarId: string, date = new
     location: '',
     recurrenceFreq: 'none',
     recurrenceCount: '',
+    recurrenceDays: [],
     checklist: [],
     invitees: [],
     reminder1Mode: 'none',
@@ -116,7 +119,7 @@ export function draftToPayload(draft: MobileEntryDraft): CreateEntryRequest {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     allDay: draft.allDay,
     location: draft.location.trim() || undefined,
-    recurrenceRule: buildRecurrenceRule(draft.recurrenceFreq, draft.recurrenceCount),
+    recurrenceRule: buildRecurrenceRule(draft.recurrenceFreq, draft.recurrenceCount, draft.recurrenceDays),
     checklist: draft.checklist
       .filter(item => item.text.trim())
       .map(item => ({
