@@ -10,6 +10,7 @@ import { MobileEventSheet } from './mobile-event-sheet';
 import { MobileQuickAdd } from './mobile-quick-add';
 import { MobileMoreSheet, type MoreSection } from './mobile-more-sheet';
 import { MobileEntrySheet } from './mobile-entry-sheet';
+import { MobileSettingsContent } from './mobile-settings-content';
 import type { MobileEntryDraft } from './mobile-entry-draft';
 
 type EntrySheetState =
@@ -43,17 +44,7 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
 
   function handleMoreNavigate(section: MoreSection) {
     setMoreOpen(false);
-    // idag is rendered in-shell; familie/assistent/indstillinger go to desktop sections
-    if (section === 'idag') {
-      setMoreSection(section);
-    } else {
-      const sectionMap: Record<string, string> = {
-        familie: 'family',
-        assistent: 'dashboard', // assistant chat lives on the dashboard
-        indstillinger: 'settings',
-      };
-      onNavigateDesktopSection(sectionMap[section] ?? section);
-    }
+    setMoreSection(section);
   }
 
   function handleEntryCreated(_entry: Entry) {
@@ -115,21 +106,30 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
         </div>
         {/* Content */}
         <div className="flex-1 overflow-auto">
-          {moreSection === 'idag' ? (
-            <div className="p-4 text-sm text-muted-foreground">
-              I dag-visning (timeline)
+          {moreSection === 'idag' && (
+            <div className="p-4 text-sm text-muted-foreground">I dag-visning (timeline)</div>
+          )}
+          {moreSection === 'indstillinger' && (
+            <MobileSettingsContent />
+          )}
+          {moreSection === 'familie' && (
+            <div className="p-4 flex flex-col gap-3">
+              {members.map(m => (
+                <div key={m.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-card px-4 py-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold flex-shrink-0">
+                    {m.avatar || m.name[0]}
+                  </div>
+                  <div>
+                    <div className="font-medium text-sm">{m.name}</div>
+                    <div className="text-xs text-muted-foreground">{m.role === 'parent' ? 'Forælder' : 'Barn'}{m.email ? ` · ${m.email}` : ''}</div>
+                  </div>
+                </div>
+              ))}
             </div>
-          ) : (
+          )}
+          {moreSection === 'assistent' && (
             <div className="flex items-center justify-center h-full">
-              <p className="text-sm text-muted-foreground">
-                Åbner{' '}
-                {moreSection === 'familie'
-                  ? 'Familie'
-                  : moreSection === 'assistent'
-                    ? 'Assistent'
-                    : 'Indstillinger'}
-                …
-              </p>
+              <p className="text-sm text-muted-foreground">Brug chat-assistenten på startskærmen.</p>
             </div>
           )}
         </div>
@@ -155,6 +155,7 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
             members={members}
             onAddTask={() => { setQuickAddType('task'); setQuickAddOpen(true); }}
             onSelectEntry={setSelectedEntry}
+            refreshKey={calendarRefreshKey}
           />
         )}
         {activeTab === 'mad' && <MobileFoodPlanner />}
