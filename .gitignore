@@ -20,3 +20,7 @@ packages/contracts/src/*.d.ts
 
 # Runtime data
 packages/backend/data/app-settings.json
+
+# Claude / superpowers tooling artifacts
+.superpowers/
+.claude/settings.local.json
