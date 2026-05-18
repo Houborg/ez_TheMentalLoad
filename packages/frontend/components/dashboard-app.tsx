@@ -1715,7 +1715,7 @@ export function DashboardApp() {
       <div className="flex min-h-screen">
         <aside
           className={cn(
-            'hidden md:flex shrink-0 border-r border-sidebar-border bg-sidebar/80 py-5 backdrop-blur transition-all duration-300 flex-col',
+            'hidden md:flex shrink-0 border-r border-sidebar-border bg-sidebar/80 py-5 backdrop-blur transition-all duration-300 flex-col sticky top-0 h-screen overflow-y-auto',
             isSidebarCollapsed ? 'w-20 px-2' : 'w-72 px-4',
           )}
         >
@@ -1768,38 +1768,6 @@ export function DashboardApp() {
               </button>
             ))}
           </nav>
-
-          <div className="mt-8" id="family-section">
-            {!isSidebarCollapsed ? <div className="mb-3 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Family members</div> : null}
-            <div className="space-y-2">
-              {dashboard.members.map((member) => (
-                <button
-                  key={member.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveMemberId(member.id);
-                    router.push(`/member/${encodeURIComponent(member.id)}`);
-                  }}
-                  className={cn(
-                    'flex w-full rounded-2xl py-2.5 text-left hover:bg-sidebar-accent/60',
-                    activeMember?.id === member.id && 'bg-sidebar-accent/60',
-                    isSidebarCollapsed ? 'justify-center px-1' : 'items-center gap-3 px-3',
-                  )}
-                  title={isSidebarCollapsed ? `${member.name} (${member.role})` : undefined}
-                >
-                  <div className={cn('flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold text-primary-foreground', memberColorById[member.id] ?? 'bg-primary')}>
-                    {member.avatar ? <span className="text-xl">{member.avatar}</span> : <Users className="h-5 w-5" />}
-                  </div>
-                  {!isSidebarCollapsed ? (
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{member.name}</div>
-                      <div className="truncate text-xs text-muted-foreground">{member.role}</div>
-                    </div>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {isSidebarCollapsed ? (
             <div className="mt-auto flex flex-col items-center gap-2">
@@ -2001,21 +1969,17 @@ export function DashboardApp() {
                     <p className="mt-1 text-sm text-muted-foreground">Assigned tasks and completion per member.</p>
                   </div>
                 </div>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {memberTaskProgress.map(({ member, done, pending, total, pct }) => (
-                    <div key={member.id} className="rounded-2xl border border-border/60 bg-background/30 p-4">
-                      <div className="mb-2 flex items-center gap-2">
-                        <div className={cn('flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold text-primary-foreground', memberColorById[member.id] ?? 'bg-primary')}>
-                          {member.avatar ? <span className="text-sm">{member.avatar}</span> : <Users className="h-4 w-4" />}
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {memberTaskProgress.map(({ member, done, total, pct }) => (
+                    <div key={member.id} className="flex-shrink-0 rounded-2xl border border-border/60 bg-background/30 px-3 py-2.5 min-w-[120px]">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={cn('flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-primary-foreground', memberColorById[member.id] ?? 'bg-primary')}>
+                          {member.avatar ? <span className="text-xs">{member.avatar}</span> : member.name[0]}
                         </div>
-                        <div>
-                          <div className="text-sm font-semibold">{member.name}</div>
-                          <div className="text-[11px] capitalize text-muted-foreground">{member.role}</div>
-                        </div>
+                        <div className="text-xs font-semibold truncate">{member.name}</div>
                       </div>
-                      <div className="text-sm text-muted-foreground">{done}/{total} complete</div>
-                      <div className="text-xs text-muted-foreground">{pending} pending</div>
-                      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div className="text-xs text-muted-foreground mb-1.5">{done}/{total}</div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                         <div className="h-full rounded-full bg-chart-2 transition-all duration-500" style={{ width: `${pct}%` }} />
                       </div>
                     </div>

@@ -52,8 +52,8 @@ export function AgendaView({ members, entries, memberColorById, onSelectEntry, o
                 <div className="text-xs font-semibold">{DAY_LABELS[getWeekdayIndex(day)]}</div>
                 <div className="text-xs text-muted-foreground">{day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
                 {dayWeatherByDate?.[toDateKey(day)] ? (
-                  <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground">
-                    <span>{dayWeatherByDate[toDateKey(day)].icon}</span>
+                  <div className="mt-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                    <span className="text-sm">{dayWeatherByDate[toDateKey(day)].icon}</span>
                     <span>{dayWeatherByDate[toDateKey(day)].temp}°{dayWeatherByDate[toDateKey(day)].unitLabel}</span>
                   </div>
                 ) : null}
