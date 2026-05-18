@@ -11,6 +11,7 @@ type Props = {
   members: Member[];
   onAddTask: () => void;
   onSelectEntry: (entry: Entry) => void;
+  refreshKey?: number;
 };
 
 type Group = { label: string; entries: Entry[] };
@@ -41,7 +42,7 @@ function groupTasks(tasks: Entry[]): Group[] {
   ].filter(g => g.entries.length > 0);
 }
 
-export function MobileTaskList({ members, onAddTask, onSelectEntry }: Props) {
+export function MobileTaskList({ members, onAddTask, onSelectEntry, refreshKey = 0 }: Props) {
   const [allTasks, setAllTasks] = useState<Entry[]>([]);
   const [filterMemberId, setFilterMemberId] = useState<string | 'all'>('all');
   const [completing, setCompleting] = useState<Set<string>>(new Set());
@@ -61,7 +62,7 @@ export function MobileTaskList({ members, onAddTask, onSelectEntry }: Props) {
         setAllTasks([...seen.values()]);
       })
       .catch(console.error);
-  }, []);
+  }, [refreshKey]);
 
   const filtered = useMemo(() =>
     filterMemberId === 'all'

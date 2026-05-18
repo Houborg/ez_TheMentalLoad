@@ -70,26 +70,45 @@ export function toReminderPayload(
 }
 
 /**
- * For recurring tasks, keep only the earliest occurrence per parent entry.
+ * For recurring tasks, keep only the earliest future occurrence per parent entry.
  * Events are returned unchanged — all occurrences belong on the calendar.
+ * Non-recurring tasks (no colon in ID) are always kept.
  *
- * Recurring occurrence IDs are formatted as "parentId:occurrenceDate".
- * parentEntryId may not be populated, so we extract the parent from the ID.
+ * Recurring occurrence IDs use the format "parentUUID:ISOTimestamp".
+ * The part before the first colon is the parent entry's UUID.
  */
-export function deduplicateRecurringTasks<T extends { type: string; startTime: string; parentEntryId?: string; id: string }>(
+export function deduplicateRecurringTasks<T extends { type: string; startTime: string; id: string }>(
   entries: T[],
 ): T[] {
-  const seen = new Map<string, T>();
-  const sorted = [...entries].sort((a, b) => a.startTime.localeCompare(b.startTime));
-  for (const entry of sorted) {
+  // Find the earliest occurrence ID for each recurring-task parent
+  const earliestIdByParent = new Map<string, string>();
+
+  for (const entry of entries) {
     if (entry.type !== 'task') continue;
-    // Extract parent key: use parentEntryId, or the part of the ID before the first ':'
     const colonIdx = entry.id.indexOf(':');
-    const key = entry.parentEntryId ?? (colonIdx >= 0 ? entry.id.slice(0, colonIdx) : entry.id);
-    if (!seen.has(key)) seen.set(key, entry);
+    if (colonIdx < 0) continue; // non-recurring task, always keep
+
+    const parentKey = entry.id.slice(0, colonIdx);
+    const existing = earliestIdByParent.get(parentKey);
+    if (!existing) {
+      earliestIdByParent.set(parentKey, entry.id);
+    } else {
+      // Keep whichever has the earlier startTime
+      const existingEntry = entries.find(e => e.id === existing);
+      if (existingEntry && entry.startTime < existingEntry.startTime) {
+        earliestIdByParent.set(parentKey, entry.id);
+      }
+    }
   }
-  const keep = new Set(seen.values());
-  return entries.filter(e => e.type !== 'task' || keep.has(e));
+
+  const keepIds = new Set(earliestIdByParent.values());
+
+  return entries.filter(entry => {
+    if (entry.type !== 'task') return true;
+    const colonIdx = entry.id.indexOf(':');
+    if (colonIdx < 0) return true; // non-recurring task, always keep
+    return keepIds.has(entry.id);
+  });
 }
 
 export function buildRemindersPayload(
