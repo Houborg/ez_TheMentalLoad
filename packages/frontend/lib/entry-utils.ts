@@ -70,44 +70,47 @@ export function toReminderPayload(
 }
 
 /**
- * For recurring tasks, keep only the earliest future occurrence per parent entry.
- * Events are returned unchanged — all occurrences belong on the calendar.
+ * For recurring tasks, keep only the single NEXT upcoming occurrence per parent.
+ * Past occurrences are removed entirely. Events are unchanged.
  * Non-recurring tasks (no colon in ID) are always kept.
  *
  * Recurring occurrence IDs use the format "parentUUID:ISOTimestamp".
  * The part before the first colon is the parent entry's UUID.
+ *
+ * "Next" means the earliest occurrence whose startTime >= now.
+ * If today's occurrence time has already passed, tomorrow's is next.
  */
 export function deduplicateRecurringTasks<T extends { type: string; startTime: string; id: string }>(
   entries: T[],
 ): T[] {
-  // Find the earliest occurrence ID for each recurring-task parent
-  const earliestIdByParent = new Map<string, string>();
+  const now = new Date().toISOString();
+
+  // Find the next (earliest upcoming) occurrence ID per parent
+  const nextIdByParent = new Map<string, string>();
+  const nextTimeByParent = new Map<string, string>();
 
   for (const entry of entries) {
     if (entry.type !== 'task') continue;
     const colonIdx = entry.id.indexOf(':');
-    if (colonIdx < 0) continue; // non-recurring task, always keep
+    if (colonIdx < 0) continue; // non-recurring, handled below
+
+    if (entry.startTime < now) continue; // past occurrence — skip
 
     const parentKey = entry.id.slice(0, colonIdx);
-    const existing = earliestIdByParent.get(parentKey);
-    if (!existing) {
-      earliestIdByParent.set(parentKey, entry.id);
-    } else {
-      // Keep whichever has the earlier startTime
-      const existingEntry = entries.find(e => e.id === existing);
-      if (existingEntry && entry.startTime < existingEntry.startTime) {
-        earliestIdByParent.set(parentKey, entry.id);
-      }
+    const existing = nextTimeByParent.get(parentKey);
+    if (!existing || entry.startTime < existing) {
+      nextIdByParent.set(parentKey, entry.id);
+      nextTimeByParent.set(parentKey, entry.startTime);
     }
   }
 
-  const keepIds = new Set(earliestIdByParent.values());
+  const keepIds = new Set(nextIdByParent.values());
 
   return entries.filter(entry => {
     if (entry.type !== 'task') return true;
     const colonIdx = entry.id.indexOf(':');
     if (colonIdx < 0) return true; // non-recurring task, always keep
-    return keepIds.has(entry.id);
+    return keepIds.has(entry.id); // only the "next" occurrence survives
   });
 }
 
