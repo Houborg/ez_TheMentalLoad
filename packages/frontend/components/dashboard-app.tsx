@@ -65,6 +65,7 @@ import { MobileShell } from '@/components/mobile/mobile-shell';
 import { cn } from '@/lib/utils';
 import { deduplicateRecurringTasks, WEEKDAY_OPTIONS } from '@/lib/entry-utils';
 import { SettingsHolidays } from '@/components/settings-holidays';
+import { PlannerView } from '@/components/planner-view';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
 type RecurrenceFreq = 'none' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
@@ -747,7 +748,7 @@ export function DashboardApp() {
     }
 
     if (section === 'planner') {
-      router.push('/planner');
+      setActiveNav('planner');
       return;
     }
 
@@ -1883,7 +1884,9 @@ export function DashboardApp() {
           </header>
 
           <section className="flex-1 overflow-auto px-4 py-6 pb-20 md:px-6 md:pb-6">
-            {activeNav !== 'family' && activeNav !== 'timeline' ? (
+            {activeNav === 'planner' ? (
+              <PlannerView members={dashboard.members} memberColorById={memberColorById} />
+            ) : activeNav !== 'family' && activeNav !== 'timeline' ? (
             <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
               <div id="hero-section" className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
