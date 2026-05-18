@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { isHttpsRequest } from '@/lib/auth';
 
 function getBackendUrl(): string {
   return (process.env.BACKEND_URL ?? 'http://localhost:3000').replace(/\/$/, '');
@@ -38,7 +39,25 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.json({ ok: true });
   const setCookie = upstream.headers.get('set-cookie');
   if (setCookie) {
-    response.headers.set('set-cookie', setCookie);
+    // Extract the token value and rewrite cookie attributes for production correctness.
+    // The backend doesn't know it's behind HTTPS (no x-forwarded-proto forwarded),
+    // so it omits Secure. We fix that here.
+    const tokenMatch = setCookie.match(/ml_session=([^;]+)/);
+    if (tokenMatch) {
+      const secure = isHttpsRequest(request.headers, request.url);
+      const maxAge = 60 * 60 * 24 * 30; // 30 days
+      const cookieValue = [
+        `ml_session=${tokenMatch[1]}`,
+        'Path=/',
+        'HttpOnly',
+        `Max-Age=${maxAge}`,
+        'SameSite=Lax',
+        ...(secure ? ['Secure'] : []),
+      ].join('; ');
+      response.headers.set('set-cookie', cookieValue);
+    } else {
+      response.headers.set('set-cookie', setCookie);
+    }
   }
 
   return response;
