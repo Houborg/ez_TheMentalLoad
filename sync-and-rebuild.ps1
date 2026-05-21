@@ -1,9 +1,9 @@
 #!/usr/bin/env pwsh
 # Quick sync and rebuild script for ez_TheMentalLoad
-# Usage: .\sync-and-rebuild.ps1 -Host 192.168.1.252 -User mhouborg
+# Usage: .\sync-and-rebuild.ps1 -Host <SERVER_IP> -User mhouborg
 
 param(
-    [string]$Host = "192.168.1.252",
+    [string]$Host = "<SERVER_IP>",
     [string]$User = "mhouborg",
     [string]$Password = "mentalload"
 )

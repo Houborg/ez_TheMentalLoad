@@ -24,3 +24,8 @@ packages/backend/data/app-settings.json
 # Claude / superpowers tooling artifacts
 .superpowers/
 .claude/settings.local.json
+
+# Sensitive deployment files — never commit
+tmp.remote.env.production
+*.env.production
+*.env.secret

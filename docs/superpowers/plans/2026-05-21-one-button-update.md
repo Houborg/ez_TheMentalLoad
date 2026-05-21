@@ -302,7 +302,7 @@ This task patches the stored compose file and SQLite DB inside the running testb
 - [ ] **Step 1: Run the patch script inside the testbench container**
 
 ```bash
-ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@192.168.1.252 "docker exec testbench node -e \"
+ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@<SERVER_IP> "docker exec testbench node -e \"
 const fs = require('fs');
 const path = '/data/apps/thementalload/docker-compose.yml';
 let yaml = fs.readFileSync(path, 'utf8');
@@ -314,7 +314,7 @@ yaml = yaml.replace(/context: \\/home\\/mhouborg\\/ez_TheMentalLoad/g, 'context:
 // Find the NEXT_PUBLIC_WS_URL line in frontend and append after it
 const envBlock = [
   '      TESTBENCH_WEBHOOK_URL: http://testbench-webhook:9001',
-  '      TESTBENCH_WEBHOOK_SECRET: cafe4aec7368240f7938e2eb385c1508959c232f43f727eac0c7b74a35c8045c',
+  '      TESTBENCH_WEBHOOK_SECRET: <WEBHOOK_SECRET>',
   '      APP_SLUG: thementalload',
   '      APP_GIT_URL: https://github.com/Houborg/ez_TheMentalLoad.git',
 ].join('\n');
@@ -338,7 +338,7 @@ Expected: prints the `frontend:` service block showing `./source` context and th
 - [ ] **Step 2: Verify the compose looks right**
 
 ```bash
-ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@192.168.1.252 "docker exec testbench grep -E 'context:|TESTBENCH_WEBHOOK|APP_SLUG|APP_GIT_URL' /data/apps/thementalload/docker-compose.yml"
+ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@<SERVER_IP> "docker exec testbench grep -E 'context:|TESTBENCH_WEBHOOK|APP_SLUG|APP_GIT_URL' /data/apps/thementalload/docker-compose.yml"
 ```
 
 Expected output (all three build services show `./source`, frontend has the 4 new vars):
@@ -347,7 +347,7 @@ Expected output (all three build services show `./source`, frontend has the 4 ne
     context: ./source
     context: ./source
       TESTBENCH_WEBHOOK_URL: http://testbench-webhook:9001
-      TESTBENCH_WEBHOOK_SECRET: cafe4aec7368240f7938e2eb385c1508959c232f43f727eac0c7b74a35c8045c
+      TESTBENCH_WEBHOOK_SECRET: <WEBHOOK_SECRET>
       APP_SLUG: thementalload
       APP_GIT_URL: https://github.com/Houborg/ez_TheMentalLoad.git
 ```
@@ -357,7 +357,7 @@ Expected output (all three build services show `./source`, frontend has the 4 ne
 - [ ] **Step 3: Set `git_url` for the `thementalload` app row**
 
 ```bash
-ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@192.168.1.252 "docker exec testbench node -e \"
+ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@<SERVER_IP> "docker exec testbench node -e \"
 const { DatabaseSync } = require('node:sqlite');
 const db = new DatabaseSync('/data/testbench.db');
 const before = db.prepare('SELECT slug, git_url FROM apps WHERE slug = ?').get('thementalload');
@@ -381,7 +381,7 @@ The webhook will `git clone` automatically on first deploy, but only to its defa
 - [ ] **Step 4: Clone the repo into `source/` on the correct branch**
 
 ```bash
-ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@192.168.1.252 "git clone --branch feat/apple-calendar-sync https://github.com/Houborg/ez_TheMentalLoad.git /home/mhouborg/testbench/TestBench/data/apps/thementalload/source && git -C /home/mhouborg/testbench/TestBench/data/apps/thementalload/source log --oneline -3"
+ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@<SERVER_IP> "git clone --branch feat/apple-calendar-sync https://github.com/Houborg/ez_TheMentalLoad.git /home/mhouborg/testbench/TestBench/data/apps/thementalload/source && git -C /home/mhouborg/testbench/TestBench/data/apps/thementalload/source log --oneline -3"
 ```
 
 Expected: clones successfully and shows recent commits from `feat/apple-calendar-sync`.
@@ -395,14 +395,14 @@ Expected: clones successfully and shows recent commits from `feat/apple-calendar
 The `injectNetwork` fix needs to be running on the server so future compose regenerations produce `./source` paths automatically. Pull the latest code and trigger the Testbench self-deploy webhook:
 
 ```bash
-ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@192.168.1.252 "cd /home/mhouborg/testbench && git pull"
+ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@<SERVER_IP> "cd /home/mhouborg/testbench && git pull"
 ```
 
 Then trigger the Testbench self-rebuild:
 
 ```bash
-ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@192.168.1.252 '
-SECRET="cafe4aec7368240f7938e2eb385c1508959c232f43f727eac0c7b74a35c8045c"
+ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@<SERVER_IP> '
+SECRET="<WEBHOOK_SECRET>"
 BODY="{}"
 SIG=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | sed "s/.*= //")
 curl -s -X POST http://localhost:9001/deploy \
@@ -415,7 +415,7 @@ curl -s -X POST http://localhost:9001/deploy \
 Expected: `OK`. The testbench rebuild takes ~1–2 minutes. Wait, then verify it is still running:
 
 ```bash
-sleep 90 && ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@192.168.1.252 "docker ps --filter name=testbench --format '{{.Names}}\t{{.Status}}'"
+sleep 90 && ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@<SERVER_IP> "docker ps --filter name=testbench --format '{{.Names}}\t{{.Status}}'"
 ```
 
 Expected: `testbench   Up N seconds`.
@@ -425,8 +425,8 @@ Expected: `testbench   Up N seconds`.
 The source/ directory now exists with `.git`, so the webhook will do `git pull` (not clone) and then rebuild:
 
 ```bash
-ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@192.168.1.252 '
-SECRET="cafe4aec7368240f7938e2eb385c1508959c232f43f727eac0c7b74a35c8045c"
+ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@<SERVER_IP> '
+SECRET="<WEBHOOK_SECRET>"
 BODY='"'"'{"slug":"thementalload","gitUrl":"https://github.com/Houborg/ez_TheMentalLoad.git","gitToken":null}'"'"'
 SIG=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | sed "s/.*= //")
 curl -s -X POST http://localhost:9001/app-deploy \
@@ -441,7 +441,7 @@ Expected: `OK`
 - [ ] **Step 3: Watch the deploy log**
 
 ```bash
-ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@192.168.1.252 "
+ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@<SERVER_IP> "
 for i in \$(seq 1 72); do
   sleep 5
   LOG=\$(cat /home/mhouborg/testbench/TestBench/data/apps/thementalload/deploy.log)
@@ -488,7 +488,7 @@ Click **Opdater app**. Confirm:
 - [ ] **Step 4: Watch deploy log to confirm rebuild**
 
 ```bash
-ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@192.168.1.252 "tail -f /home/mhouborg/testbench/TestBench/data/apps/thementalload/deploy.log"
+ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no mhouborg@<SERVER_IP> "tail -f /home/mhouborg/testbench/TestBench/data/apps/thementalload/deploy.log"
 ```
 
 Expected: shows `git pull` → docker build → `[DONE]`.
