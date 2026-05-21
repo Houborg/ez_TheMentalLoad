@@ -23,10 +23,19 @@ export class PostgresEntryRepository implements EntryRepository {
       [id, familyId],
     );
     const row = result.rows[0];
-    if (!row) {
-      return undefined;
-    }
+    if (!row) return undefined;
+    const [entry] = await this.enrichEntries([this.mapBaseEntry(row)]);
+    return entry;
+  }
 
+  async findByExternalUid(uid: string, familyId?: string): Promise<Entry | undefined> {
+    if (!familyId) return undefined;
+    const result = await this.pool.query(
+      'select * from entries where external_uid = $1 and family_id = $2',
+      [uid, familyId],
+    );
+    const row = result.rows[0];
+    if (!row) return undefined;
     const [entry] = await this.enrichEntries([this.mapBaseEntry(row)]);
     return entry;
   }
@@ -120,7 +129,7 @@ export class PostgresEntryRepository implements EntryRepository {
 
   private async writeEntry(entry: Entry, familyId: string, client: PoolClient): Promise<void> {
     await client.query(
-      'insert into entries (id, title, type, owner_member_id, calendar_id, start_time, end_time, all_day, location, status, recurrence_rule, parent_entry_id, timezone, assigned_to_member_id, created_at, updated_at, family_id) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)',
+      'insert into entries (id, title, type, owner_member_id, calendar_id, start_time, end_time, all_day, location, status, recurrence_rule, parent_entry_id, timezone, assigned_to_member_id, external_uid, created_at, updated_at, family_id) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)',
       [
         entry.id,
         entry.title,
@@ -136,6 +145,7 @@ export class PostgresEntryRepository implements EntryRepository {
         entry.parentEntryId ?? null,
         entry.timezone,
         entry.assignedToMemberId ?? null,
+        entry.externalUid ?? null,
         entry.createdAt,
         entry.updatedAt,
         familyId,
@@ -228,6 +238,7 @@ export class PostgresEntryRepository implements EntryRepository {
       linkedEntryIds: [],
       parentEntryId: row.parent_entry_id ? String(row.parent_entry_id) : undefined,
       assignedToMemberId: row.assigned_to_member_id ? String(row.assigned_to_member_id) : undefined,
+      externalUid: row.external_uid ? String(row.external_uid) : undefined,
       createdAt: new Date(String(row.created_at)).toISOString(),
       updatedAt: new Date(String(row.updated_at)).toISOString(),
     };

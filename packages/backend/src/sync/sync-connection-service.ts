@@ -1,6 +1,7 @@
 import { v4 as uuid } from 'uuid';
+import * as ical from 'node-ical';
 import type { Pool } from 'pg';
-import type { SyncConnection } from '@mental-load/contracts';
+import type { Entry, SyncConnection } from '@mental-load/contracts';
 import type { CalendarAdapter, ConnectionConfig } from './calendar-adapter';
 
 export interface CreateConnectionInput {
@@ -13,6 +14,8 @@ export interface CreateConnectionInput {
   appPassword?: string;
   calendarPath?: string;
   calendarName?: string;
+  targetCalendarId?: string;
+  targetMemberId?: string;
 }
 
 export class SyncConnectionService {
@@ -64,6 +67,8 @@ export class SyncConnectionService {
       appPassword: input.appPassword,
       calendarPath: input.calendarPath,
       calendarName: input.calendarName,
+      targetCalendarId: input.targetCalendarId,
+      targetMemberId: input.targetMemberId,
       createdAt: new Date().toISOString(),
     };
 
@@ -102,7 +107,11 @@ export class SyncConnectionService {
 
   async runSync(
     connectionId: string,
-    entryRepository: { list(): Promise<import('@mental-load/contracts').Entry[]> },
+    entryRepository: {
+      list(): Promise<Entry[]>;
+      create(entry: Entry): Promise<Entry>;
+      findByExternalUid(uid: string): Promise<Entry | undefined>;
+    },
   ): Promise<{ importedCount: number; exportedCount: number }> {
     const conn = await this.getConnectionRaw(connectionId);
     if (!conn || !conn.isConnected || !conn.caldavUrl || !conn.appPassword || !conn.calendarPath) {
@@ -120,11 +129,45 @@ export class SyncConnectionService {
     let importedCount = 0;
     let exportedCount = 0;
 
-    if (conn.importEnabled) {
+    if (conn.importEnabled && conn.targetCalendarId && conn.targetMemberId) {
       const since = conn.lastSyncAt ? new Date(conn.lastSyncAt) : undefined;
       const remoteEvents = await this.adapter.importEvents(adapterConfig, since);
 
-      importedCount = remoteEvents.length;
+      for (const event of remoteEvents) {
+        if (!event.uid) continue;
+        const existing = await entryRepository.findByExternalUid(event.uid);
+        if (existing) continue;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parsed = ical.sync.parseICS(event.icalData) as Record<string, any>;
+        for (const component of Object.values(parsed)) {
+          if (component.type !== 'VEVENT' || !(component.start instanceof Date)) continue;
+          const now = new Date().toISOString();
+          await entryRepository.create({
+            id: uuid(),
+            externalUid: event.uid,
+            title: (component.summary as string | undefined) ?? 'Imported event',
+            type: 'event',
+            ownerMemberId: conn.targetMemberId,
+            calendarId: conn.targetCalendarId,
+            startTime: component.start.toISOString(),
+            endTime: component.end instanceof Date ? component.end.toISOString() : component.start.toISOString(),
+            timezone: (component.start.tz as string | undefined) ?? 'UTC',
+            allDay: component.datetype === 'date',
+            location: typeof component.location === 'string' ? component.location : undefined,
+            reminders: [],
+            checklist: [],
+            invitees: [],
+            linkedEntryIds: [],
+            status: 'active',
+            createdAt: now,
+            updatedAt: now,
+          });
+          importedCount++;
+        }
+      }
+    } else if (conn.importEnabled) {
+      console.warn(`[sync] connection ${connectionId} has importEnabled but no targetCalendarId/targetMemberId — skipping import`);
     }
 
     if (conn.exportEnabled) {

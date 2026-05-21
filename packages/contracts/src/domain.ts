@@ -62,6 +62,7 @@ export interface Entry {
   linkedEntryIds: string[];
   parentEntryId?: string;
   assignedToMemberId?: string;
+  externalUid?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -141,6 +142,9 @@ export interface SyncConnection {
   appPassword?: string;
   calendarPath?: string;
   calendarName?: string;
+  // Import target — which local calendar/member to assign imported events to
+  targetCalendarId?: string;
+  targetMemberId?: string;
   // Shared
   syncIntervalMinutes: number;
   lastSyncAt?: string;
