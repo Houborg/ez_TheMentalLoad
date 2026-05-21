@@ -8,7 +8,7 @@ import { SyncConnectionCard } from './sync-connection-card';
 
 type PanelState =
   | { mode: 'card'; connection: SyncConnection }
-  | { mode: 'wizard'; provider: 'apple' }
+  | { mode: 'wizard'; provider: 'apple'; existingConnectionId?: string }
   | { mode: 'empty' };
 
 export function SyncSettings() {
@@ -117,7 +117,7 @@ export function SyncSettings() {
             connection={panel.connection}
             onReconfigure={() => {
               if (panel.mode === 'card') {
-                setPanel({ mode: 'wizard', provider: panel.connection.provider as 'apple' });
+                setPanel({ mode: 'wizard', provider: panel.connection.provider as 'apple', existingConnectionId: panel.connection.id });
               }
             }}
             onDeleted={handleDeleted}
@@ -128,6 +128,7 @@ export function SyncSettings() {
         {panel.mode === 'wizard' && (
           <AppleWizard
             onComplete={handleWizardComplete}
+            existingConnectionId={panel.existingConnectionId}
             onCancel={() => {
               const conn = connections.find((c) => c.id === selected);
               setPanel(conn ? { mode: 'card', connection: conn } : { mode: 'empty' });

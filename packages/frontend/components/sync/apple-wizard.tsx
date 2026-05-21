@@ -6,16 +6,18 @@ import {
   verifySyncConnection,
   listRemoteCalendars,
   createSyncConnection,
+  deleteSyncConnection,
 } from '../../lib/api-sync-connections';
 
 interface AppleWizardProps {
   onComplete: (connection: SyncConnection) => void;
   onCancel: () => void;
+  existingConnectionId?: string;
 }
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
-export function AppleWizard({ onComplete, onCancel }: AppleWizardProps) {
+export function AppleWizard({ onComplete, onCancel, existingConnectionId }: AppleWizardProps) {
   const [step, setStep] = useState<Step>(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -50,6 +52,9 @@ export function AppleWizard({ onComplete, onCancel }: AppleWizardProps) {
     setError('');
     setBusy(true);
     try {
+      if (existingConnectionId) {
+        await deleteSyncConnection(existingConnectionId);
+      }
       const conn = await createSyncConnection({
         provider: 'apple',
         importEnabled,
