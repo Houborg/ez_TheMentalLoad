@@ -22,10 +22,9 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
-import type { AppSettings, AssistantDraft, DailyTimelineTemplateTask, Entry, Member, Calendar, ListTodayMemberTimelineResponse, MemberRole, MemberTimelineSettings, SyncProvider, TimelineTaskInstance } from '@mental-load/contracts';
+import type { AppSettings, AssistantDraft, DailyTimelineTemplateTask, Entry, Member, Calendar, ListTodayMemberTimelineResponse, MemberRole, MemberTimelineSettings, TimelineTaskInstance } from '@mental-load/contracts';
 import {
   askAssistant,
-  connectSync,
   confirmAssistant,
   confirmTodayTimelineTask,
   createMember,
@@ -46,7 +45,6 @@ import {
   loadUpcomingOccurrences,
   parseAssistant,
   respondToInvitation,
-  runSync,
   saveSettings,
   sendTestEmail,
   updateEntry,
@@ -66,6 +64,7 @@ import { cn } from '@/lib/utils';
 import { deduplicateRecurringTasks, WEEKDAY_OPTIONS } from '@/lib/entry-utils';
 import { SettingsHolidays } from '@/components/settings-holidays';
 import { PlannerView } from '@/components/planner-view';
+import { SyncSettings } from './sync/sync-settings';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
 type RecurrenceFreq = 'none' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
@@ -196,9 +195,7 @@ export function DashboardApp() {
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
   const [deletingCalendarId, setDeletingCalendarId] = useState<string | null>(null);
   const [mailActionBusy, setMailActionBusy] = useState(false);
-  const [syncActionBusy, setSyncActionBusy] = useState(false);
-  const [syncRunDraft, setSyncRunDraft] = useState({ calendarId: '', ownerMemberId: '', icsUrl: '', rawContent: '' });
-  const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string; date: string; memberId: string; notifyDaysBefore: number; wishes: string }>({ name: '', date: '', memberId: '', notifyDaysBefore: 7, wishes: '' });
+const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string; date: string; memberId: string; notifyDaysBefore: number; wishes: string }>({ name: '', date: '', memberId: '', notifyDaysBefore: 7, wishes: '' });
   const [birthdayDetailEntry, setBirthdayDetailEntry] = useState<Entry | null>(null);
   const [birthdayWishesText, setBirthdayWishesText] = useState('');
   const [settingsMessage, setSettingsMessage] = useState('');
@@ -316,11 +313,6 @@ export function DashboardApp() {
         setAssistantStatusText(assistantStatus.message);
         setTimelineSettingsByMemberId(Object.fromEntries(timelinePairs));
         setSettings(settingsSnapshot);
-        setSyncRunDraft((current) => ({
-          ...current,
-          calendarId: current.calendarId || dashboardSnapshot.calendars[0]?.id || '',
-          ownerMemberId: current.ownerMemberId || dashboardSnapshot.members[0]?.id || '',
-        }));
         setDraft((currentDraft) => hydrateDraft(currentDraft, dashboardSnapshot.members, dashboardSnapshot.calendars));
 
         // Load pending invitations for the first member (in a real auth system, this would be the current user)
@@ -870,10 +862,6 @@ export function DashboardApp() {
     const members = await loadMembers();
     setDashboard((current) => ({ ...current, members }));
     setActiveMemberId((current) => (members.some((member) => member.id === current) ? current : (members[0]?.id ?? '')));
-    setSyncRunDraft((current) => ({
-      ...current,
-      ownerMemberId: members.some((member) => member.id === current.ownerMemberId) ? current.ownerMemberId : members[0]?.id || '',
-    }));
 
     const timelinePairs = await Promise.all(
       members.map(async (member) => {
@@ -1410,60 +1398,6 @@ export function DashboardApp() {
     }
   }
 
-
-  async function handleConnectSync() {
-    if (!settings) {
-      return;
-    }
-
-    try {
-      setErrorText('');
-      setSyncActionBusy(true);
-      const result = await connectSync({
-        provider: settings.sync.provider,
-        configJson: settings.sync.configJson,
-      });
-
-      const next = await saveSettings({
-        sync: {
-          provider: result.provider,
-          isConnected: result.isConnected,
-          configJson: settings.sync.configJson,
-        },
-      });
-      setSettings(next);
-      setSettingsMessage(result.message);
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Could not connect sync provider');
-    } finally {
-      setSyncActionBusy(false);
-    }
-  }
-
-  async function handleRunSyncNow() {
-    if (!syncRunDraft.calendarId || !syncRunDraft.ownerMemberId) {
-      setErrorText('Select calendar and member before running sync');
-      return;
-    }
-
-    try {
-      setErrorText('');
-      setSyncActionBusy(true);
-      const result = await runSync({
-        calendarId: syncRunDraft.calendarId,
-        ownerMemberId: syncRunDraft.ownerMemberId,
-        provider: settings?.sync.provider,
-        icsUrl: syncRunDraft.icsUrl.trim() || undefined,
-        rawContent: syncRunDraft.rawContent.trim() || undefined,
-      });
-      await handleRefresh();
-      setSettingsMessage(result.message);
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Could not run sync');
-    } finally {
-      setSyncActionBusy(false);
-    }
-  }
 
   async function handleToggleRecurring(entry: Entry) {
     try {
@@ -3375,101 +3309,7 @@ export function DashboardApp() {
             ) : null}
 
             {settingsTab === 'sync' ? (
-              <div className="space-y-3">
-                <label className="grid gap-2">
-                  <span className="text-sm font-medium">Provider</span>
-                  <select
-                    value={settings.sync.provider}
-                    onChange={(event) => setSettings((current) => current ? { ...current, sync: { ...current.sync, provider: event.target.value as SyncProvider } } : current)}
-                    className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                  >
-                    <option value="none">none</option>
-                    <option value="apple">apple</option>
-                    <option value="google">google</option>
-                    <option value="outlook">outlook</option>
-                  </select>
-                </label>
-                <label className="grid gap-2">
-                  <span className="text-sm font-medium">Feed URL</span>
-                  <input
-                    value={String(settings.sync.configJson.feedUrl ?? '')}
-                    onChange={(event) => setSettings((current) => current ? { ...current, sync: { ...current.sync, configJson: { ...current.sync.configJson, feedUrl: event.target.value } } } : current)}
-                    className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                  />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-2">
-                    <span className="text-sm font-medium">Default calendar id</span>
-                    <input
-                      value={String(settings.sync.configJson.calendarId ?? '')}
-                      onChange={(event) => setSettings((current) => current ? { ...current, sync: { ...current.sync, configJson: { ...current.sync.configJson, calendarId: event.target.value } } } : current)}
-                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                    />
-                  </label>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-2">
-                    <span className="text-sm font-medium">Run sync for calendar</span>
-                    <select
-                      value={syncRunDraft.calendarId}
-                      onChange={(event) => setSyncRunDraft((current) => ({ ...current, calendarId: event.target.value }))}
-                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                    >
-                      <option value="">Select calendar</option>
-                      {dashboard.calendars.map((calendar) => (
-                        <option key={calendar.id} value={calendar.id}>{calendar.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="grid gap-2">
-                    <span className="text-sm font-medium">Owner member</span>
-                    <select
-                      value={syncRunDraft.ownerMemberId}
-                      onChange={(event) => setSyncRunDraft((current) => ({ ...current, ownerMemberId: event.target.value }))}
-                      className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                    >
-                      <option value="">Select member</option>
-                      {dashboard.members.map((member) => (
-                        <option key={member.id} value={member.id}>{member.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <label className="grid gap-2">
-                  <span className="text-sm font-medium">ICS URL (optional)</span>
-                  <input
-                    value={syncRunDraft.icsUrl}
-                    onChange={(event) => setSyncRunDraft((current) => ({ ...current, icsUrl: event.target.value }))}
-                    className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                  />
-                </label>
-                <label className="grid gap-2">
-                  <span className="text-sm font-medium">ICS raw content (optional)</span>
-                  <textarea
-                    value={syncRunDraft.rawContent}
-                    onChange={(event) => setSyncRunDraft((current) => ({ ...current, rawContent: event.target.value }))}
-                    className="min-h-[88px] rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                  />
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handleConnectSync()}
-                    disabled={syncActionBusy}
-                    className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60 disabled:opacity-60"
-                  >
-                    Connect provider
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleRunSyncNow()}
-                    disabled={syncActionBusy}
-                    className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60 disabled:opacity-60"
-                  >
-                    Run sync now
-                  </button>
-                </div>
-              </div>
+              <SyncSettings />
             ) : null}
 
             {settingsTab === 'recurring' ? (
