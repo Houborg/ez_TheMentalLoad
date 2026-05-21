@@ -130,7 +130,9 @@ export class SyncConnectionService {
     if (conn.exportEnabled) {
       const entries = await entryRepository.list();
       const now = new Date().toISOString();
-      const toExport = entries.filter((e) => !e.parentEntryId && e.endTime >= now);
+      // Only export one-off upcoming events — skip recurring entries (they have recurrenceRule)
+      // to avoid Apple Calendar expanding RRULE into all future occurrences
+      const toExport = entries.filter((e) => !e.parentEntryId && !e.recurrenceRule && e.endTime >= now);
       for (const entry of toExport) {
         await this.adapter.exportEntry(adapterConfig, entry);
         exportedCount++;
