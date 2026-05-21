@@ -13,6 +13,8 @@ export interface CreateConnectionInput {
   appPassword?: string;
   calendarPath?: string;
   calendarName?: string;
+  targetCalendarId?: string;
+  targetMemberId?: string;
 }
 
 export class SyncConnectionService {
@@ -64,6 +66,8 @@ export class SyncConnectionService {
       appPassword: input.appPassword,
       calendarPath: input.calendarPath,
       calendarName: input.calendarName,
+      targetCalendarId: input.targetCalendarId,
+      targetMemberId: input.targetMemberId,
       createdAt: new Date().toISOString(),
     };
 
@@ -103,6 +107,7 @@ export class SyncConnectionService {
   async runSync(
     connectionId: string,
     entryRepository: { list(): Promise<import('@mental-load/contracts').Entry[]> },
+    importHandler?: { importFromIcs(opts: { calendarId: string; ownerMemberId: string; ics: string }): Promise<{ importedCount: number }> },
   ): Promise<{ importedCount: number; exportedCount: number }> {
     const conn = await this.getConnectionRaw(connectionId);
     if (!conn || !conn.isConnected || !conn.caldavUrl || !conn.appPassword || !conn.calendarPath) {
@@ -123,12 +128,25 @@ export class SyncConnectionService {
     if (conn.importEnabled) {
       const since = conn.lastSyncAt ? new Date(conn.lastSyncAt) : undefined;
       const remoteEvents = await this.adapter.importEvents(adapterConfig, since);
-      importedCount = remoteEvents.length;
+
+      if (importHandler && conn.targetCalendarId && conn.targetMemberId) {
+        for (const event of remoteEvents) {
+          const result = await importHandler.importFromIcs({
+            calendarId: conn.targetCalendarId,
+            ownerMemberId: conn.targetMemberId,
+            ics: event.icalData,
+          });
+          importedCount += result.importedCount;
+        }
+      } else {
+        importedCount = remoteEvents.length;
+      }
     }
 
     if (conn.exportEnabled) {
       const entries = await entryRepository.list();
-      const toExport = entries.filter((e) => !e.parentEntryId);
+      const now = new Date().toISOString();
+      const toExport = entries.filter((e) => !e.parentEntryId && e.endTime >= now);
       for (const entry of toExport) {
         await this.adapter.exportEntry(adapterConfig, entry);
         exportedCount++;
