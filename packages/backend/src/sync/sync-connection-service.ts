@@ -33,7 +33,8 @@ export class SyncConnectionService {
 
   async getConnection(connectionId: string): Promise<SyncConnection | undefined> {
     const connections = await this.listConnections();
-    return connections.find((c) => c.id === connectionId);
+    const found = connections.find((c) => c.id === connectionId);
+    return found ? this.toPublic(found) : undefined;
   }
 
   async createConnection(input: CreateConnectionInput): Promise<SyncConnection> {
@@ -59,7 +60,7 @@ export class SyncConnectionService {
     };
 
     await this.saveConnections([...connections, connection]);
-    return connection;
+    return this.toPublic(connection);
   }
 
   async updateConnection(connectionId: string, patch: Partial<SyncConnection>): Promise<SyncConnection> {
@@ -69,7 +70,7 @@ export class SyncConnectionService {
     const updated = { ...connections[idx], ...patch };
     connections[idx] = updated;
     await this.saveConnections(connections);
-    return updated;
+    return this.toPublic(updated);
   }
 
   async deleteConnection(connectionId: string): Promise<void> {
@@ -77,9 +78,9 @@ export class SyncConnectionService {
     await this.saveConnections(connections.filter((c) => c.id !== connectionId));
   }
 
-  async verify(config: Pick<ConnectionConfig, 'caldavUrl' | 'username' | 'password'> & { provider: string }): Promise<boolean> {
+  async verify(config: Pick<ConnectionConfig, 'caldavUrl' | 'username' | 'password'> & { provider: 'apple' | 'google' }): Promise<boolean> {
     return this.adapter.verify({
-      provider: config.provider as 'apple' | 'google',
+      provider: config.provider,
       caldavUrl: config.caldavUrl,
       username: config.username,
       password: config.password,
@@ -95,7 +96,8 @@ export class SyncConnectionService {
     connectionId: string,
     entryRepository: { list(): Promise<import('@mental-load/contracts').Entry[]> },
   ): Promise<{ importedCount: number; exportedCount: number }> {
-    const conn = await this.getConnection(connectionId);
+    const connections = await this.listConnections();
+    const conn = connections.find((c) => c.id === connectionId);
     if (!conn || !conn.isConnected || !conn.caldavUrl || !conn.appPassword || !conn.calendarPath) {
       return { importedCount: 0, exportedCount: 0 };
     }
@@ -142,5 +144,10 @@ export class SyncConnectionService {
        where id = $2`,
       [JSON.stringify(connections), this.familyId],
     );
+  }
+
+  private toPublic(connection: SyncConnection): SyncConnection {
+    const { appPassword: _stripped, ...rest } = connection;
+    return rest as SyncConnection;
   }
 }
