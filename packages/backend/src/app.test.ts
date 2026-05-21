@@ -955,6 +955,24 @@ test('timeline confirmation rejects unknown task ids deterministically', async (
   await app.close();
 });
 
+test('GET /api/v1/sync/connections returns 401 without session', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: '/api/v1/sync/connections' });
+  assert.equal(response.statusCode, 401);
+  await app.close();
+});
+
+test('POST /api/v1/sync/connections/verify returns 401 without session', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/sync/connections/verify',
+    payload: { provider: 'apple', appleId: 'test@icloud.com', appPassword: 'xxxx' },
+  });
+  assert.equal(response.statusCode, 401);
+  await app.close();
+});
+
 test('timeline includes checklist tasks from member events', async () => {
   const app = await createTestApp();
   const date = '2026-04-24';
