@@ -9,7 +9,9 @@ import type {
   Member,
   MemberTimelineSettings,
   MemberRole,
+  RemoteCalendar,
   SupportedLanguage,
+  SyncConnection,
   SyncProvider,
   TodayMemberTimeline,
 } from './domain';
@@ -223,4 +225,54 @@ export interface ConfirmTimelineTaskCompletionRequest {
 export interface ConfirmTimelineTaskCompletionResponse {
   ok: boolean;
   timeline: TodayMemberTimeline;
+}
+
+export interface CreateSyncConnectionRequest {
+  provider: 'apple' | 'google';
+  importEnabled: boolean;
+  exportEnabled: boolean;
+  syncIntervalMinutes?: number;
+  // Apple-specific
+  appleId?: string;
+  caldavUrl?: string;
+  appPassword?: string;
+  calendarPath?: string;
+  calendarName?: string;
+}
+
+export interface UpdateSyncConnectionRequest {
+  importEnabled?: boolean;
+  exportEnabled?: boolean;
+  syncIntervalMinutes?: number;
+  caldavUrl?: string;
+  calendarPath?: string;
+  calendarName?: string;
+}
+
+export interface VerifySyncConnectionRequest {
+  provider: SyncProvider;
+  appleId?: string;
+  caldavUrl?: string;
+  appPassword?: string;
+}
+
+export interface VerifySyncConnectionResponse {
+  ok: boolean;
+  message: string;
+}
+
+export interface ListRemoteCalendarsRequest {
+  provider: SyncProvider;
+  appleId?: string;
+  caldavUrl?: string;
+  appPassword?: string;
+}
+
+export interface SyncConnectionRunResponse {
+  ok: boolean;
+  connectionId: string;
+  importedCount: number;
+  exportedCount: number;
+  lastSyncAt: string;
+  message: string;
 }

@@ -128,6 +128,33 @@ export interface SyncSettings {
   lastSyncAt?: string;
 }
 
+export interface SyncConnection {
+  id: string;
+  provider: SyncProvider;
+  isConnected: boolean;
+  importEnabled: boolean;
+  exportEnabled: boolean;
+  // Apple CalDAV fields
+  appleId?: string;
+  caldavUrl?: string;
+  /** Stored encrypted server-side. MUST be stripped from API responses before sending to the client. */
+  appPassword?: string;
+  calendarPath?: string;
+  calendarName?: string;
+  // Shared
+  syncIntervalMinutes: number;
+  lastSyncAt?: string;
+  lastImportCount?: number;
+  lastExportCount?: number;
+  createdAt: string;
+}
+
+export interface RemoteCalendar {
+  url: string;
+  displayName: string;
+  eventCount?: number;
+}
+
 export interface WeatherSettings {
   location: string;
   country: string;
