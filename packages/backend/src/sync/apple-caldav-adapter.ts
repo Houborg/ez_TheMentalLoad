@@ -3,14 +3,18 @@ import type { Entry } from '@mental-load/contracts';
 import type { CalendarAdapter, ConnectionConfig, RemoteEvent } from './calendar-adapter';
 
 export class AppleCalDavAdapter implements CalendarAdapter {
+  private async createClient(config: Pick<ConnectionConfig, 'caldavUrl' | 'username' | 'password'>) {
+    return createDAVClient({
+      serverUrl: config.caldavUrl,
+      credentials: { username: config.username, password: config.password },
+      authMethod: 'Basic',
+      defaultAccountType: 'caldav',
+    });
+  }
+
   async verify(config: ConnectionConfig): Promise<boolean> {
     try {
-      const client = await createDAVClient({
-        serverUrl: config.caldavUrl,
-        credentials: { username: config.username, password: config.password },
-        authMethod: 'Basic',
-        defaultAccountType: 'caldav',
-      });
+      const client = await this.createClient(config);
       await client.fetchCalendars();
       return true;
     } catch {
@@ -19,12 +23,7 @@ export class AppleCalDavAdapter implements CalendarAdapter {
   }
 
   async listCalendars(config: Pick<ConnectionConfig, 'caldavUrl' | 'username' | 'password'>): Promise<Array<{ url: string; displayName: string; eventCount?: number }>> {
-    const client = await createDAVClient({
-      serverUrl: config.caldavUrl,
-      credentials: { username: config.username, password: config.password },
-      authMethod: 'Basic',
-      defaultAccountType: 'caldav',
-    });
+    const client = await this.createClient(config);
     const calendars = await client.fetchCalendars();
     return calendars.map((cal) => ({
       url: cal.url,
@@ -33,12 +32,7 @@ export class AppleCalDavAdapter implements CalendarAdapter {
   }
 
   async importEvents(config: ConnectionConfig, since?: Date): Promise<RemoteEvent[]> {
-    const client = await createDAVClient({
-      serverUrl: config.caldavUrl,
-      credentials: { username: config.username, password: config.password },
-      authMethod: 'Basic',
-      defaultAccountType: 'caldav',
-    });
+    const client = await this.createClient(config);
     const calendars = await client.fetchCalendars();
     const target = calendars.find((c) => c.url === config.calendarPath) ?? calendars[0];
     if (!target) return [];
@@ -64,12 +58,7 @@ export class AppleCalDavAdapter implements CalendarAdapter {
   }
 
   async exportEntry(config: ConnectionConfig, entry: Entry): Promise<string> {
-    const client = await createDAVClient({
-      serverUrl: config.caldavUrl,
-      credentials: { username: config.username, password: config.password },
-      authMethod: 'Basic',
-      defaultAccountType: 'caldav',
-    });
+    const client = await this.createClient(config);
     const calendars = await client.fetchCalendars();
     const target = calendars.find((c) => c.url === config.calendarPath) ?? calendars[0];
     if (!target) throw new Error('Target calendar not found on remote');
@@ -86,17 +75,13 @@ export class AppleCalDavAdapter implements CalendarAdapter {
       return match.url;
     } else {
       await client.createCalendarObject({ calendar: target, filename, iCalString: icalString });
-      return `${target.url}${filename}`;
+      const base = target.url.endsWith('/') ? target.url : `${target.url}/`;
+      return `${base}${filename}`;
     }
   }
 
   async deleteRemoteEvent(config: ConnectionConfig, eventUrl: string): Promise<void> {
-    const client = await createDAVClient({
-      serverUrl: config.caldavUrl,
-      credentials: { username: config.username, password: config.password },
-      authMethod: 'Basic',
-      defaultAccountType: 'caldav',
-    });
+    const client = await this.createClient(config);
     const calendars = await client.fetchCalendars();
     const target = calendars.find((c) => c.url === config.calendarPath) ?? calendars[0];
     if (!target) return;
