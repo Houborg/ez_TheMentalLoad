@@ -323,11 +323,10 @@ export async function buildApp() {
   app.post<{ Params: { id: string } }>('/api/v1/sync/connections/:id/run', async (request, reply) => {
     const { id } = request.params;
     const { entryRepository, syncConnectionService } = svc(request);
-    // Run in background — CalDAV calls can take > 30s and would otherwise timeout through Cloudflare
-    syncConnectionService.runSync(id, entryRepository)
+    // Fire-and-forget — CalDAV calls run in background, return 202 immediately
+    void syncConnectionService.runSync(id, entryRepository)
       .catch((err) => console.error(`[sync] manual run failed for ${id}:`, err));
-    reply.code(202);
-    return { ok: true, connectionId: id, message: 'Sync started in background — check back in a moment.' };
+    return reply.code(202).send({ ok: true, connectionId: id, message: 'Sync started in background — check back in a moment.' });
   });
 
   app.post('/api/v1/deploy/update', async (request, reply) => {
