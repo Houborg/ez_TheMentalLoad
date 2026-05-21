@@ -22,7 +22,7 @@ export class SyncConnectionService {
     private readonly adapter: CalendarAdapter,
   ) {}
 
-  async listConnections(): Promise<SyncConnection[]> {
+  private async listConnectionsRaw(): Promise<SyncConnection[]> {
     const result = await this.pool.query<{ settings_json: Record<string, unknown> }>(
       'select settings_json from families where id = $1',
       [this.familyId],
@@ -31,14 +31,22 @@ export class SyncConnectionService {
     return (raw.sync_connections as SyncConnection[] | undefined) ?? [];
   }
 
+  async listConnections(): Promise<SyncConnection[]> {
+    return (await this.listConnectionsRaw()).map((c) => this.toPublic(c));
+  }
+
+  private async getConnectionRaw(connectionId: string): Promise<SyncConnection | undefined> {
+    const connections = await this.listConnectionsRaw();
+    return connections.find((c) => c.id === connectionId);
+  }
+
   async getConnection(connectionId: string): Promise<SyncConnection | undefined> {
-    const connections = await this.listConnections();
-    const found = connections.find((c) => c.id === connectionId);
+    const found = await this.getConnectionRaw(connectionId);
     return found ? this.toPublic(found) : undefined;
   }
 
   async createConnection(input: CreateConnectionInput): Promise<SyncConnection> {
-    const connections = await this.listConnections();
+    const connections = await this.listConnectionsRaw();
     const duplicate = connections.find((c) => c.provider === input.provider);
     if (duplicate) {
       throw new Error(`${input.provider} is already connected. Disconnect it first or use reconfigure.`);
@@ -64,7 +72,7 @@ export class SyncConnectionService {
   }
 
   async updateConnection(connectionId: string, patch: Partial<SyncConnection>): Promise<SyncConnection> {
-    const connections = await this.listConnections();
+    const connections = await this.listConnectionsRaw();
     const idx = connections.findIndex((c) => c.id === connectionId);
     if (idx < 0) throw new Error(`Connection ${connectionId} not found`);
     const updated = { ...connections[idx], ...patch };
@@ -74,7 +82,7 @@ export class SyncConnectionService {
   }
 
   async deleteConnection(connectionId: string): Promise<void> {
-    const connections = await this.listConnections();
+    const connections = await this.listConnectionsRaw();
     await this.saveConnections(connections.filter((c) => c.id !== connectionId));
   }
 
@@ -96,8 +104,7 @@ export class SyncConnectionService {
     connectionId: string,
     entryRepository: { list(): Promise<import('@mental-load/contracts').Entry[]> },
   ): Promise<{ importedCount: number; exportedCount: number }> {
-    const connections = await this.listConnections();
-    const conn = connections.find((c) => c.id === connectionId);
+    const conn = await this.getConnectionRaw(connectionId);
     if (!conn || !conn.isConnected || !conn.caldavUrl || !conn.appPassword || !conn.calendarPath) {
       return { importedCount: 0, exportedCount: 0 };
     }
