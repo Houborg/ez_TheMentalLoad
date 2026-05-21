@@ -39,6 +39,24 @@ export class SystemMailService {
     await this.send(to, subject, body);
   }
 
+  async sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
+    const subject = 'Nulstil din adgangskode — MentalLoad';
+    const text = [
+      'Hej!',
+      '',
+      'Klik på linket nedenfor for at nulstille din adgangskode:',
+      '',
+      resetUrl,
+      '',
+      'Linket udløber om 1 time.',
+      '',
+      'Hvis du ikke har anmodet om dette, kan du se bort fra denne e-mail.',
+      '',
+      '— MentalLoad',
+    ].join('\n');
+    await this.send(to, subject, text);
+  }
+
   async sendReminder(to: string, memberName: string, entryTitle: string, entryStart: string): Promise<void> {
     const when = new Date(entryStart).toLocaleString('da-DK', {
       timeZone: process.env.DEFAULT_TIMEZONE ?? 'Europe/Copenhagen',
