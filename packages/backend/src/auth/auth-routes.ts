@@ -120,25 +120,9 @@ export async function registerAuthRoutes(app: FastifyInstance, pool: Pool): Prom
     if (result) {
       const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
       const resetUrl = `${appUrl}/reset-password?token=${result.raw}`;
-      const smtpConfig = {
-        smtpHost: process.env.SMTP_HOST ?? '',
-        smtpPort: Number(process.env.SMTP_PORT ?? 1025),
-        smtpUser: process.env.SMTP_USER ?? '',
-        smtpPass: process.env.SMTP_PASS ?? '',
-        smtpFrom: process.env.SMTP_FROM ?? 'mental-load@local.test',
-        imapHost: '', imapPort: 993, imapUser: '', imapPass: '',
-        imapSecure: true, testRecipient: '', previewMode: !process.env.SMTP_HOST,
-      };
-      try {
-        await mailService.sendMail({
-          to: email,
-          subject: 'Reset your MentalLoad password',
-          text: `Click the link to reset your password (expires in 1 hour):\n\n${resetUrl}`,
-        }, smtpConfig);
-      } catch {
-        // Swallow email errors — always return 200 to avoid email enumeration
-        console.error('Failed to send password reset email to', email);
-      }
+      void systemMailService.sendPasswordResetEmail(email, resetUrl).catch((err: unknown) => {
+        console.error('[auth] Failed to send password reset email:', err instanceof Error ? err.message : err);
+      });
     }
 
     // Always 200 — don't reveal whether email is registered
