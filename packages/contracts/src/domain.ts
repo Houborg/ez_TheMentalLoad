@@ -137,6 +137,7 @@ export interface SyncConnection {
   // Apple CalDAV fields
   appleId?: string;
   caldavUrl?: string;
+  /** Stored encrypted server-side. MUST be stripped from API responses before sending to the client. */
   appPassword?: string;
   calendarPath?: string;
   calendarName?: string;

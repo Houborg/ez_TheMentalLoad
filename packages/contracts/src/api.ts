@@ -228,7 +228,7 @@ export interface ConfirmTimelineTaskCompletionResponse {
 }
 
 export interface CreateSyncConnectionRequest {
-  provider: SyncProvider;
+  provider: 'apple' | 'google';
   importEnabled: boolean;
   exportEnabled: boolean;
   syncIntervalMinutes?: number;
