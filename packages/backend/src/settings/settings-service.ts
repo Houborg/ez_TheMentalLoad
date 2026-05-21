@@ -1,8 +1,45 @@
 import type { Pool } from 'pg';
+import { v4 as uuid } from 'uuid';
 import type { AppSettings, SyncProvider, UpdateSettingsRequest } from '@mental-load/contracts';
 
 const THEME_MODES = new Set(['system', 'light', 'dark']);
 const THEME_APPEARANCES = new Set(['classic', 'glass']);
+
+async function migrateSyncSettings(pool: Pool, familyId: string): Promise<void> {
+  const result = await pool.query<{ settings_json: Record<string, unknown> }>(
+    'select settings_json from families where id = $1',
+    [familyId],
+  );
+  const stored = result.rows[0]?.settings_json ?? {};
+
+  // Already migrated — nothing to do
+  if ('sync_connections' in stored) return;
+
+  const oldSync = stored.sync as Record<string, unknown> | undefined;
+  const syncConnections: unknown[] = [];
+
+  if (oldSync && oldSync.provider && oldSync.provider !== 'none') {
+    // Migrate the old single-provider entry as a disconnected placeholder.
+    // User must reconfigure via the wizard to supply CalDAV credentials.
+    syncConnections.push({
+      id: uuid(),
+      provider: oldSync.provider,
+      isConnected: false,
+      importEnabled: true,
+      exportEnabled: false,
+      syncIntervalMinutes: 15,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  // Remove the old 'sync' key and add 'sync_connections'
+  await pool.query(
+    `update families
+     set settings_json = (settings_json - 'sync') || jsonb_build_object('sync_connections', $1::jsonb)
+     where id = $2`,
+    [JSON.stringify(syncConnections), familyId],
+  );
+}
 
 export interface SyncConnectionResult {
   ok: boolean;
@@ -18,6 +55,7 @@ export class SettingsService {
   ) {}
 
   async getSettings(): Promise<AppSettings> {
+    await migrateSyncSettings(this.pool, this.familyId);
     const result = await this.pool.query<{ settings_json: Record<string, unknown> }>(
       'select settings_json from families where id = $1',
       [this.familyId],
