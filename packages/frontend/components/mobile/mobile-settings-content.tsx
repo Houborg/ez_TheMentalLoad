@@ -416,10 +416,31 @@ function AssistantTab({
 /* ─── Developer ─── */
 function DeveloperTab() {
   const [health, setHealth] = useState<{ version?: string; commit?: string; deployedAt?: string | null } | null>(null);
+  const [updateState, setUpdateState] = useState<'idle' | 'updating' | 'done' | 'error'>('idle');
+  const [updateMessage, setUpdateMessage] = useState('');
 
   useEffect(() => {
     loadHealth().then(h => setHealth({ version: h.version, commit: h.commit, deployedAt: h.deployedAt })).catch(console.error);
   }, []);
+
+  async function handleUpdate() {
+    setUpdateState('updating');
+    setUpdateMessage('');
+    try {
+      const res = await fetch('/api/update', { method: 'POST' });
+      const data = await res.json() as { ok?: boolean; message?: string };
+      if (!res.ok) {
+        setUpdateState('error');
+        setUpdateMessage(data.message ?? `Error ${res.status}`);
+      } else {
+        setUpdateState('done');
+        setUpdateMessage(data.message ?? 'Update triggered — app will restart in ~3–5 min.');
+      }
+    } catch (err) {
+      setUpdateState('error');
+      setUpdateMessage(err instanceof Error ? err.message : 'Could not reach server');
+    }
+  }
 
   const frontendCommit = process.env.NEXT_PUBLIC_APP_COMMIT ?? 'local';
   const frontendVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? '0.0.0';
@@ -438,6 +459,20 @@ function DeveloperTab() {
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
         )}
       </div>
+      <button
+        type="button"
+        onClick={() => void handleUpdate()}
+        disabled={updateState === 'updating'}
+        className="rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60 flex items-center justify-center gap-2"
+      >
+        {updateState === 'updating' && <Loader2 className="h-4 w-4 animate-spin" />}
+        {updateState === 'updating' ? 'Opdaterer…' : 'Opdater app'}
+      </button>
+      {updateMessage && (
+        <p className={`text-xs px-1 ${updateState === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}>
+          {updateMessage}
+        </p>
+      )}
     </div>
   );
 }
