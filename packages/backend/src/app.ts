@@ -26,7 +26,13 @@ import type {
   UpdateMemberRequest,
   UpdateSettingsRequest,
   UpsertFoodPlanItemRequest,
+  CreateSyncConnectionRequest,
+  UpdateSyncConnectionRequest,
+  VerifySyncConnectionRequest,
+  ListRemoteCalendarsRequest,
 } from '@mental-load/contracts';
+import { SyncConnectionService } from './sync/sync-connection-service';
+import { AppleCalDavAdapter } from './sync/apple-caldav-adapter';
 import { AssistantService } from './domains/assistant/assistant-service';
 import { DomainEventBus } from './events/domain-event-bus';
 import { EntryService } from './domains/entries/entry-service';
@@ -187,6 +193,9 @@ export async function buildApp() {
       deleteEntry: (id) => repo.entryRepository.delete(id),
     });
     const syncService = new SyncService(settingsService, entryService);
+    const syncConnectionService = infrastructure.pool
+      ? new SyncConnectionService(infrastructure.pool, familyId, new AppleCalDavAdapter())
+      : (() => { throw new Error('SyncConnectionService requires postgres'); })();
     const assistantService = new AssistantService(
       () => repo.memberRepository.list(),
       () => repo.calendarRepository.list(),
@@ -211,7 +220,7 @@ export async function buildApp() {
         return result.rows[0]?.name ?? null;
       },
     );
-    return { ...repo, entryService, dailyTimelineService, syncService, assistantService, settingsService };
+    return { ...repo, entryService, dailyTimelineService, syncService, syncConnectionService, assistantService, settingsService };
   }
 
   app.get('/api/v1/health', async () => ({
@@ -250,6 +259,83 @@ export async function buildApp() {
     const result = await svc(request).syncService.run(request.body);
     reply.code(result.ok ? 200 : 400);
     return result;
+  });
+
+  // ── Sync Connections ────────────────────────────────────────────────────────
+
+  app.get('/api/v1/sync/connections', async (request) => {
+    return svc(request).syncConnectionService.listConnections();
+  });
+
+  app.post<{ Body: CreateSyncConnectionRequest }>('/api/v1/sync/connections', async (request, reply) => {
+    try {
+      return await svc(request).syncConnectionService.createConnection(request.body);
+    } catch (error) {
+      reply.code(400);
+      return { message: error instanceof Error ? error.message : 'Could not create connection' };
+    }
+  });
+
+  app.post<{ Body: VerifySyncConnectionRequest }>('/api/v1/sync/connections/verify', async (request, reply) => {
+    const { provider, appleId, caldavUrl, appPassword } = request.body ?? {};
+    const ok = await svc(request).syncConnectionService.verify({
+      provider: (provider ?? 'apple') as 'apple' | 'google',
+      caldavUrl: caldavUrl ?? 'https://caldav.icloud.com',
+      username: appleId ?? '',
+      password: appPassword ?? '',
+    });
+    if (!ok) {
+      reply.code(400);
+      return { ok: false, message: 'Could not connect — check your Apple ID and app-specific password.' };
+    }
+    return { ok: true, message: 'Credentials verified successfully.' };
+  });
+
+  app.post<{ Body: ListRemoteCalendarsRequest }>('/api/v1/sync/connections/calendars', async (request, reply) => {
+    try {
+      const { caldavUrl, appleId, appPassword } = request.body ?? {};
+      const calendars = await svc(request).syncConnectionService.listRemoteCalendars({
+        caldavUrl: caldavUrl ?? 'https://caldav.icloud.com',
+        username: appleId ?? '',
+        password: appPassword ?? '',
+      });
+      return { calendars };
+    } catch (error) {
+      reply.code(400);
+      return { message: error instanceof Error ? error.message : 'Could not list calendars' };
+    }
+  });
+
+  app.patch<{ Params: { id: string }; Body: UpdateSyncConnectionRequest }>('/api/v1/sync/connections/:id', async (request, reply) => {
+    try {
+      return await svc(request).syncConnectionService.updateConnection(request.params.id, request.body);
+    } catch (error) {
+      reply.code(404);
+      return { message: error instanceof Error ? error.message : 'Connection not found' };
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/v1/sync/connections/:id', async (request, reply) => {
+    await svc(request).syncConnectionService.deleteConnection(request.params.id);
+    reply.code(204);
+  });
+
+  app.post<{ Params: { id: string } }>('/api/v1/sync/connections/:id/run', async (request, reply) => {
+    try {
+      const { entryRepository } = svc(request);
+      const result = await svc(request).syncConnectionService.runSync(request.params.id, entryRepository);
+      return {
+        ok: true,
+        connectionId: request.params.id,
+        importedCount: result.importedCount,
+        exportedCount: result.exportedCount,
+        lastSyncAt: new Date().toISOString(),
+        message: `Synced: ${result.importedCount} imported, ${result.exportedCount} exported.`,
+      };
+    } catch (error) {
+      reply.code(500);
+      return { message: error instanceof Error ? error.message : 'Sync failed' };
+    }
   });
 
   app.post('/api/v1/deploy/update', async (request, reply) => {
