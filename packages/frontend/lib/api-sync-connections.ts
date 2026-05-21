@@ -38,5 +38,5 @@ export function listRemoteCalendars(body: ListRemoteCalendarsRequest): Promise<{
 }
 
 export function runSyncConnection(id: string): Promise<SyncConnectionRunResponse> {
-  return fetchJson<SyncConnectionRunResponse>(`${BASE}/${id}/run`, { method: 'POST' });
+  return fetchJson<SyncConnectionRunResponse>(`${BASE}/${id}/run`, { method: 'POST', body: JSON.stringify({}) });
 }
