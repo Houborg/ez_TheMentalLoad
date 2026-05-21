@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { SyncConnectionService } from '../sync/sync-connection-service';
 import { AppleCalDavAdapter } from '../sync/apple-caldav-adapter';
+import { PostgresEntryRepository } from '../repositories/postgres/entry-repository';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -27,9 +28,9 @@ if (!DATABASE_URL) {
 
         console.log(`[sync-worker] syncing connection ${conn.id} (${conn.provider}) for family ${familyId}`);
         try {
+          const entryRepo = new PostgresEntryRepository(pool);
           const entryRepository = {
-            list: () => pool.query<{ id: string }>('select id from entries where family_id = $1', [familyId])
-              .then((r) => r.rows as unknown as import('@mental-load/contracts').Entry[]),
+            list: () => entryRepo.list(familyId),
           };
           await svc.runSync(conn.id, entryRepository);
         } catch (error) {
