@@ -1,4 +1,5 @@
 import { buildApp } from './app';
+import './workers/sync-worker'; // starts background sync polling on import
 
 async function start(): Promise<void> {
   const app = await buildApp();
