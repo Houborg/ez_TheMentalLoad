@@ -29,9 +29,7 @@ if (!DATABASE_URL) {
         console.log(`[sync-worker] syncing connection ${conn.id} (${conn.provider}) for family ${familyId}`);
         try {
           const entryRepo = new PostgresEntryRepository(pool);
-          const entryRepository = {
-            list: () => entryRepo.list(familyId),
-          };
+          const entryRepository = { list: () => entryRepo.list(familyId) };
           await svc.runSync(conn.id, entryRepository);
         } catch (error) {
           console.error(`[sync-worker] sync failed for connection ${conn.id}:`, error);
