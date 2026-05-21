@@ -99,6 +99,8 @@ function createReminderScheduler(): ReminderScheduler {
   return new InMemoryReminderScheduler();
 }
 
+const DEFAULT_FAMILY_ID = '00000000-0000-4000-8000-000000000001';
+
 async function seedIfNeeded(pool: Pool): Promise<void> {
   const memberCount = await pool.query<{ count: string }>('select count(*)::text as count from members');
   if (memberCount.rows[0]?.count !== '0') {
@@ -107,11 +109,18 @@ async function seedIfNeeded(pool: Pool): Promise<void> {
 
   const now = new Date().toISOString();
   await pool.query(
-    'insert into members (id, name, role, created_at) values ($1, $2, $3, $4), ($5, $6, $7, $8), ($9, $10, $11, $12)',
-    [DEMO_IDS.mom, 'Mom', 'parent', now, DEMO_IDS.dad, 'Dad', 'parent', now, DEMO_IDS.saga, 'Saga', 'child', now],
+    'insert into members (id, name, role, family_id, created_at) values ($1, $2, $3, $4, $5), ($6, $7, $8, $9, $10), ($11, $12, $13, $14, $15)',
+    [
+      DEMO_IDS.mom, 'Mom', 'parent', DEFAULT_FAMILY_ID, now,
+      DEMO_IDS.dad, 'Dad', 'parent', DEFAULT_FAMILY_ID, now,
+      DEMO_IDS.saga, 'Saga', 'child', DEFAULT_FAMILY_ID, now,
+    ],
   );
   await pool.query(
-    'insert into calendars (id, name, color, owner_member_id, created_at) values ($1, $2, $3, $4, $5), ($6, $7, $8, $9, $10)',
-    [DEMO_IDS.familyCalendar, 'Family', '#6d5efc', DEMO_IDS.mom, now, DEMO_IDS.sagaCalendar, 'Saga', '#f97316', DEMO_IDS.saga, now],
+    'insert into calendars (id, name, color, owner_member_id, family_id, created_at) values ($1, $2, $3, $4, $5, $6), ($7, $8, $9, $10, $11, $12)',
+    [
+      DEMO_IDS.familyCalendar, 'Family', '#6d5efc', DEMO_IDS.mom, DEFAULT_FAMILY_ID, now,
+      DEMO_IDS.sagaCalendar, 'Saga', '#f97316', DEMO_IDS.saga, DEFAULT_FAMILY_ID, now,
+    ],
   );
 }
