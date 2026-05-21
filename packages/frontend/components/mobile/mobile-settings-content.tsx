@@ -11,9 +11,10 @@ import {
   loadWeatherForecast,
 } from '@/lib/api';
 import { SettingsHolidays } from '@/components/settings-holidays';
+import { SyncSettings } from '@/components/sync/sync-settings';
 import { cn } from '@/lib/utils';
 
-type Tab = 'tema' | 'vejr' | 'familie' | 'kalendere' | 'assistent' | 'helligdage' | 'udvikler';
+type Tab = 'tema' | 'vejr' | 'familie' | 'kalendere' | 'assistent' | 'helligdage' | 'sync' | 'udvikler';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'tema', label: 'Tema' },
@@ -22,6 +23,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'kalendere', label: 'Kalendere' },
   { id: 'assistent', label: 'Assistent' },
   { id: 'helligdage', label: 'Helligdage' },
+  { id: 'sync', label: 'Sync' },
   { id: 'udvikler', label: 'Udvikler' },
 ];
 
@@ -93,7 +95,7 @@ export function MobileSettingsContent({ members, calendars, onRefresh }: Props) 
             </div>
           )}
 
-          {loadingSettings && activeTab !== 'familie' && activeTab !== 'kalendere' && activeTab !== 'helligdage' ? (
+          {loadingSettings && activeTab !== 'familie' && activeTab !== 'kalendere' && activeTab !== 'helligdage' && activeTab !== 'sync' ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
@@ -168,6 +170,11 @@ export function MobileSettingsContent({ members, calendars, onRefresh }: Props) 
               {/* ── HELLIGDAGE ── */}
               {activeTab === 'helligdage' && (
                 <SettingsHolidays calendars={calendars} />
+              )}
+
+              {/* ── SYNC ── */}
+              {activeTab === 'sync' && (
+                <SyncSettings />
               )}
 
               {/* ── UDVIKLER ── */}
