@@ -24,7 +24,16 @@ export function SyncConnectionCard({ connection, onReconfigure, onDeleted, onUpd
     setMessage('');
     try {
       const result = await runSyncConnection(connection.id);
-      setMessage(result.message);
+      const parts: string[] = [];
+      if (result.importedCount > 0) parts.push(`${result.importedCount} imported`);
+      if (result.exportedCount > 0) parts.push(`${result.exportedCount} exported`);
+      setMessage(parts.length > 0 ? `Synced: ${parts.join(', ')}` : 'Sync complete — no changes');
+      onUpdated({
+        ...connection,
+        lastImportCount: result.importedCount,
+        lastExportCount: result.exportedCount,
+        lastSyncAt: result.lastSyncAt,
+      });
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Sync failed');
     } finally {
@@ -79,6 +88,11 @@ export function SyncConnectionCard({ connection, onReconfigure, onDeleted, onUpd
               : 'Never synced · '}
             {directionLabel}
           </p>
+          {connection.lastSyncAt && (
+            <p className="text-xs text-muted-foreground/70">
+              {connection.lastImportCount ?? 0} imported · {connection.lastExportCount ?? 0} exported
+            </p>
+          )}
         </div>
       </div>
 
