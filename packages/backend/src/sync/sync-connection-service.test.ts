@@ -141,24 +141,94 @@ test('deleteConnection removes the matching entry', async () => {
   assert.equal((saved[0] as { id: string }).id, 'conn-2');
 });
 
-test('runSync imports events when importEnabled', async () => {
+const VEVENT_ICAL = (uid: string, summary: string) => [
+  'BEGIN:VCALENDAR',
+  'VERSION:2.0',
+  'BEGIN:VEVENT',
+  `UID:${uid}`,
+  'DTSTART:20260601T100000Z',
+  'DTEND:20260601T110000Z',
+  `SUMMARY:${summary}`,
+  'END:VEVENT',
+  'END:VCALENDAR',
+].join('\r\n');
+
+function mockRepo() {
+  const created: Entry[] = [];
+  return {
+    list: async () => [] as Entry[],
+    create: async (e: Entry) => { created.push(e); return e; },
+    findByExternalUid: async (_uid: string) => undefined as Entry | undefined,
+    created,
+  };
+}
+
+test('runSync imports events when importEnabled and targets are set', async () => {
   const existing = [{
     id: 'conn-1', provider: 'apple', isConnected: true,
     importEnabled: true, exportEnabled: false,
     syncIntervalMinutes: 15, createdAt: new Date().toISOString(),
     caldavUrl: 'https://caldav.icloud.com', appPassword: 'xxxx', calendarPath: '/cal/',
     appleId: 'far@icloud.com',
+    targetCalendarId: 'cal-1', targetMemberId: 'mem-1',
   }];
   const { pool } = mockPool({ sync_connections: existing });
   const adapter = new MockAdapter();
   adapter.events = [
-    { uid: 'uid-1', url: '/cal/1.ics', etag: '"1"', icalData: 'BEGIN:VCALENDAR\nEND:VCALENDAR' },
-    { uid: 'uid-2', url: '/cal/2.ics', etag: '"2"', icalData: 'BEGIN:VCALENDAR\nEND:VCALENDAR' },
+    { uid: 'uid-1', url: '/cal/1.ics', etag: '"1"', icalData: VEVENT_ICAL('uid-1', 'Event One') },
+    { uid: 'uid-2', url: '/cal/2.ics', etag: '"2"', icalData: VEVENT_ICAL('uid-2', 'Event Two') },
   ];
   const svc = new SyncConnectionService(pool, 'fam-1', adapter);
-  const result = await svc.runSync('conn-1', { list: async () => [] });
+  const repo = mockRepo();
+  const result = await svc.runSync('conn-1', repo);
   assert.equal(result.importedCount, 2);
   assert.equal(result.exportedCount, 0);
+  assert.equal(repo.created.length, 2);
+  assert.equal(repo.created[0].externalUid, 'uid-1');
+  assert.equal(repo.created[1].externalUid, 'uid-2');
+});
+
+test('runSync skips import when targetCalendarId/targetMemberId are not set', async () => {
+  const existing = [{
+    id: 'conn-1', provider: 'apple', isConnected: true,
+    importEnabled: true, exportEnabled: false,
+    syncIntervalMinutes: 15, createdAt: new Date().toISOString(),
+    caldavUrl: 'https://caldav.icloud.com', appPassword: 'xxxx', calendarPath: '/cal/',
+    appleId: 'far@icloud.com',
+    // no targetCalendarId / targetMemberId
+  }];
+  const { pool } = mockPool({ sync_connections: existing });
+  const adapter = new MockAdapter();
+  adapter.events = [
+    { uid: 'uid-1', url: '/cal/1.ics', etag: '"1"', icalData: VEVENT_ICAL('uid-1', 'Event One') },
+  ];
+  const svc = new SyncConnectionService(pool, 'fam-1', adapter);
+  const result = await svc.runSync('conn-1', mockRepo());
+  assert.equal(result.importedCount, 0);
+});
+
+test('runSync deduplicates — skips events whose uid was already imported', async () => {
+  const existing = [{
+    id: 'conn-1', provider: 'apple', isConnected: true,
+    importEnabled: true, exportEnabled: false,
+    syncIntervalMinutes: 15, createdAt: new Date().toISOString(),
+    caldavUrl: 'https://caldav.icloud.com', appPassword: 'xxxx', calendarPath: '/cal/',
+    appleId: 'far@icloud.com',
+    targetCalendarId: 'cal-1', targetMemberId: 'mem-1',
+  }];
+  const { pool } = mockPool({ sync_connections: existing });
+  const adapter = new MockAdapter();
+  adapter.events = [
+    { uid: 'uid-existing', url: '/cal/1.ics', etag: '"1"', icalData: VEVENT_ICAL('uid-existing', 'Already imported') },
+    { uid: 'uid-new', url: '/cal/2.ics', etag: '"2"', icalData: VEVENT_ICAL('uid-new', 'New event') },
+  ];
+  const svc = new SyncConnectionService(pool, 'fam-1', adapter);
+  const repo = {
+    ...mockRepo(),
+    findByExternalUid: async (uid: string) => uid === 'uid-existing' ? { id: 'entry-1' } as Entry : undefined,
+  };
+  const result = await svc.runSync('conn-1', repo);
+  assert.equal(result.importedCount, 1);
 });
 
 test('runSync skips when isConnected is false', async () => {
@@ -169,7 +239,7 @@ test('runSync skips when isConnected is false', async () => {
   }];
   const { pool } = mockPool({ sync_connections: existing });
   const svc = new SyncConnectionService(pool, 'fam-1', new MockAdapter());
-  const result = await svc.runSync('conn-1', { list: async () => [] });
+  const result = await svc.runSync('conn-1', mockRepo());
   assert.equal(result.importedCount, 0);
   assert.equal(result.exportedCount, 0);
 });

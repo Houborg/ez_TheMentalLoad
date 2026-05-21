@@ -68,6 +68,7 @@ function makeScopedBundle(infra: RepositoryBundle, familyId: string) {
   const entryRepository: EntryRepository = {
     list: () => infra.entryRepository.list(familyId),
     findById: (id) => infra.entryRepository.findById(id, familyId),
+    findByExternalUid: (uid) => infra.entryRepository.findByExternalUid(uid, familyId),
     findByOwnerAndAssignedMember: (o, a) => infra.entryRepository.findByOwnerAndAssignedMember(o, a, familyId),
     create: (e) => infra.entryRepository.create(e, familyId),
     update: (id, p) => infra.entryRepository.update(id, p, familyId),
@@ -269,7 +270,16 @@ export async function buildApp() {
 
   app.post<{ Body: CreateSyncConnectionRequest }>('/api/v1/sync/connections', async (request, reply) => {
     try {
-      return await svc(request).syncConnectionService.createConnection(request.body);
+      const { calendarRepository, memberRepository, syncConnectionService } = svc(request);
+      // Auto-assign import targets from first available calendar + member if not provided
+      let targetCalendarId: string | undefined;
+      let targetMemberId: string | undefined;
+      if (request.body.importEnabled) {
+        const [calendars, members] = await Promise.all([calendarRepository.list(), memberRepository.list()]);
+        targetCalendarId = calendars[0]?.id;
+        targetMemberId = members[0]?.id;
+      }
+      return await syncConnectionService.createConnection({ ...request.body, targetCalendarId, targetMemberId });
     } catch (error) {
       reply.code(400);
       return { message: error instanceof Error ? error.message : 'Could not create connection' };
@@ -322,11 +332,32 @@ export async function buildApp() {
 
   app.post<{ Params: { id: string } }>('/api/v1/sync/connections/:id/run', async (request, reply) => {
     const { id } = request.params;
-    const { entryRepository, syncConnectionService } = svc(request);
-    // Fire-and-forget — CalDAV calls run in background, return 202 immediately
-    void syncConnectionService.runSync(id, entryRepository)
-      .catch((err) => console.error(`[sync] manual run failed for ${id}:`, err));
-    return reply.code(202).send({ ok: true, connectionId: id, message: 'Sync started in background — check back in a moment.' });
+    const { entryRepository, syncConnectionService, calendarRepository, memberRepository } = svc(request);
+    try {
+      // Auto-assign import targets for connections created before this feature was added
+      const existing = await syncConnectionService.getConnection(id);
+      if (existing?.importEnabled && (!existing.targetCalendarId || !existing.targetMemberId)) {
+        const [calendars, members] = await Promise.all([calendarRepository.list(), memberRepository.list()]);
+        await syncConnectionService.updateConnection(id, {
+          targetCalendarId: existing.targetCalendarId ?? calendars[0]?.id,
+          targetMemberId: existing.targetMemberId ?? members[0]?.id,
+        });
+      }
+      const result = await syncConnectionService.runSync(id, entryRepository);
+      const conn = await syncConnectionService.getConnection(id);
+      return reply.code(200).send({
+        ok: true,
+        connectionId: id,
+        importedCount: result.importedCount,
+        exportedCount: result.exportedCount,
+        lastSyncAt: conn?.lastSyncAt ?? new Date().toISOString(),
+        message: '',
+      });
+    } catch (err) {
+      console.error(`[sync] manual run failed for ${id}:`, err);
+      reply.code(500);
+      return { ok: false, connectionId: id, importedCount: 0, exportedCount: 0, lastSyncAt: '', message: err instanceof Error ? err.message : 'Sync failed' };
+    }
   });
 
   app.post('/api/v1/deploy/update', async (request, reply) => {

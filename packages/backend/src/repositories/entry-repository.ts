@@ -3,6 +3,7 @@ import type { Entry } from '@mental-load/contracts';
 export interface EntryRepository {
   list(familyId?: string): Promise<Entry[]>;
   findById(id: string, familyId?: string): Promise<Entry | undefined>;
+  findByExternalUid(uid: string, familyId?: string): Promise<Entry | undefined>;
   findByOwnerAndAssignedMember(ownerMemberId: string, assignedToMemberId: string, familyId?: string): Promise<Entry[]>;
   create(entry: Entry, familyId?: string): Promise<Entry>;
   update(id: string, patch: Partial<Entry>, familyId?: string): Promise<Entry | undefined>;
@@ -18,6 +19,10 @@ export class InMemoryEntryRepository implements EntryRepository {
 
   async findById(id: string, _familyId?: string): Promise<Entry | undefined> {
     return this.entries.find((entry) => entry.id === id);
+  }
+
+  async findByExternalUid(uid: string, _familyId?: string): Promise<Entry | undefined> {
+    return this.entries.find((entry) => entry.externalUid === uid);
   }
 
   async findByOwnerAndAssignedMember(ownerMemberId: string, assignedToMemberId: string, _familyId?: string): Promise<Entry[]> {
