@@ -231,6 +231,28 @@ test('runSync deduplicates — skips events whose uid was already imported', asy
   assert.equal(result.importedCount, 1);
 });
 
+test('runSync skips events that were exported from MentalLoad (mental-load-*@mentalload UIDs)', async () => {
+  const existing = [{
+    id: 'conn-1', provider: 'apple', isConnected: true,
+    importEnabled: true, exportEnabled: false,
+    syncIntervalMinutes: 15, createdAt: new Date().toISOString(),
+    caldavUrl: 'https://caldav.icloud.com', appPassword: 'xxxx', calendarPath: '/cal/',
+    appleId: 'far@icloud.com',
+    targetCalendarId: 'cal-1', targetMemberId: 'mem-1',
+  }];
+  const { pool } = mockPool({ sync_connections: existing });
+  const adapter = new MockAdapter();
+  adapter.events = [
+    { uid: 'mental-load-abc123@mentalload', url: '/cal/1.ics', etag: '"1"', icalData: VEVENT_ICAL('mental-load-abc123@mentalload', 'Our own export') },
+    { uid: 'real-apple-event', url: '/cal/2.ics', etag: '"2"', icalData: VEVENT_ICAL('real-apple-event', 'Real Apple Event') },
+  ];
+  const svc = new SyncConnectionService(pool, 'fam-1', adapter);
+  const repo = mockRepo();
+  const result = await svc.runSync('conn-1', repo);
+  assert.equal(result.importedCount, 1);
+  assert.equal(repo.created[0].externalUid, 'real-apple-event');
+});
+
 test('runSync skips when isConnected is false', async () => {
   const existing = [{
     id: 'conn-1', provider: 'apple', isConnected: false,

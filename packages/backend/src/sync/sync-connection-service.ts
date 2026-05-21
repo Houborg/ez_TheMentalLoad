@@ -135,6 +135,8 @@ export class SyncConnectionService {
 
       for (const event of remoteEvents) {
         if (!event.uid) continue;
+        // Skip events we exported ourselves — their UIDs follow the pattern mental-load-{id}@mentalload
+        if (event.uid.startsWith('mental-load-') && event.uid.endsWith('@mentalload')) continue;
         const existing = await entryRepository.findByExternalUid(event.uid);
         if (existing) continue;
 
