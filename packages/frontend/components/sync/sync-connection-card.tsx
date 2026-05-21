@@ -67,7 +67,11 @@ export function SyncConnectionCard({ connection, onReconfigure, onDeleted, onUpd
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <span className="font-semibold">{connection.calendarName ?? connection.provider}</span>
-            <span className="rounded-md bg-green-500/15 px-2 py-0.5 text-xs font-semibold text-green-600 dark:text-green-400">Connected</span>
+            {connection.isConnected ? (
+              <span className="rounded-md bg-green-500/15 px-2 py-0.5 text-xs font-semibold text-green-600 dark:text-green-400">Connected</span>
+            ) : (
+              <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">Needs setup</span>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
             {connection.lastSyncAt
