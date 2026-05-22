@@ -124,10 +124,15 @@ for _cls_name in dir(_browser_mod):
                 if not r.text.strip():
                     raise Exception(f"Poll returned empty body with status {r.status_code}")
                 data = r.json()
-                if data.get("status") == "OK" and data.get("confirmation") is True:
-                    return data["payload"]["response"], data["payload"]["responseSignature"]
                 status = data.get("status", "")
+                confirmation = data.get("confirmation", False)
+                if status == "OK" and confirmation is True:
+                    return data["payload"]["response"], data["payload"]["responseSignature"]
                 import asyncio as _asyncio
+                # OK + confirmation:False means app is connected but user hasn't approved yet
+                if status == "OK" and confirmation is False:
+                    await _asyncio.sleep(0.5)
+                    continue
                 if status in ("timeout",):
                     await _asyncio.sleep(0.5)
                     continue
@@ -256,7 +261,7 @@ async def start_auth(req: StartRequest) -> StartResponse:
                     _qr_to_base64_png(q) for q in qr_list
                 ]
 
-            await authenticate(
+            client = await authenticate(
                 req.username,
                 storage,
                 auth_method="app",
@@ -268,8 +273,23 @@ async def start_auth(req: StartRequest) -> StartResponse:
             if not tokens["access_token"]:
                 raise ValueError(f"Empty access_token. Keys: {list(tokens.keys())}")
 
+            # Fetch children using the authenticated client (avoids 410 from TypeScript client)
+            children: list[dict[str, Any]] = []
+            try:
+                profile = await client.get_profile()
+                for child in getattr(profile, 'children', []) or []:
+                    children.append({
+                        "id": getattr(child, 'id', None) or getattr(child, 'profile_id', None),
+                        "name": getattr(child, 'name', None) or getattr(child, 'display_name', str(child)),
+                        "institutionName": getattr(child, 'institution_name', '') or '',
+                    })
+                print(f"[auth] fetched {len(children)} children via library client", flush=True)
+            except Exception as ce:
+                print(f"[auth] getChildren via library failed: {ce} — returning empty list", flush=True)
+
             _sessions[session_id]["status"] = "completed"
             _sessions[session_id].update(tokens)
+            _sessions[session_id]["children"] = children
         except AulaAuthenticationError as e:
             print(f"[auth] AulaAuthenticationError: {e}", flush=True)
             _sessions[session_id]["status"] = "error"
@@ -304,6 +324,7 @@ async def poll_auth(session_id: str) -> PollResponse:
             access_token=session.get("access_token"),
             refresh_token=session.get("refresh_token"),
             expires_at=session.get("expires_at"),
+            qr_codes=session.get("children"),  # reuse qr_codes field to pass children list
         )
     elif status == "qr_ready":
         return PollResponse(status="qr_ready", qr_codes=session.get("qr_codes"))

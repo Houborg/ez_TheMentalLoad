@@ -35,7 +35,7 @@ export async function aulaAuthStart(username: string): Promise<string> {
 export type AulaPollResult =
   | { status: 'pending' }
   | { status: 'qr_ready'; qrCodes: unknown[] }
-  | { status: 'completed'; tokens: AulaTokens }
+  | { status: 'completed'; tokens: AulaTokens; qrCodes?: unknown[] }
   | { status: 'error'; error: string };
 
 export async function aulaAuthPoll(sessionId: string): Promise<AulaPollResult> {

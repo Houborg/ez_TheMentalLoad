@@ -33,8 +33,8 @@ export async function registerAulaRoutes(app: FastifyInstance, pool: Pool): Prom
     try {
       const result = await aulaAuthPoll(req.params.sessionId);
       if (result.status === 'completed') {
-        const client = new AulaClient(result.tokens);
-        const children = await client.getChildren();
+        // Children are returned by the sidecar (avoids 410 from our REST client)
+        const children = result.qrCodes ?? [];
         return reply.send({ ...result, children });
       }
       return reply.send(result);
