@@ -43,6 +43,8 @@ export function MobileAulaSettings({ members, calendars }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [disconnecting, setDisconnecting] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState('');
 
   useEffect(() => {
     aulaGetConnection()
@@ -67,25 +69,33 @@ export function MobileAulaSettings({ members, calendars }: Props) {
 
   async function handleConnect() {
     if (!verifiedTokens) return;
-    const childMappings: AulaChildMapping[] = aulaChildren
-      .filter(c => mappings[c.id]?.memberId)
-      .map(c => ({
-        aulaChildId: c.id,
-        aulaChildName: c.name,
-        mentalLoadMemberId: mappings[c.id].memberId,
-        calendarId: mappings[c.id].calendarId || (calendars[0]?.id ?? ''),
-      }));
+    setConnecting(true);
+    setConnectError('');
+    try {
+      const childMappings: AulaChildMapping[] = aulaChildren
+        .filter(c => mappings[c.id]?.memberId)
+        .map(c => ({
+          aulaChildId: c.id,
+          aulaChildName: c.name,
+          mentalLoadMemberId: mappings[c.id].memberId,
+          calendarId: mappings[c.id].calendarId || (calendars[0]?.id ?? ''),
+        }));
 
-    if (!childMappings.length) return;
+      if (!childMappings.length) return;
 
-    const { connection: conn } = await aulaConnect({
-      tokens: verifiedTokens,
-      aulaUsername: username,
-      childMappings,
-      syncOptions,
-    });
-    setConnection(conn);
-    setStep(5);
+      const { connection: conn } = await aulaConnect({
+        tokens: verifiedTokens,
+        aulaUsername: username,
+        childMappings,
+        syncOptions,
+      });
+      setConnection(conn);
+      setStep(5);
+    } catch (err) {
+      setConnectError((err as Error).message ?? 'Tilknytning fejlede');
+    } finally {
+      setConnecting(false);
+    }
   }
 
   async function handleSync() {
@@ -249,7 +259,7 @@ export function MobileAulaSettings({ members, calendars }: Props) {
               value={mappings[child.id]?.memberId ?? ''}
               onChange={e => setMappings(prev => ({
                 ...prev,
-                [child.id]: { memberId: e.target.value, calendarId: members.find(m => m.id === e.target.value)?.id ?? '' },
+                [child.id]: { memberId: e.target.value, calendarId: calendars.find(cal => cal.ownerMemberId === e.target.value)?.id ?? '' },
               }))}
             >
               <option value="">Spring over</option>
@@ -284,6 +294,8 @@ export function MobileAulaSettings({ members, calendars }: Props) {
           <button
             key={key}
             type="button"
+            role="switch"
+            aria-checked={syncOptions[key]}
             onClick={() => setSyncOptions(prev => ({ ...prev, [key]: !prev[key] }))}
             className="flex items-center justify-between w-full rounded-xl border border-border p-3 text-left"
           >
@@ -294,12 +306,20 @@ export function MobileAulaSettings({ members, calendars }: Props) {
             <div className={cn('h-5 w-9 rounded-full transition-colors flex-shrink-0', syncOptions[key] ? 'bg-primary' : 'bg-muted')} />
           </button>
         ))}
+        {connectError && (
+          <div className="flex items-center gap-2 text-destructive text-xs">
+            <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+            {connectError}
+          </div>
+        )}
         <button
           type="button"
           onClick={handleConnect}
-          className="w-full rounded-xl bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium"
+          disabled={connecting}
+          className="flex items-center gap-2 w-full justify-center rounded-xl bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium disabled:opacity-50"
         >
-          Gem og tilknyt
+          {connecting && <Loader2 className="h-4 w-4 animate-spin" />}
+          {connecting ? 'Gemmer...' : 'Gem og tilknyt'}
         </button>
       </div>
     );
