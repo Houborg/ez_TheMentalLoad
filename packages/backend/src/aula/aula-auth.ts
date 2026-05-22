@@ -194,6 +194,8 @@ async function step_initializeMitId(
     jar.update(res);
     if (res.status === 200) {
       const html = await res.text();
+      console.log('[aula-auth] MitID init page URL:', currentUrl);
+      console.log('[aula-auth] MitID init page (first 3000):', html.slice(0, 3000));
       const vtMatch = html.match(/verificationToken["'\s:]+["']([^"']+)["']/i);
       if (!vtMatch?.[1]) throw new AulaLoginError('No verificationToken in MitID init page', 'unknown');
 
