@@ -241,5 +241,5 @@ This repository now includes:
 
 
 ##Check version
-- curl http://pl0k.online:3100/api/v1/health
+- curl xxx
 - # → { "version": "0.1.4", "commit": "a1b2c3d", "deployedAt": "2026-04-28T..." }
