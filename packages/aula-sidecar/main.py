@@ -79,6 +79,40 @@ for _cls_name in dir(_browser_mod):
         print(f"[sidecar] monkey-patched finalize on {_cls_name}", flush=True)
         break
 
+# Patch _poll_for_app_confirmation to handle empty-body responses (library bug:
+# calls r.json() before checking r.is_success)
+for _cls_name in dir(_browser_mod):
+    _cls = getattr(_browser_mod, _cls_name, None)
+    if _cls and isinstance(_cls, type) and hasattr(_cls, '_poll_for_app_confirmation'):
+        _orig_poll = _cls._poll_for_app_confirmation
+        async def _patched_poll(self: Any, poll_url: str, ticket: str) -> Any:
+            while True:
+                r = await self._client.post(poll_url, json={"ticket": ticket})
+                print(f"[poll debug] status={r.status_code} len={len(r.text)} text={r.text[:200]}", flush=True)
+                if not r.is_success:
+                    raise Exception(f"Poll failed: HTTP {r.status_code} body={r.text[:200]}")
+                if not r.text.strip():
+                    raise Exception(f"Poll returned empty body with status {r.status_code}")
+                data = r.json()
+                if data.get("status") == "OK" and data.get("confirmation") is True:
+                    return data["payload"]["response"], data["payload"]["responseSignature"]
+                status = data.get("status", "")
+                import asyncio as _asyncio
+                if status in ("timeout",):
+                    await _asyncio.sleep(0.5)
+                    continue
+                if status == "channel_validation_tqr":
+                    self._handle_qr_code_poll(data)
+                    await _asyncio.sleep(1)
+                    continue
+                if status in ("channel_validation_otp", "channel_verified"):
+                    await _asyncio.sleep(0.5)
+                    continue
+                raise Exception(f"Unexpected poll status: {status} data={str(data)[:200]}")
+        _cls._poll_for_app_confirmation = _patched_poll
+        print(f"[sidecar] monkey-patched _poll_for_app_confirmation on {_cls_name}", flush=True)
+        break
+
 
 def _qr_to_base64_png(qr_obj: Any) -> str:
     """Convert a qrcode.QRCode object (or raw data) to a base64 PNG string."""
