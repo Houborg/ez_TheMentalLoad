@@ -70,6 +70,7 @@ export async function aulaAuthPoll(sessionId: string): Promise<AulaPollResult> {
         refreshToken: data.refresh_token,
         expiresAt: data.expires_at ?? new Date(Date.now() + 3600_000).toISOString(),
       },
+      qrCodes: data.qr_codes ?? [],  // children are passed via qr_codes field from sidecar
     };
   }
   if (data.status === 'qr_ready') return { status: 'qr_ready', qrCodes: data.qr_codes ?? [] };
