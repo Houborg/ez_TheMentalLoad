@@ -73,14 +73,14 @@ export class AulaClient {
   }
 
   async getCalendarEvents(
-    childIds: number[],
+    childId: number,
     from: string,
     to: string,
   ): Promise<AulaCalendarEvent[]> {
     const ctx = await this.getProfileContext();
     const data = await this.get('calendar.getEventsByProfileIdsAndResourceIds', {
       profileIds: ctx.profileIds.join(','),
-      resourceIds: childIds.join(','),
+      resourceIds: String(childId),
       start: from,
       end: to,
     }) as Record<string, unknown>;
@@ -94,7 +94,7 @@ export class AulaClient {
       allDay: Boolean(e['isAllDay']),
       location: e['location'] as string | undefined,
       description: e['description'] as string | undefined,
-      childId: childIds[0],
+      childId,
     }));
   }
 

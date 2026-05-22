@@ -32,7 +32,7 @@ export class AulaSyncService {
         const to = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
         for (const mapping of conn.childMappings) {
-          const events = await client.getCalendarEvents([mapping.aulaChildId], from, to);
+          const events = await client.getCalendarEvents(mapping.aulaChildId, from, to);
           for (const event of events) {
             const externalUid = `aula-${event.id}`;
             const exists = await this.findByExternalUid(externalUid);
@@ -103,6 +103,7 @@ export class AulaSyncService {
     } catch (err) {
       if (err instanceof AulaAuthExpiredError) {
         await connSvc.setConnected(false);
+        // lastSyncAt intentionally not updated — next tick will bail on !isConnected quickly
         console.error(`[aula-sync] auth expired for family ${this.familyId} — disconnected`);
       } else {
         console.error(`[aula-sync] sync error for family ${this.familyId}:`, err);
