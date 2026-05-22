@@ -28,15 +28,16 @@ export async function registerAulaRoutes(app: FastifyInstance, pool: Pool): Prom
       return reply.send({ children, tokens });
     } catch (err) {
       if (err instanceof AulaLoginError) {
+        console.error(`[aula/auth/verify] AulaLoginError code=${err.code}: ${err.message}`);
         const status = err.code === 'expired_code' ? 400 : 401;
         const message =
           err.code === 'invalid_credentials' ? 'Forkert brugernavn eller adgangskode' :
           err.code === 'expired_code' ? 'Koden er udløbet — hent en ny i MitID-appen' :
-          'Kunne ikke forbinde til Aula';
+          err.message; // return actual error during debugging
         return reply.status(status).send({ error: message, code: err.code });
       }
-      req.log.error({ err }, 'Aula auth/verify unexpected error');
-      return reply.status(500).send({ error: 'Uventet fejl under login' });
+      console.error('[aula/auth/verify] unexpected error:', err);
+      return reply.status(500).send({ error: `Uventet fejl: ${err instanceof Error ? err.message : String(err)}` });
     }
   });
 
