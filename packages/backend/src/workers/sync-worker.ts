@@ -1,7 +1,10 @@
+// packages/backend/src/workers/sync-worker.ts
 import { Pool } from 'pg';
-import { SyncConnectionService } from '../sync/sync-connection-service';
-import { AppleCalDavAdapter } from '../sync/apple-caldav-adapter';
-import { PostgresEntryRepository } from '../repositories/postgres/entry-repository';
+import { SyncConnectionService } from '../sync/sync-connection-service.js';
+import { AppleCalDavAdapter } from '../sync/apple-caldav-adapter.js';
+import { PostgresEntryRepository } from '../repositories/postgres/entry-repository.js';
+import { AulaConnectionService } from '../aula/aula-connection-service.js';
+import { AulaSyncService } from '../aula/aula-sync-service.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -11,7 +14,7 @@ if (!DATABASE_URL) {
 } else {
   const pool = new Pool({ connectionString: DATABASE_URL });
 
-  async function runSyncForAllFamilies(): Promise<void> {
+  async function runCalDavSyncForAllFamilies(): Promise<void> {
     const families = await pool.query<{ id: string }>('select id from families');
 
     for (const { id: familyId } of families.rows) {
@@ -26,7 +29,7 @@ if (!DATABASE_URL) {
 
         if (minutesSinceLast < conn.syncIntervalMinutes) continue;
 
-        console.log(`[sync-worker] syncing connection ${conn.id} (${conn.provider}) for family ${familyId}`);
+        console.log(`[sync-worker] syncing CalDAV connection ${conn.id} for family ${familyId}`);
         try {
           const entryRepo = new PostgresEntryRepository(pool);
           const entryRepository = {
@@ -36,21 +39,50 @@ if (!DATABASE_URL) {
           };
           await svc.runSync(conn.id, entryRepository);
         } catch (error) {
-          console.error(`[sync-worker] sync failed for connection ${conn.id}:`, error);
+          console.error(`[sync-worker] CalDAV sync failed for connection ${conn.id}:`, error);
         }
       }
     }
   }
 
-  // Check every 60 seconds — each connection's syncIntervalMinutes is enforced inside
+  async function runAulaSyncForAllFamilies(): Promise<void> {
+    const families = await pool.query<{ id: string }>('select id from families');
+
+    for (const { id: familyId } of families.rows) {
+      const connSvc = new AulaConnectionService(pool, familyId);
+      const conn = await connSvc.getConnection();
+
+      if (!conn || !conn.isConnected) continue;
+
+      const minutesSinceLast = conn.lastSyncAt
+        ? (Date.now() - new Date(conn.lastSyncAt).getTime()) / 60_000
+        : Infinity;
+
+      if (minutesSinceLast < conn.syncIntervalMinutes) continue;
+
+      console.log(`[aula-worker] syncing Aula for family ${familyId}`);
+      try {
+        const syncSvc = new AulaSyncService(pool, familyId);
+        const stats = await syncSvc.runSync();
+        console.log(`[aula-worker] family ${familyId}: +${stats.entriesCreated} entries, +${stats.itemsCreated} items`);
+      } catch (error) {
+        console.error(`[aula-worker] sync failed for family ${familyId}:`, error);
+      }
+    }
+  }
+
   setInterval(() => {
-    runSyncForAllFamilies().catch((err) => console.error('[sync-worker] error:', err));
+    runCalDavSyncForAllFamilies().catch((err) => console.error('[sync-worker] CalDAV error:', err));
   }, 60_000);
 
-  // Run once on startup after a short delay (let the app finish initialising)
+  setInterval(() => {
+    runAulaSyncForAllFamilies().catch((err) => console.error('[sync-worker] Aula error:', err));
+  }, 60_000);
+
   setTimeout(() => {
-    runSyncForAllFamilies().catch((err) => console.error('[sync-worker] startup error:', err));
+    runCalDavSyncForAllFamilies().catch((err) => console.error('[sync-worker] CalDAV startup error:', err));
+    runAulaSyncForAllFamilies().catch((err) => console.error('[aula-worker] startup error:', err));
   }, 5_000);
 
-  console.log('[sync-worker] started — polling every 60 seconds');
+  console.log('[sync-worker] started — polling CalDAV + Aula every 60 seconds');
 }
