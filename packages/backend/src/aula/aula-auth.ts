@@ -145,7 +145,9 @@ async function step_selectMitIdAtBroker(jar: CookieJar, brokerUrl: string, html:
   // html is already fetched by step_followAuthorizationRedirects — don't fetch again or the session is consumed
 
   console.log('[aula-auth] broker URL:', brokerUrl);
-  console.log('[aula-auth] broker page (first 2000 chars):', html.slice(0, 2000));
+  // Log ALL hrefs on the broker page to find the MitID IDP link
+  const allHrefs = [...html.matchAll(/href=["']([^"']+)["']/gi)].map(m => m[1]);
+  console.log('[aula-auth] all hrefs on broker page:', JSON.stringify(allHrefs));
 
   // Direct link to MitID
   const mitidMatch = html.match(/href=["'](https:\/\/nemlog-in\.mitid\.dk[^"']+)["']/i)
