@@ -61,6 +61,24 @@ for _cls_name in dir(_mitid_mod):
         print(f"[sidecar] monkey-patched _step4 on {_cls_name}", flush=True)
         break
 
+# Also patch the browser client's finalization to log the 400 body
+import aula.auth.browser_client as _browser_mod
+for _cls_name in dir(_browser_mod):
+    _cls = getattr(_browser_mod, _cls_name, None)
+    if _cls and isinstance(_cls, type) and hasattr(_cls, 'finalize_authentication_and_get_authorization_code'):
+        _orig_finalize = _cls.finalize_authentication_and_get_authorization_code
+        async def _patched_finalize(self: Any) -> Any:
+            url = f"https://www.mitid.dk/mitid-core-client-backend/v1/authentication-sessions/{self._finalization_session_id}/finalization"
+            r = await self._client.put(url)
+            print(f"[finalize debug] status={r.status_code} body={r.text[:500]}", flush=True)
+            if not r.is_success:
+                from aula.auth.browser_client import MitIDError  # type: ignore
+                raise MitIDError(f"Failed to retrieve authorization code: HTTP {r.status_code}")
+            return r.json()["authorizationCode"]
+        _cls.finalize_authentication_and_get_authorization_code = _patched_finalize
+        print(f"[sidecar] monkey-patched finalize on {_cls_name}", flush=True)
+        break
+
 
 def _qr_to_base64_png(qr_obj: Any) -> str:
     """Convert a qrcode.QRCode object (or raw data) to a base64 PNG string."""
