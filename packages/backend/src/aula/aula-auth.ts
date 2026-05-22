@@ -151,30 +151,50 @@ async function step_selectMitIdAtBroker(jar: CookieJar, brokerUrl: string): Prom
   jar.update(res);
   const html = await res.text();
 
+  console.log('[aula-auth] broker URL:', brokerUrl);
+  console.log('[aula-auth] broker page (first 2000 chars):', html.slice(0, 2000));
+
+  // Direct link to MitID
   const mitidMatch = html.match(/href=["'](https:\/\/nemlog-in\.mitid\.dk[^"']+)["']/i)
     ?? html.match(/action=["'](https:\/\/nemlog-in\.mitid\.dk[^"']+)["']/i);
+  if (mitidMatch?.[1]) return mitidMatch[1];
 
-  if (!mitidMatch?.[1]) {
-    const action = extractFormAction(html);
-    const inputs = extractHiddenInputs(html);
-    const body = new URLSearchParams({ ...inputs });
-    const formRes = await fetch(action ?? brokerUrl, {
-      method: 'POST',
-      redirect: 'manual',
-      headers: {
-        'User-Agent': USER_AGENT,
-        Cookie: jar.header(),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: body.toString(),
-    });
-    jar.update(formRes);
-    const location = formRes.headers.get('location');
-    if (location?.includes('nemlog-in.mitid.dk')) return location;
-    throw new AulaLoginError('Could not find MitID start URL at broker', 'unknown');
+  // Keycloak-style: look for nemlogin3 IDP hint link or button
+  const nemloginMatch = html.match(/href=["']([^"']*nemlogin3[^"']*)["']/i)
+    ?? html.match(/href=["']([^"']*kc_idp_hint=nemlogin[^"']*)["']/i)
+    ?? html.match(/href=["']([^"']*mitid[^"']*)["']/i);
+  if (nemloginMatch?.[1]) {
+    const url = nemloginMatch[1].startsWith('http') ? nemloginMatch[1] : new URL(nemloginMatch[1], brokerUrl).href;
+    console.log('[aula-auth] following nemlogin link:', url);
+    const r = await fetch(url, { redirect: 'manual', headers: { 'User-Agent': USER_AGENT, Cookie: jar.header() } });
+    jar.update(r);
+    const loc = r.headers.get('location');
+    console.log('[aula-auth] nemlogin redirect location:', loc);
+    if (loc?.includes('nemlog-in.mitid.dk')) return loc;
+    if (loc) return loc; // follow further
   }
 
-  return mitidMatch[1];
+  // Fallback: submit the page form and follow redirect
+  const action = extractFormAction(html);
+  const inputs = extractHiddenInputs(html);
+  console.log('[aula-auth] form action:', action, 'inputs:', Object.keys(inputs));
+  const body = new URLSearchParams({ ...inputs });
+  const formRes = await fetch(action ?? brokerUrl, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'User-Agent': USER_AGENT,
+      Cookie: jar.header(),
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
+  jar.update(formRes);
+  const location = formRes.headers.get('location');
+  console.log('[aula-auth] form POST redirect:', location);
+  if (location?.includes('nemlog-in.mitid.dk')) return location;
+  if (location) return location; // return whatever redirect we get and try to continue
+  throw new AulaLoginError(`Could not find MitID start URL at broker. Page title: ${html.match(/<title>([^<]*)<\/title>/i)?.[1] ?? 'unknown'}`, 'unknown');
 }
 
 async function step_initializeMitId(
