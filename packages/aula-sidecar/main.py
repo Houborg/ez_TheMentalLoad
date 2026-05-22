@@ -100,13 +100,13 @@ async def start_auth(req: StartRequest) -> StartResponse:
             storage = FileTokenStorage(token_file)
             captured_qr: list[Any] = []
 
-            async def on_qr(*args: Any) -> None:
-                # on_qr_codes may be called as on_qr(qr1, qr2) or on_qr([qr1, qr2])
+            def on_qr(*args: Any) -> None:
+                # Library calls this synchronously — must NOT be async
+                # Called as on_qr(qr1, qr2) with two positional args
                 qr_list = list(args[0]) if len(args) == 1 and isinstance(args[0], (list, tuple)) else list(args)
                 captured_qr.clear()
                 captured_qr.extend(qr_list)
                 _sessions[session_id]["status"] = "qr_ready"
-                # Convert each QR code object to a base64 PNG image
                 _sessions[session_id]["qr_codes"] = [
                     _qr_to_base64_png(q) for q in qr_list
                 ]
