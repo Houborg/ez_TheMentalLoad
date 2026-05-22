@@ -145,14 +145,32 @@ for _cls_name in dir(_browser_mod):
 
 
 def _qr_to_base64_png(qr_obj: Any) -> str:
-    """Convert a qrcode.QRCode object (or raw data) to a base64 PNG string."""
+    """Convert a qrcode.QRCode object (or raw data) to a large base64 PNG."""
     try:
         if isinstance(qr_obj, qrcode.QRCode):
-            img = qr_obj.make_image(fill_color="black", back_color="white")
+            # Re-create with larger box_size for mobile scanning
+            data_str = None
+            if hasattr(qr_obj, 'data_list') and qr_obj.data_list:
+                data_str = qr_obj.data_list[0].data
+                if isinstance(data_str, bytes):
+                    data_str = data_str.decode()
+            if data_str:
+                qr = qrcode.QRCode(version=None, box_size=12, border=4)
+                qr.add_data(data_str)
+                qr.make(fit=True)
+                img = qr.make_image(fill_color="black", back_color="white")
+            else:
+                img = qr_obj.make_image(fill_color="black", back_color="white")
         elif isinstance(qr_obj, str):
-            img = qrcode.make(qr_obj)
+            qr = qrcode.QRCode(version=None, box_size=12, border=4)
+            qr.add_data(qr_obj)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
         elif isinstance(qr_obj, dict):
-            img = qrcode.make(json.dumps(qr_obj, separators=(",", ":")))
+            qr = qrcode.QRCode(version=None, box_size=12, border=4)
+            qr.add_data(json.dumps(qr_obj, separators=(",", ":")))
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
         else:
             img = qrcode.make(str(qr_obj))
         buf = io.BytesIO()

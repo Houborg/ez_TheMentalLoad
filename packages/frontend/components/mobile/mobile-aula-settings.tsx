@@ -55,7 +55,7 @@ function QrDisplay({ sessionId }: { sessionId: string }) {
         {qrImages.map((img, i) => (
           <div key={i} className="rounded-xl border border-border p-2 bg-white">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`data:image/png;base64,${img}`} alt={`QR kode ${i + 1}`} className="w-36 h-36" />
+            <img src={`data:image/png;base64,${img}`} alt={`QR kode ${i + 1}`} className="w-56 h-56" />
           </div>
         ))}
       </div>
