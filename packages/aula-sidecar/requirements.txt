@@ -1,3 +1,5 @@
 aula
 fastapi
 uvicorn[standard]
+qrcode[pil]
+Pillow

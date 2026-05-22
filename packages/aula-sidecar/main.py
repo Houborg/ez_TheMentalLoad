@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import io
 import json
 import os
 import tempfile
@@ -6,12 +8,31 @@ import time
 from typing import Any
 from uuid import uuid4
 
+import qrcode
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from aula import AulaAuthenticationError, FileTokenStorage
 from aula.auth_flow import authenticate
+
+
+def _qr_to_base64_png(qr_obj: Any) -> str:
+    """Convert a qrcode.QRCode object (or raw data) to a base64 PNG string."""
+    try:
+        if isinstance(qr_obj, qrcode.QRCode):
+            img = qr_obj.make_image(fill_color="black", back_color="white")
+        elif isinstance(qr_obj, str):
+            img = qrcode.make(qr_obj)
+        elif isinstance(qr_obj, dict):
+            img = qrcode.make(json.dumps(qr_obj, separators=(",", ":")))
+        else:
+            img = qrcode.make(str(qr_obj))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        return f"error:{e}"
 
 
 app = FastAPI(title="Aula auth sidecar")
@@ -79,14 +100,15 @@ async def start_auth(req: StartRequest) -> StartResponse:
             storage = FileTokenStorage(token_file)
             captured_qr: list[Any] = []
 
-            async def on_qr(qr_list: list[Any]) -> None:
+            async def on_qr(*args: Any) -> None:
+                # on_qr_codes may be called as on_qr(qr1, qr2) or on_qr([qr1, qr2])
+                qr_list = list(args[0]) if len(args) == 1 and isinstance(args[0], (list, tuple)) else list(args)
                 captured_qr.clear()
                 captured_qr.extend(qr_list)
                 _sessions[session_id]["status"] = "qr_ready"
+                # Convert each QR code object to a base64 PNG image
                 _sessions[session_id]["qr_codes"] = [
-                    # Convert to serialisable form
-                    q if isinstance(q, (str, dict)) else str(q)
-                    for q in qr_list
+                    _qr_to_base64_png(q) for q in qr_list
                 ]
 
             await authenticate(

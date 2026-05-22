@@ -1,7 +1,7 @@
 // packages/frontend/components/mobile/mobile-aula-settings.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Loader2, CheckCircle, AlertCircle, RefreshCw, Unlink } from 'lucide-react';
 import type { Member, Calendar } from '@mental-load/contracts';
 import { cn } from '@/lib/utils';
@@ -17,6 +17,51 @@ const LABEL = 'text-xs font-semibold uppercase tracking-wide text-muted-foregrou
 type Step = 1 | 2 | 3 | 4 | 5;
 
 type Props = { members: Member[]; calendars: Calendar[] };
+
+// Polls for QR codes and renders them as <img> from base64 PNGs returned by the sidecar
+function QrDisplay({ sessionId }: { sessionId: string }) {
+  const [qrImages, setQrImages] = useState<string[]>([]);
+
+  const poll = useCallback(async () => {
+    try {
+      const res = await aulaAuthPoll(sessionId);
+      if (res.status === 'qr_ready' && res.qrCodes) {
+        const imgs = (res.qrCodes as string[]).filter(q => q && !q.startsWith('error:'));
+        if (imgs.length) setQrImages(imgs);
+      }
+    } catch { /* ignore */ }
+  }, [sessionId]);
+
+  useEffect(() => {
+    poll();
+    const t = setInterval(poll, 3000);
+    return () => clearInterval(t);
+  }, [poll]);
+
+  if (!qrImages.length) {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm font-medium">Henter QR-kode...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium">Scan QR-koden i MitID-appen</p>
+      <div className="flex gap-3 justify-center flex-wrap">
+        {qrImages.map((img, i) => (
+          <div key={i} className="rounded-xl border border-border p-2 bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`data:image/png;base64,${img}`} alt={`QR kode ${i + 1}`} className="w-36 h-36" />
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">Åbn MitID-appen og scan {qrImages.length > 1 ? 'begge QR-koder' : 'QR-koden'}</p>
+    </div>
+  );
+}
 
 export function MobileAulaSettings({ members, calendars }: Props) {
   const [connection, setConnection] = useState<AulaConnectionPublic | null | undefined>(undefined);
@@ -261,11 +306,15 @@ export function MobileAulaSettings({ members, calendars }: Props) {
               </>
             ) : (
               <>
-                <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-                <p className="text-sm font-medium">
-                  {pollStatus === 'qr_ready' ? 'Scan QR-koden i MitID-appen' : 'Godkend login i MitID-appen'}
-                </p>
-                <p className="text-xs text-muted-foreground">Åbn MitID-appen på din telefon og godkend anmodningen</p>
+                {pollStatus === 'qr_ready' && sessionId ? (
+                  <QrDisplay sessionId={sessionId} />
+                ) : (
+                  <>
+                    <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+                    <p className="text-sm font-medium">Venter på MitID-appen...</p>
+                    <p className="text-xs text-muted-foreground">Godkend login-anmodningen i din MitID-app</p>
+                  </>
+                )}
               </>
             )}
           </div>
