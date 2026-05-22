@@ -47,6 +47,7 @@ import { SettingsService } from './settings/settings-service';
 import { SyncService } from './sync/sync-service';
 import { registerAuthRoutes } from './auth/auth-routes';
 import { verifyToken } from './auth/auth-service';
+import { registerAulaRoutes } from './aula/aula-routes';
 
 const DEFAULT_FAMILY_ID = '00000000-0000-4000-8000-000000000001';
 const MEMBER_COLORS = ['#6366f1', '#f59e0b', '#ec4899', '#14b8a6', '#f97316', '#8b5cf6', '#06b6d4', '#84cc16'];
@@ -131,6 +132,7 @@ export async function buildApp() {
   if (infrastructure.pool) {
     await registerAuthRoutes(app, infrastructure.pool);
   }
+  if (infrastructure.pool) await registerAulaRoutes(app, infrastructure.pool);
 
   // JWT preHandler — verifies session and attaches scoped services to request
   const PUBLIC_PATHS = ['/api/auth/', '/api/v1/health', '/ws'];
@@ -158,6 +160,8 @@ export async function buildApp() {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (request as any).svc = getRequestServices(payload.familyId);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (request as any).familyId = payload.familyId;
     } catch (err) {
       if (reply.statusCode === 403) throw err;
       reply.code(401);
