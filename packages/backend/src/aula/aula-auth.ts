@@ -52,7 +52,7 @@ function generatePkce(): { verifier: string; challenge: string } {
 
 function extractFormAction(html: string): string | null {
   const match = html.match(/<form[^>]+action=["']([^"']+)["']/i);
-  return match?.[1] ?? null;
+  return match?.[1]?.replace(/&amp;/g, '&') ?? null;
 }
 
 function extractHiddenInputs(html: string): Record<string, string> {
