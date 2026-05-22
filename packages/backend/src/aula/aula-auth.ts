@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { AulaTokens, AulaLoginError } from './aula-types.js';
 
 const AULA_CLIENT_ID = '_99949a54b8b65423862aac1bf629599ed64231607a';
-const AULA_REDIRECT_URI = 'https://www.aula.dk/portal/oauth2callback.php';
+const AULA_REDIRECT_URI = 'https://app-private.aula.dk';
 const AULA_AUTHORIZE_URL = 'https://login.aula.dk/simplesaml/module.php/oidc/authorize.php';
 const AULA_TOKEN_URL = 'https://login.aula.dk/simplesaml/module.php/oidc/token.php';
 const MITID_INITIALIZE_URL = 'https://nemlog-in.mitid.dk/login/mitid/initialize';
