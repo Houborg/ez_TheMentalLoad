@@ -89,8 +89,8 @@ export async function aulaLogin(
   const { verifier, challenge } = generatePkce();
 
   try {
-    const brokerUrl = await step_followAuthorizationRedirects(jar, challenge);
-    const mitidStartUrl = await step_selectMitIdAtBroker(jar, brokerUrl);
+    const { url: brokerUrl, html: brokerHtml } = await step_followAuthorizationRedirects(jar, challenge);
+    const mitidStartUrl = await step_selectMitIdAtBroker(jar, brokerUrl, brokerHtml);
     const { authSessionId, verificationToken } = await step_initializeMitId(jar, mitidStartUrl);
     const samlPayload = await step_authenticateToken(
       jar, authSessionId, verificationToken, username, password, totpCode,
@@ -107,7 +107,7 @@ export async function aulaLogin(
   }
 }
 
-async function step_followAuthorizationRedirects(jar: CookieJar, challenge: string): Promise<string> {
+async function step_followAuthorizationRedirects(jar: CookieJar, challenge: string): Promise<{ url: string; html: string }> {
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: AULA_CLIENT_ID,
@@ -120,7 +120,7 @@ async function step_followAuthorizationRedirects(jar: CookieJar, challenge: stri
 
   let currentUrl = `${AULA_AUTHORIZE_URL}?${params}`;
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 15; i++) {
     const res = await fetch(currentUrl, {
       redirect: 'manual',
       headers: { 'User-Agent': USER_AGENT, Cookie: jar.header() },
@@ -128,28 +128,21 @@ async function step_followAuthorizationRedirects(jar: CookieJar, challenge: stri
     jar.update(res);
 
     if (res.status === 200) {
-      return currentUrl;
+      const html = await res.text();
+      return { url: currentUrl, html };
     }
 
     const location = res.headers.get('location');
     if (!location) throw new AulaLoginError('Lost redirect chain at authorization step', 'unknown');
 
     currentUrl = location.startsWith('http') ? location : new URL(location, currentUrl).href;
-
-    if (currentUrl.includes('broker.unilogin.dk')) {
-      return currentUrl;
-    }
   }
 
   throw new AulaLoginError('Too many redirects in authorization step', 'unknown');
 }
 
-async function step_selectMitIdAtBroker(jar: CookieJar, brokerUrl: string): Promise<string> {
-  const res = await fetch(brokerUrl, {
-    headers: { 'User-Agent': USER_AGENT, Cookie: jar.header() },
-  });
-  jar.update(res);
-  const html = await res.text();
+async function step_selectMitIdAtBroker(jar: CookieJar, brokerUrl: string, html: string): Promise<string> {
+  // html is already fetched by step_followAuthorizationRedirects — don't fetch again or the session is consumed
 
   console.log('[aula-auth] broker URL:', brokerUrl);
   console.log('[aula-auth] broker page (first 2000 chars):', html.slice(0, 2000));
