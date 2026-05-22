@@ -7,15 +7,55 @@
 
 ## Goal
 
-Bring kids' school data from the Danish Aula platform into MentalLoad: calendar events, daily overviews, posts/announcements, and messages. Each family connects their own Aula account via a guided MitID wizard, maps Aula children to MentalLoad members, and chooses what to sync.
+Bring kids' school data from the Danish Aula platform into MentalLoad: calendar events, daily overviews, posts/announcements, and messages. Each family connects their own Aula account via a guided wizard, maps Aula children to MentalLoad members, and chooses what to sync.
 
 ---
 
 ## Approach
 
-**Option B — Dedicated Aula service.** Aula runs as a parallel sync infrastructure alongside the existing CalDAV sync. No shared abstraction with CalDAV — the data shapes and auth model are too different.
+**Custom thin TypeScript Aula client** — no external Aula library dependency. The auth flow and API endpoints are fully documented via the scaarup/aula Home Assistant integration (61 releases, actively tracking Aula API changes). We port the relevant parts to TypeScript and own it.
 
-`@aula-mcp/aula-client` (from github.com/Casperjuel/aula-mcp) is imported as a library into MentalLoad's backend. No sidecar container.
+Reference: https://github.com/scaarup/aula
+
+No sidecar container. All code lives in `packages/backend/src/aula/`.
+
+---
+
+## Authentication
+
+Aula uses an 8-step PKCE + SAML + OAuth2 chain ending in standard access/refresh tokens.
+
+### Method: TOKEN (primary)
+
+User provides three credentials at setup time:
+- **MitID username** — their MitID login name
+- **MitID password**
+- **MitID 6-digit code** — from MitID app or hardware token at the moment of setup
+
+The backend runs the full 8-step flow synchronously and returns `{ access_token, refresh_token, expires_at }`. No polling, no QR codes, no Redis session.
+
+### Method: APP/QR (future)
+
+User scans two QR codes with MitID app. More complex (requires polling + Redis session). Not in scope for v1 — TOKEN method is sufficient.
+
+### Auth flow (8 steps, implemented in `aula-auth.ts`)
+
+1. Generate PKCE parameters, visit `https://login.aula.dk/simplesaml/module.php/oidc/authorize.php`
+2. Follow SAML redirect chain toward MitID
+3. Reach `https://broker.unilogin.dk` — Identity Provider selection
+4. POST to `https://nemlog-in.mitid.dk/login/mitid/initialize` — get `authenticationSessionId`
+5. Authenticate with TOKEN method: submit username + password + code
+6. POST SAML response to `https://broker.unilogin.dk/auth/realms/broker/broker/nemlogin3/endpoint` — role selection (KONTAKT)
+7. POST SAML to `https://login.aula.dk/simplesaml/module.php/saml/sp/saml2-acs.php/uni-sp` — get OAuth `code`
+8. POST to `https://login.aula.dk/simplesaml/module.php/oidc/token.php` — exchange code for tokens
+
+```
+client_id: "_99949a54b8b65423862aac1bf629599ed64231607a"
+```
+
+### Token refresh
+
+Standard OAuth2 refresh token grant — POST to the same token endpoint with `grant_type=refresh_token`. The worker refreshes proactively when `expires_at` is within 5 minutes.
 
 ---
 
@@ -23,30 +63,30 @@ Bring kids' school data from the Danish Aula platform into MentalLoad: calendar 
 
 ### Aula Connection (stored in `families.settings_json.aula_connection`)
 
-One connection per family. Stored in the same `settings_json` JSONB column used by CalDAV connections.
+One connection per family, stored in the same `settings_json` JSONB column used by CalDAV.
 
 ```typescript
 interface AulaConnection {
   id: string;
   isConnected: boolean;
   aulaUsername: string;
-  accessToken: string;          // OAuth2 access token
-  refreshToken: string;         // OAuth2 refresh token — long-lived
-  tokenExpiresAt: string;       // ISO timestamp — worker refreshes before expiry
+  accessToken: string;
+  refreshToken: string;
+  tokenExpiresAt: string;         // ISO — worker refreshes proactively
   childMappings: Array<{
     aulaChildId: number;
     aulaChildName: string;
     mentalLoadMemberId: string;
-    calendarId: string;         // which MentalLoad calendar to write events into
+    calendarId: string;
   }>;
   syncOptions: {
-    importToCalendar: boolean;  // master gate — off by default during dev
+    importToCalendar: boolean;    // master gate — off by default during dev
     calendarEvents: boolean;
     dailyOverview: boolean;
     posts: boolean;
     messages: boolean;
   };
-  syncIntervalMinutes: number;  // default: 60
+  syncIntervalMinutes: number;    // default: 60
   lastSyncAt?: string;
   lastSyncStats?: {
     entriesCreated: number;
@@ -56,12 +96,11 @@ interface AulaConnection {
 }
 ```
 
-### New table: `aula_items`
+### New table: `aula_items` (migration 013)
 
-Stores non-calendar Aula data (posts, messages, daily overviews) that do not map to MentalLoad entries.
+Stores non-calendar Aula data that does not map to MentalLoad entries.
 
 ```sql
--- Migration 013_aula_items.sql
 create table if not exists aula_items (
   id           uuid primary key default gen_random_uuid(),
   family_id    uuid not null references families(id) on delete cascade,
@@ -83,7 +122,7 @@ create index if not exists idx_aula_items_published on aula_items(family_id, pub
 
 ### Calendar events
 
-Aula calendar events are written to the MentalLoad `entries` table using the existing `externalUid` dedup mechanism. `externalUid` is set to `aula-{aulaEventId}`. Owner and calendar are set from the child→member mapping. Only written when `syncOptions.importToCalendar = true`.
+Aula calendar events → MentalLoad `entries` table via existing `externalUid` dedup. `externalUid` set to `aula-{aulaEventId}`. Owner + calendar from child→member mapping. Only written when `syncOptions.importToCalendar = true`.
 
 ---
 
@@ -91,33 +130,48 @@ Aula calendar events are written to the MentalLoad `entries` table using the exi
 
 ### New directory: `packages/backend/src/aula/`
 
-**`aula-adapter.ts`**
-Wraps `@aula-mcp/aula-client`. Responsible for:
-- Creating an authenticated `AulaClient` from stored tokens
-- Proactive token refresh (if `tokenExpiresAt` is within 5 minutes, refresh before use)
-- Typed fetch methods: `fetchCalendarEvents(childIds, from, to)`, `fetchDailyOverview(childIds)`, `fetchPosts(limit)`, `fetchMessages(limit)`, `fetchChildren()`
-- Throws a typed `AulaAuthExpiredError` if refresh fails (triggers reconnect prompt in UI)
+**`aula-auth.ts`**
+Implements the 8-step login flow and token refresh. No external Aula library.
+- `login(username, password, code)` → `{ accessToken, refreshToken, expiresAt }`
+- `refresh(refreshToken)` → `{ accessToken, refreshToken, expiresAt }`
+- Uses Node.js `fetch` with cookie jar (`tough-cookie` or manual cookie handling)
+- Follows redirects manually where needed (SAML chain)
+
+**`aula-client.ts`**
+Authenticated Aula API client. Takes stored tokens, calls Aula's REST API.
+- Proactive token refresh before each call if within 5 min of expiry
+- Throws `AulaAuthExpiredError` if refresh fails
+- Methods:
+  - `getChildren()` → child profiles for this guardian
+  - `getCalendarEvents(childIds, profileIds, from, to)` → events
+  - `getDailyOverview(childIds)` → attendance/presence
+  - `getThreads(limit)` → message threads
+  - `getMessagesForThread(threadId)` → thread messages
+  - `getPosts(limit)` → class news/announcements
+
+**Aula API base:** `https://www.aula.dk/api/v22`
+All requests: `?method={method}&access_token={token}` (token as query param, not header — setting both causes 400)
 
 **`aula-connection-service.ts`**
-CRUD for the `aula_connection` stored in `families.settings_json`. Same pattern as `SyncConnectionService`.
+CRUD for `aula_connection` in `families.settings_json`. Same pattern as `SyncConnectionService`.
 - `getConnection(familyId)` → `AulaConnection | null`
-- `saveConnection(familyId, connection)` → writes to settings_json
-- `deleteConnection(familyId)` → removes key from settings_json
-- `updateSyncStats(familyId, stats)` → updates lastSyncAt + lastSyncStats
+- `saveConnection(familyId, conn)`
+- `deleteConnection(familyId)`
+- `updateSyncStats(familyId, stats)`
 
 **`aula-sync-service.ts`**
-Sync logic for one family run:
-1. Load connection, skip if not connected
-2. Instantiate `AulaAdapter` with stored tokens (refreshes if needed)
-3. For each child mapping:
-   - If `calendarEvents` enabled + `importToCalendar` enabled: fetch events for date range (lastSyncAt → now+365d), dedup by `externalUid`, create missing entries
-   - If `dailyOverview` enabled: fetch overview, upsert into `aula_items`
-4. If `posts` enabled: fetch posts, upsert into `aula_items`
-5. If `messages` enabled: fetch message threads, upsert into `aula_items`
+One sync run for a family:
+1. Load connection — skip if not connected
+2. Instantiate `AulaClient` with stored tokens (refreshes if needed, saves new tokens back)
+3. Per child mapping:
+   - `calendarEvents` + `importToCalendar`: fetch events (lastSyncAt → now+365d), dedup by `externalUid`, create entries
+   - `dailyOverview`: fetch, upsert into `aula_items`
+4. `posts`: fetch, upsert into `aula_items`
+5. `messages`: fetch threads + messages, upsert into `aula_items`
 6. Update `lastSyncAt` + `lastSyncStats`
 
 **`aula-routes.ts`**
-Fastify plugin registered in `app.ts`. All routes require JWT auth. Family ID scoped from JWT.
+Fastify plugin registered in `app.ts`. All routes JWT-authenticated, family-scoped.
 
 ---
 
@@ -125,47 +179,36 @@ Fastify plugin registered in `app.ts`. All routes require JWT auth. Family ID sc
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/api/v1/aula/auth/start` | Start MitID flow. Stores in-progress state in Redis (5 min TTL, family-scoped key). Returns session ID. |
-| `GET` | `/api/v1/aula/auth/poll/:sessionId` | Poll auth state. Returns `{ status: 'pending' \| 'qr_ready' \| 'authenticated' \| 'error', qrPayloads?, children? }` |
-| `POST` | `/api/v1/aula/connect` | Save confirmed connection: child→member mappings + sync options. Clears Redis session. |
+| `POST` | `/api/v1/aula/auth/verify` | Run login flow with credentials. Returns children list on success. |
+| `POST` | `/api/v1/aula/connect` | Save connection: tokens + child→member mappings + sync options. |
 | `GET` | `/api/v1/aula/connection` | Get current connection (tokens stripped). |
-| `DELETE` | `/api/v1/aula/connection` | Disconnect — removes from settings_json. |
+| `DELETE` | `/api/v1/aula/connection` | Disconnect. |
 | `POST` | `/api/v1/aula/sync` | Trigger manual sync. Returns stats. |
-| `GET` | `/api/v1/aula/items` | Paginated list of `aula_items` for this family. Supports `?type=post&memberId=`. |
+| `GET` | `/api/v1/aula/items` | Paginated `aula_items`. Supports `?type=post&memberId=`. |
 
-### MitID QR flow (stateful)
+### Auth flow (simplified — no Redis, no polling)
 
-`POST /auth/start`:
-- Generates a `sessionId` (UUID)
-- Starts `AulaLoginClient.login()` in a background async task
-- The task pauses at the QR step and writes `{ status: 'qr_ready', qrPayloads: [...] }` to Redis under `aula-auth:{familyId}:{sessionId}`
-- Returns `{ sessionId }`
+`POST /auth/verify` with `{ username, password, code }`:
+- Runs `aulaAuth.login(username, password, code)` — ~2-3 seconds
+- On success: fetches children list, returns `{ children: [...], tokens: { accessToken, refreshToken, expiresAt } }`
+- Tokens held client-side until `POST /connect` is submitted
 
-`GET /auth/poll/:sessionId`:
-- Reads state from Redis
-- Returns current status + QR payloads when ready
-- On `authenticated`: returns children list, stores tokens temporarily in Redis
-- Frontend moves to child mapping step
-
-`POST /connect`:
-- Reads tokens from Redis (set by poll when authenticated)
+`POST /connect` with `{ tokens, childMappings, syncOptions }`:
 - Saves full `AulaConnection` to `families.settings_json`
-- Clears Redis session
 
 ---
 
 ## Sync Worker
 
-`sync-worker.ts` extended with a second polling loop:
+`sync-worker.ts` extended with a second loop running every 60 seconds:
 
 ```typescript
-// Runs every 60 seconds — same cadence as CalDAV sync
 setInterval(() => {
   runAulaSyncForAllFamilies().catch(err => console.error('[aula-worker]', err));
 }, 60_000);
 ```
 
-`runAulaSyncForAllFamilies()` queries all families, loads their `aula_connection`, checks `minutesSinceLast >= syncIntervalMinutes`, runs `AulaSyncService.runSync(familyId)`.
+Queries all families, checks `minutesSinceLast >= syncIntervalMinutes`, runs `AulaSyncService.runSync(familyId)`.
 
 ---
 
@@ -173,59 +216,44 @@ setInterval(() => {
 
 ### New settings tab: "Aula"
 
-Added to the mobile settings screen alongside the existing "Synkronisering" (Apple Calendar) tab.
+Added to mobile settings alongside the existing "Synkronisering" tab.
 
 ### Setup wizard — 5 steps
 
 **Step 1 — Intro**
-- Brief explanation: henter skema, opslag og beskeder fra Aula
+- What it does: henter skema, opslag og beskeder fra Aula
 - "Tilknyt Aula" button
 
 **Step 2 — MitID login**
-- Calls `POST /aula/auth/start`, gets sessionId
-- Polls `/aula/auth/poll/:sessionId` every 2 seconds
-- Renders **two QR codes** using `qrcode` npm package — MitID channel binding splits into two halves, both must be scanned in sequence
-- States: scanning (spinner overlay when `channel_verified`), success tick, timeout retry
-- 5-minute timeout with "Prøv igen" button
-- When poll returns `status: 'authenticated'`, children list is stored in component state before advancing to step 3
+- Simple form: MitID brugernavn, adgangskode, 6-cifret kode
+- Note: "Åbn MitID-appen og find din 6-cifrede kode"
+- "Log ind" button — calls `POST /aula/auth/verify`
+- Loading spinner during 2-3 second auth flow
+- Clear error messages: wrong credentials, expired code, connection error
 
 **Step 3 — Map children to members**
-- Lists Aula children cached from the authenticated poll response (no extra API call needed)
-- Each child: name + dropdown of MentalLoad members + "Spring over"
-- At least one mapping required to proceed
-- Validation inline
+- Lists Aula children from `/auth/verify` response (cached in component state)
+- Each child: name + member dropdown + "Spring over"
+- At least one mapping required
 
 **Step 4 — Sync options**
-Toggles (all off by default except calendarEvents):
+Toggles (calendarEvents on by default, rest off):
 - Kalenderbegivenheder
 - Dagsoverblik
 - Opslag
 - Beskeder
-- **Importer til kalender** (dev gate — off by default, clearly labelled)
+- **Importer til kalender** — dev gate, off by default, labelled clearly
 
 **Step 5 — Done**
-- Green connected indicator
-- Summary of mappings
+- Connected indicator + summary of mappings
 - "Synkroniser nu" button
 - Disconnect option
 
 ### Connected state (replaces wizard)
-- Shows: connected badge, last sync time, per-type item counts
-- Edit mappings button (re-opens step 3+4)
+- Connected badge, last sync time, per-type item counts
+- Edit mappings (re-opens step 3+4)
 - Manual sync button
-- Disconnect button (with confirmation)
-
----
-
-## New npm dependency
-
-`@aula-mcp/aula-client` and `@aula-mcp/aula-auth` — installed into `packages/backend`.
-
-These are workspace packages in the aula-mcp monorepo. They will need to be consumed either by:
-- Installing from GitHub (`github:Casperjuel/aula-mcp#main` with workspace path)
-- Or copying the compiled packages
-
-**Decision deferred to implementation** — verify the best install method during Task 1.
+- Disconnect with confirmation
 
 ---
 
@@ -233,25 +261,29 @@ These are workspace packages in the aula-mcp monorepo. They will need to be cons
 
 | Error | Behaviour |
 |-------|-----------|
-| Token refresh fails | Set `isConnected: false`, surface reconnect prompt in settings |
-| Aula API error during sync | Log, skip this sync run, do not crash worker |
-| MitID timeout (5 min) | Redis TTL expires, poll returns `error`, frontend shows retry |
-| Child mapping missing member | Skip that child during sync, log warning |
-| Duplicate `externalUid` | Skip silently (existing dedup logic) |
+| Wrong MitID credentials | Return 401, show "Forkert brugernavn eller adgangskode" |
+| Expired 6-digit code | Return 400, show "Koden er udløbet — hent en ny i MitID-appen" |
+| Token refresh fails | Set `isConnected: false`, show reconnect prompt in settings |
+| Aula API error during sync | Log, skip run, do not crash worker |
+| API version bump (v22 → v23) | Log version error, set `isConnected: false`, notify user |
+| Child mapping missing member | Skip child, log warning |
+| Duplicate `externalUid` | Skip silently |
 
 ---
 
-## Out of scope
+## Out of scope (v1)
 
-- Bidirectional sync (export MentalLoad events to Aula) — Aula's API is read-only for parents
-- Desktop UI — Aula tab is mobile-only for now
-- CalDAV server (MentalLoad as a CalDAV server) — separate future feature
-- AULA step-up authentication (sensitive message threads requiring fresh MitID) — skipped silently
+- APP/QR method (MitID app scan) — TOKEN method is sufficient for v1
+- Bidirectional sync — Aula API is read-only for parents
+- Desktop UI — mobile-only for now
+- Step-up auth (sensitive message threads)
+- AULA child login (guardian only)
 
 ---
 
-## Open questions (deferred to implementation)
+## Implementation notes
 
-1. How to install `@aula-mcp/aula-client` — GitHub package or copy compiled output?
-2. Exact token lifetime of Aula OAuth tokens (test during implementation)
-3. Whether `getDailyOverview` returns per-child data or family-level data
+- Cookie handling during the 8-step auth flow: use `tough-cookie` or manual cookie jar
+- Mobile Android user-agent required for Aula API requests (detected by server)
+- API version `v22` — if Aula bumps to v23, version constant is in one place (`aula-client.ts`)
+- No new npm package dependency beyond `tough-cookie` (lightweight, widely used)
