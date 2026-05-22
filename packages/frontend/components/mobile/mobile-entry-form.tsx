@@ -20,7 +20,9 @@ const SELECT_CLS =
 const SECTION_LABEL_CLS = 'text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5';
 
 function toDateInput(iso: string) {
-  return iso ? iso.slice(0, 10) : '';
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function toTimeInput(iso: string) {
@@ -120,7 +122,8 @@ export function MobileEntryForm({ draft, onChange, members, calendars }: Props) 
             Hele dagen
           </label>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <span className="w-10 shrink-0 text-xs text-muted-foreground">Start</span>
           <input
             type="date"
             value={toDateInput(draft.startTime)}
@@ -145,8 +148,8 @@ export function MobileEntryForm({ draft, onChange, members, calendars }: Props) 
           )}
         </div>
         {!draft.allDay && (
-          <div className="flex gap-2 mt-2">
-            <div className="flex-1 text-xs text-muted-foreground px-1 py-1">Slut</div>
+          <div className="flex gap-2 mt-2 items-center">
+            <span className="w-10 shrink-0 text-xs text-muted-foreground">Slut</span>
             <input
               type="date"
               value={toDateInput(draft.endTime)}

@@ -39,7 +39,19 @@ export function MobileEntrySheet({
       return entryToDraft(entry, members);
     }
     const base = emptyDraft(members[0]?.id ?? '', calendars[0]?.id ?? '');
-    return initialDraft ? { ...base, ...initialDraft } : base;
+    if (!initialDraft) return base;
+
+    // When a calendar date was clicked, keep its local date but use the
+    // "next full hour from now" time from base — then pin endTime to +1h.
+    if (initialDraft.startTime) {
+      const clicked = new Date(initialDraft.startTime);
+      const start = new Date(base.startTime); // already next full hour from now
+      start.setFullYear(clicked.getFullYear(), clicked.getMonth(), clicked.getDate());
+      const end = new Date(start.getTime() + 3_600_000);
+      return { ...base, ...initialDraft, startTime: start.toISOString(), endTime: end.toISOString() };
+    }
+
+    return { ...base, ...initialDraft };
   }
 
   // Re-initialize when the entry or mode changes (sheet opens for a different entry)
