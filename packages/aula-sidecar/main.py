@@ -246,15 +246,20 @@ async def start_auth(req: StartRequest) -> StartResponse:
             )
 
             tokens = _extract_tokens(token_file)
+            print(f"[auth] token keys: {list(tokens.keys())} access_token={'yes' if tokens['access_token'] else 'empty'}", flush=True)
             if not tokens["access_token"]:
                 raise ValueError(f"Empty access_token. Keys: {list(tokens.keys())}")
 
             _sessions[session_id]["status"] = "completed"
             _sessions[session_id].update(tokens)
         except AulaAuthenticationError as e:
+            print(f"[auth] AulaAuthenticationError: {e}", flush=True)
             _sessions[session_id]["status"] = "error"
             _sessions[session_id]["error"] = str(e)
         except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            print(f"[auth] Exception: {e}\n{tb}", flush=True)
             _sessions[session_id]["status"] = "error"
             _sessions[session_id]["error"] = f"Auth error: {e}"
         finally:
