@@ -65,6 +65,7 @@ import { deduplicateRecurringTasks, WEEKDAY_OPTIONS } from '@/lib/entry-utils';
 import { SettingsHolidays } from '@/components/settings-holidays';
 import { PlannerView } from '@/components/planner-view';
 import { SyncSettings } from './sync/sync-settings';
+import { MobileAulaSettings } from './mobile/mobile-aula-settings';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
 type RecurrenceFreq = 'none' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
@@ -184,7 +185,7 @@ export function DashboardApp() {
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [assistantSuggestionBusy, setAssistantSuggestionBusy] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'calendars' | 'mail' | 'sync' | 'recurring' | 'birthdays' | 'weather' | 'assistant' | 'holidays' | 'developer'>('theme');
+  const [settingsTab, setSettingsTab] = useState<'theme' | 'members' | 'calendars' | 'mail' | 'sync' | 'aula' | 'recurring' | 'birthdays' | 'weather' | 'assistant' | 'holidays' | 'developer'>('theme');
   const [updateInProgress, setUpdateInProgress] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
   const [serverVersion, setServerVersion] = useState<{ version: string; commit: string; deployedAt: string | null } | null>(null);
@@ -3028,6 +3029,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
               { id: 'calendars', label: 'Calendars' },
               { id: 'mail', label: 'Mail' },
               { id: 'sync', label: 'Sync' },
+              { id: 'aula', label: 'Aula' },
               { id: 'recurring', label: 'Recurring' },
               { id: 'birthdays', label: 'Birthdays' },
               { id: 'weather', label: 'Weather' },
@@ -3310,6 +3312,10 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
 
             {settingsTab === 'sync' ? (
               <SyncSettings />
+            ) : null}
+
+            {settingsTab === 'aula' ? (
+              <MobileAulaSettings members={dashboard.members} calendars={dashboard.calendars} />
             ) : null}
 
             {settingsTab === 'recurring' ? (
