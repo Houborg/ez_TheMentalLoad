@@ -144,44 +144,38 @@ async function step_followAuthorizationRedirects(jar: CookieJar, challenge: stri
 async function step_selectMitIdAtBroker(jar: CookieJar, brokerUrl: string, html: string): Promise<string> {
   // html is already fetched by step_followAuthorizationRedirects — don't fetch again or the session is consumed
 
-  // The Unilogin broker IDP selector is JavaScript-rendered — no IDP links in the HTML.
-  // Construct the Keycloak IDP login URL manually from the form action's session params.
-  // Pattern: /auth/realms/broker/broker/nemlogin3/login?session_code=...&client_id=...&tab_id=...
+  // The Unilogin broker page has a form with a hidden IDP selector.
+  // POST to the form action with selectedIdp=nemlogin3 to select MitID.
   const action = extractFormAction(html);
-  console.log('[aula-auth] broker URL:', brokerUrl, 'form action:', action);
+  const hiddenInputs = extractHiddenInputs(html);
+  const actionUrl = action ? (action.startsWith('http') ? action : new URL(action, brokerUrl).href) : brokerUrl;
 
-  if (action) {
-    const actionUrl = new URL(action.startsWith('http') ? action : new URL(action, brokerUrl).href);
-    const sessionCode = actionUrl.searchParams.get('session_code');
-    const clientId = actionUrl.searchParams.get('client_id');
-    const tabId = actionUrl.searchParams.get('tab_id');
+  console.log('[aula-auth] broker action:', actionUrl, 'hidden inputs:', Object.keys(hiddenInputs));
 
-    if (sessionCode && tabId) {
-      // Keycloak IDP login URL — select nemlogin3 (MitID via NemID/UniLogin)
-      const idpLoginUrl = new URL('/auth/realms/broker/broker/nemlogin3/login', 'https://broker.unilogin.dk');
-      idpLoginUrl.searchParams.set('session_code', sessionCode);
-      if (clientId) idpLoginUrl.searchParams.set('client_id', clientId);
-      idpLoginUrl.searchParams.set('tab_id', tabId);
+  const body = new URLSearchParams({ ...hiddenInputs, selectedIdp: 'nemlogin3' });
+  let res = await fetch(actionUrl, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'User-Agent': USER_AGENT,
+      Cookie: jar.header(),
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
+  jar.update(res);
 
-      console.log('[aula-auth] constructed IDP login URL:', idpLoginUrl.href);
-      const r = await fetch(idpLoginUrl.href, {
-        redirect: 'manual',
-        headers: { 'User-Agent': USER_AGENT, Cookie: jar.header() },
-      });
-      jar.update(r);
-      const loc = r.headers.get('location');
-      console.log('[aula-auth] IDP login redirect:', r.status, loc);
-      if (loc) {
-        // Follow one more redirect if needed
-        if (loc.includes('nemlog-in.mitid.dk')) return loc;
-        const r2 = await fetch(loc, { redirect: 'manual', headers: { 'User-Agent': USER_AGENT, Cookie: jar.header() } });
-        jar.update(r2);
-        const loc2 = r2.headers.get('location');
-        console.log('[aula-auth] IDP login redirect 2:', r2.status, loc2);
-        if (loc2) return loc2;
-        return loc;
-      }
-    }
+  // Follow redirects until we reach MitID or run out
+  for (let i = 0; i < 8; i++) {
+    const loc = res.headers.get('location');
+    console.log('[aula-auth] broker POST redirect', i, ':', res.status, loc?.slice(0, 100));
+    if (!loc) break;
+    if (loc.includes('nemlog-in.mitid.dk') || loc.includes('mitid')) return loc;
+    res = await fetch(loc.startsWith('http') ? loc : new URL(loc, brokerUrl).href, {
+      redirect: 'manual',
+      headers: { 'User-Agent': USER_AGENT, Cookie: jar.header() },
+    });
+    jar.update(res);
   }
 
   throw new AulaLoginError(`Could not find MitID start URL at broker. Page title: ${html.match(/<title>([^<]*)<\/title>/i)?.[1] ?? 'unknown'}`, 'unknown');
