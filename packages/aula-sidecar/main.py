@@ -16,6 +16,51 @@ from pydantic import BaseModel
 from aula import AulaAuthenticationError, FileTokenStorage
 from aula.auth_flow import authenticate
 
+# ── Diagnostic monkey-patch ───────────────────────────────────────────────────
+# Log response URL + body when SAML parsing fails, so we can see what page
+# the library is getting instead of SAMLResponse/RelayState hidden inputs.
+
+import aula.auth.mitid_client as _mitid_mod
+_orig_step4 = None
+
+async def _patched_step4(self: Any, verification_token: str, authorization_code: str) -> Any:
+    from bs4 import BeautifulSoup
+    import httpx as _httpx
+    try:
+        session_uuid = self._client.cookies.get("SessionUuid", "")
+        challenge = self._client.cookies.get("Challenge", "")
+        params = {
+            "__RequestVerificationToken": verification_token,
+            "NewCulture": "",
+            "MitIDUseConfirmed": "True",
+            "MitIDAuthCode": authorization_code,
+            "MitIDAuthenticationCancelled": "",
+            "MitIDCoreClientError": "",
+            "SessionStorageActiveSessionUuid": session_uuid,
+            "SessionStorageActiveChallenge": challenge,
+        }
+        import re
+        mitid_base = "https://nemlog-in.mitid.dk"
+        for name in dir(_mitid_mod):
+            val = getattr(_mitid_mod, name, "")
+            if isinstance(val, str) and "nemlog-in" in val:
+                mitid_base = val
+                break
+        response = await self._client.post(f"{mitid_base}/login/mitid", data=params)
+        print(f"[step4 debug] response.url={response.url}", flush=True)
+        print(f"[step4 debug] response text (first 800): {response.text[:800]}", flush=True)
+    except Exception as e:
+        print(f"[step4 debug] exception: {e}", flush=True)
+    return await _orig_step4(self, verification_token, authorization_code)
+
+for _cls_name in dir(_mitid_mod):
+    _cls = getattr(_mitid_mod, _cls_name, None)
+    if _cls and isinstance(_cls, type) and hasattr(_cls, '_step4_complete_mitid_flow'):
+        _orig_step4 = _cls._step4_complete_mitid_flow
+        _cls._step4_complete_mitid_flow = _patched_step4
+        print(f"[sidecar] monkey-patched _step4 on {_cls_name}", flush=True)
+        break
+
 
 def _qr_to_base64_png(qr_obj: Any) -> str:
     """Convert a qrcode.QRCode object (or raw data) to a base64 PNG string."""
