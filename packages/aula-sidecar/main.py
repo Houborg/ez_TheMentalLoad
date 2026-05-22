@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from aula import AulaAuthenticationError, FileTokenStorage
-from aula.auth_flow import authenticate
+from aula.auth_flow import authenticate, create_client
 
 # ── Diagnostic monkey-patch ───────────────────────────────────────────────────
 # Log response URL + body when SAML parsing fails, so we can see what page
@@ -261,7 +261,7 @@ async def start_auth(req: StartRequest) -> StartResponse:
                     _qr_to_base64_png(q) for q in qr_list
                 ]
 
-            client = await authenticate(
+            await authenticate(
                 req.username,
                 storage,
                 auth_method="app",
@@ -273,24 +273,30 @@ async def start_auth(req: StartRequest) -> StartResponse:
             if not tokens["access_token"]:
                 raise ValueError(f"Empty access_token. Keys: {list(tokens.keys())}")
 
-            # Fetch children using the authenticated client (avoids 410 from TypeScript client)
+            # Fetch children using the library's API client (avoids 410 from our TypeScript REST client)
             children: list[dict[str, Any]] = []
             try:
-                profile = await client.get_profile()
-                for child in getattr(profile, 'children', []) or []:
+                with open(token_file, "r") as f:
+                    token_data = json.load(f)
+                api_client = await create_client(token_data)
+                profile = await api_client.get_profile()
+                for child in profile.children or []:
                     children.append({
-                        "id": getattr(child, 'id', None) or getattr(child, 'profile_id', None),
-                        "name": getattr(child, 'name', None) or getattr(child, 'display_name', str(child)),
-                        "institutionName": getattr(child, 'institution_name', '') or '',
+                        "id": child.id,
+                        "name": child.name,
+                        "institutionName": child.institution_name,
                     })
-                print(f"[auth] fetched {len(children)} children via library client", flush=True)
+                print(f"[auth] fetched {len(children)} children: {[c['name'] for c in children]}", flush=True)
+                await api_client.close()
             except Exception as ce:
-                print(f"[auth] getChildren via library failed: {ce} — returning empty list", flush=True)
+                print(f"[auth] getChildren via library failed: {ce}", flush=True)
 
             _sessions[session_id]["status"] = "completed"
             _sessions[session_id].update(tokens)
             _sessions[session_id]["children"] = children
         except AulaAuthenticationError as e:
+            try: os.unlink(token_file)
+            except OSError: pass
             print(f"[auth] AulaAuthenticationError: {e}", flush=True)
             _sessions[session_id]["status"] = "error"
             _sessions[session_id]["error"] = str(e)
@@ -300,11 +306,8 @@ async def start_auth(req: StartRequest) -> StartResponse:
             print(f"[auth] Exception: {e}\n{tb}", flush=True)
             _sessions[session_id]["status"] = "error"
             _sessions[session_id]["error"] = f"Auth error: {e}"
-        finally:
-            try:
-                os.unlink(token_file)
-            except OSError:
-                pass
+            try: os.unlink(token_file)
+            except OSError: pass
 
     asyncio.create_task(run_auth())
     return StartResponse(session_id=session_id)
