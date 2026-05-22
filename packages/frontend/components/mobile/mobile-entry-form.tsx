@@ -241,28 +241,56 @@ export function MobileEntryForm({ draft, onChange, members, calendars }: Props) 
           ))}
         </select>
         {draft.recurrenceFreq === 'WEEKLY' && (
-          <div className="flex gap-1.5 mt-2 flex-wrap">
-            {WEEKDAY_OPTIONS.map(({ code, label }) => {
-              const active = draft.recurrenceDays.includes(code);
-              return (
-                <button
-                  key={code}
-                  type="button"
-                  onClick={() => {
-                    const next = active
-                      ? draft.recurrenceDays.filter(d => d !== code)
-                      : [...draft.recurrenceDays, code];
-                    onChange({ recurrenceDays: next });
-                  }}
-                  className={cn(
-                    'h-8 w-10 rounded-lg text-xs font-semibold transition-colors',
-                    active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
-                  )}
-                >
-                  {label}
-                </button>
-              );
-            })}
+          <div className="mt-2 space-y-2">
+            <div className="flex gap-1.5">
+              {([
+                { label: 'Hverdage', days: ['MO', 'TU', 'WE', 'TH', 'FR'] },
+                { label: 'Weekend', days: ['SA', 'SU'] },
+              ] as const).map(({ label, days }) => {
+                const allActive = days.every(d => draft.recurrenceDays.includes(d));
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => {
+                      const next = allActive
+                        ? draft.recurrenceDays.filter(d => !(days as readonly string[]).includes(d))
+                        : [...new Set([...draft.recurrenceDays, ...days])];
+                      onChange({ recurrenceDays: next });
+                    }}
+                    className={cn(
+                      'h-8 px-3 rounded-lg text-xs font-semibold transition-colors',
+                      allActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              {WEEKDAY_OPTIONS.map(({ code, label }) => {
+                const active = draft.recurrenceDays.includes(code);
+                return (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => {
+                      const next = active
+                        ? draft.recurrenceDays.filter(d => d !== code)
+                        : [...draft.recurrenceDays, code];
+                      onChange({ recurrenceDays: next });
+                    }}
+                    className={cn(
+                      'h-8 w-10 rounded-lg text-xs font-semibold transition-colors',
+                      active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
         {draft.recurrenceFreq !== 'none' && (
