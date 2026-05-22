@@ -4250,7 +4250,8 @@ function resolveWebSocketUrl() {
   if (typeof window === 'undefined') {
     return '';
   }
-  return `ws://${window.location.hostname}:3000/ws`;
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${window.location.hostname}/ws`;
 }
 
 function applyTheme(mode: AppSettings['theme']['mode']) {

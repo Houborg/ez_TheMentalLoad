@@ -190,7 +190,6 @@ services:
         condition: service_healthy
     environment:
       BACKEND_URL: http://mentalload-backend:3000
-      NEXT_PUBLIC_WS_URL: ""
     ports:
       - "4173:4173"
     networks:
