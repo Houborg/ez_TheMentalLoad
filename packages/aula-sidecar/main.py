@@ -24,34 +24,64 @@ import aula.auth.mitid_client as _mitid_mod
 _orig_step4 = None
 
 async def _patched_step4(self: Any, verification_token: str, authorization_code: str) -> Any:
-    from bs4 import BeautifulSoup
-    import httpx as _httpx
-    try:
-        session_uuid = self._client.cookies.get("SessionUuid", "")
-        challenge = self._client.cookies.get("Challenge", "")
-        params = {
-            "__RequestVerificationToken": verification_token,
-            "NewCulture": "",
-            "MitIDUseConfirmed": "True",
-            "MitIDAuthCode": authorization_code,
-            "MitIDAuthenticationCancelled": "",
-            "MitIDCoreClientError": "",
-            "SessionStorageActiveSessionUuid": session_uuid,
-            "SessionStorageActiveChallenge": challenge,
-        }
-        import re
-        mitid_base = "https://nemlog-in.mitid.dk"
-        for name in dir(_mitid_mod):
-            val = getattr(_mitid_mod, name, "")
-            if isinstance(val, str) and "nemlog-in" in val:
-                mitid_base = val
-                break
-        response = await self._client.post(f"{mitid_base}/login/mitid", data=params)
-        print(f"[step4 debug] response.url={response.url}", flush=True)
-        print(f"[step4 debug] response text (first 800): {response.text[:800]}", flush=True)
-    except Exception as e:
-        print(f"[step4 debug] exception: {e}", flush=True)
-    return await _orig_step4(self, verification_token, authorization_code)
+    from bs4 import BeautifulSoup, Tag
+    session_uuid = self._client.cookies.get("SessionUuid", "")
+    challenge = self._client.cookies.get("Challenge", "")
+    params = {
+        "__RequestVerificationToken": verification_token,
+        "NewCulture": "",
+        "MitIDUseConfirmed": "True",
+        "MitIDAuthCode": authorization_code,
+        "MitIDAuthenticationCancelled": "",
+        "MitIDCoreClientError": "",
+        "SessionStorageActiveSessionUuid": session_uuid,
+        "SessionStorageActiveChallenge": challenge,
+    }
+    mitid_base = "https://nemlog-in.mitid.dk"
+    for name in dir(_mitid_mod):
+        val = getattr(_mitid_mod, name, "")
+        if isinstance(val, str) and "nemlog-in" in val:
+            mitid_base = val
+            break
+
+    response = await self._client.post(f"{mitid_base}/login/mitid", data=params)
+    print(f"[step4] url={response.url} status={response.status_code} text={response.text[:300]}", flush=True)
+
+    # Handle inline HTML redirect ("Object moved to /loginoption") — ASP.NET sends this
+    # instead of a real 302, so response.url stays on /login/mitid
+    is_loginoption = (
+        str(response.url).endswith("/loginoption")
+        or "/loginoption" in response.text
+    )
+
+    if is_loginoption:
+        print("[step4] detected /loginoption redirect — handling identity selection", flush=True)
+        # If it's an inline redirect, we need to follow it
+        if not str(response.url).endswith("/loginoption"):
+            loginoption_url = f"{mitid_base}/loginoption"
+            response = await self._client.get(loginoption_url)
+            print(f"[step4] loginoption GET url={response.url} status={response.status_code}", flush=True)
+        soup = await self._handle_login_option_page(response)
+    else:
+        soup = BeautifulSoup(response.text, features="html.parser")
+
+    relay_state_input = soup.find("input", {"name": "RelayState"})
+    saml_response_input = soup.find("input", {"name": "SAMLResponse"})
+
+    print(f"[step4] RelayState found={relay_state_input is not None} SAMLResponse found={saml_response_input is not None}", flush=True)
+
+    if not isinstance(relay_state_input, Tag) or not isinstance(saml_response_input, Tag):
+        # Try following any form action or link
+        from bs4 import BeautifulSoup as BS
+        s2 = BS(response.text, "html.parser")
+        links = [a.get("href") for a in s2.find_all("a") if a.get("href")]
+        print(f"[step4] SAML not found — links on page: {links}", flush=True)
+        raise Exception(f"Could not find SAML data. Page: {response.text[:400]}")
+
+    return {
+        "relay_state": str(relay_state_input.get("value", "")),
+        "saml_response": str(saml_response_input.get("value", "")),
+    }
 
 for _cls_name in dir(_mitid_mod):
     _cls = getattr(_mitid_mod, _cls_name, None)

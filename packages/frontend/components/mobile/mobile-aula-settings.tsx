@@ -26,7 +26,8 @@ function QrDisplay({ sessionId }: { sessionId: string }) {
     try {
       const res = await aulaAuthPoll(sessionId);
       if (res.status === 'qr_ready' && res.qrCodes) {
-        const imgs = (res.qrCodes as string[]).filter(q => q && !q.startsWith('error:'));
+        // Only show the first QR code — MitID app only needs to scan one
+        const imgs = (res.qrCodes as string[]).filter(q => q && !q.startsWith('error:')).slice(0, 1);
         if (imgs.length) setQrImages(imgs);
       }
     } catch { /* ignore */ }
@@ -58,7 +59,7 @@ function QrDisplay({ sessionId }: { sessionId: string }) {
           </div>
         ))}
       </div>
-      <p className="text-xs text-muted-foreground">Åbn MitID-appen og scan {qrImages.length > 1 ? 'begge QR-koder' : 'QR-koden'}</p>
+      <p className="text-xs text-muted-foreground">Åbn MitID-appen og scan QR-koden</p>
     </div>
   );
 }
