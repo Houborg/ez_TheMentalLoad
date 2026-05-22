@@ -9,17 +9,14 @@ const SIDECAR_URL = process.env.AULA_SIDECAR_URL ?? 'http://localhost:8765';
 // The MitID TOKEN auth uses SRP-6a (Secure Remote Password) which is
 // implemented in the nickknissen/aula Python library. We delegate to it.
 
-export async function aulaLogin(
-  username: string,
-  password: string,
-  totpCode: string,
-): Promise<AulaTokens> {
+// Start an APP-method auth session — returns session_id, then poll for QR + completion
+export async function aulaAuthStart(username: string): Promise<string> {
   let res: Response;
   try {
-    res = await fetch(`${SIDECAR_URL}/authenticate`, {
+    res = await fetch(`${SIDECAR_URL}/authenticate/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, totp_code: totpCode }),
+      body: JSON.stringify({ username }),
     });
   } catch (err) {
     throw new AulaLoginError(
@@ -27,34 +24,57 @@ export async function aulaLogin(
       'network_error',
     );
   }
-
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: 'unknown error' })) as { detail?: string };
-    const detail = body.detail ?? 'unknown error';
-    const code =
-      detail.toLowerCase().includes('password') || detail.toLowerCase().includes('credentials')
-        ? 'invalid_credentials'
-        : detail.toLowerCase().includes('token') || detail.toLowerCase().includes('totp')
-          ? 'expired_code'
-          : 'unknown';
-    throw new AulaLoginError(detail, code);
+    const body = await res.json().catch(() => ({ detail: 'unknown' })) as { detail?: string };
+    throw new AulaLoginError(body.detail ?? 'Failed to start auth', 'unknown');
+  }
+  const data = await res.json() as { session_id: string };
+  return data.session_id;
+}
+
+export type AulaPollResult =
+  | { status: 'pending' }
+  | { status: 'qr_ready'; qrCodes: unknown[] }
+  | { status: 'completed'; tokens: AulaTokens }
+  | { status: 'error'; error: string };
+
+export async function aulaAuthPoll(sessionId: string): Promise<AulaPollResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${SIDECAR_URL}/authenticate/poll/${sessionId}`);
+  } catch (err) {
+    throw new AulaLoginError(
+      `Aula sidecar unreachable: ${err instanceof Error ? err.message : String(err)}`,
+      'network_error',
+    );
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: 'unknown' })) as { detail?: string };
+    throw new AulaLoginError(body.detail ?? 'Poll failed', 'unknown');
   }
 
-  const data = await res.json() as { access_token?: string; refresh_token?: string; expires_at?: string };
-
-  if (!data.access_token || !data.refresh_token) {
-    throw new AulaLoginError('Sidecar returned incomplete tokens', 'unknown');
-  }
-
-  const expiresAt = data.expires_at
-    ? new Date(data.expires_at).toISOString()
-    : new Date(Date.now() + 3600 * 1000).toISOString();
-
-  return {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
-    expiresAt,
+  const data = await res.json() as {
+    status: string;
+    qr_codes?: unknown[];
+    access_token?: string;
+    refresh_token?: string;
+    expires_at?: string;
+    error?: string;
   };
+
+  if (data.status === 'completed' && data.access_token && data.refresh_token) {
+    return {
+      status: 'completed',
+      tokens: {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token,
+        expiresAt: data.expires_at ?? new Date(Date.now() + 3600_000).toISOString(),
+      },
+    };
+  }
+  if (data.status === 'qr_ready') return { status: 'qr_ready', qrCodes: data.qr_codes ?? [] };
+  if (data.status === 'error') return { status: 'error', error: data.error ?? 'Unknown error' };
+  return { status: 'pending' };
 }
 
 // ── Token refresh (standard OAuth2, no SRP needed) ───────────────────────────

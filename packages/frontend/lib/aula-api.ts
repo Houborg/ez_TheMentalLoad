@@ -64,14 +64,21 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function aulaVerify(username: string, password: string, code: string): Promise<{
-  children: AulaChild[];
-  tokens: AulaTokens;
-}> {
-  return apiFetch('/v1/aula/auth/verify', {
+export async function aulaAuthStart(username: string): Promise<{ sessionId: string }> {
+  return apiFetch('/v1/aula/auth/start', {
     method: 'POST',
-    body: JSON.stringify({ username, password, code }),
+    body: JSON.stringify({ username }),
   });
+}
+
+export type AulaPollResult =
+  | { status: 'pending' }
+  | { status: 'qr_ready'; qrCodes: unknown[] }
+  | { status: 'completed'; tokens: AulaTokens; children: AulaChild[] }
+  | { status: 'error'; error: string };
+
+export async function aulaAuthPoll(sessionId: string): Promise<AulaPollResult> {
+  return apiFetch(`/v1/aula/auth/poll/${sessionId}`);
 }
 
 export async function aulaConnect(payload: {

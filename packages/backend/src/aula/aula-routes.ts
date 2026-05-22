@@ -1,7 +1,7 @@
 // packages/backend/src/aula/aula-routes.ts
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
-import { aulaLogin } from './aula-auth.js';
+import { aulaAuthStart, aulaAuthPoll } from './aula-auth.js';
 import { AulaClient } from './aula-client.js';
 import { AulaConnectionService } from './aula-connection-service.js';
 import { AulaSyncService } from './aula-sync-service.js';
@@ -9,35 +9,38 @@ import { AulaLoginError, type AulaChildMapping, type AulaSyncOptions, type AulaT
 
 export async function registerAulaRoutes(app: FastifyInstance, pool: Pool): Promise<void> {
 
-  app.post<{
-    Body: { username: string; password: string; code: string };
-  }>('/api/v1/aula/auth/verify', async (req, reply) => {
+  // POST /api/v1/aula/auth/start — start APP-method auth, returns session_id
+  app.post<{ Body: { username: string } }>('/api/v1/aula/auth/start', async (req, reply) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const familyId = (req as any).familyId as string | undefined;
     if (!familyId) return reply.status(401).send({ error: 'unauthorized' });
-
-    const { username, password, code } = req.body;
-    if (!username || !password || !code) {
-      return reply.status(400).send({ error: 'username, password and code are required' });
-    }
-
+    const { username } = req.body;
+    if (!username) return reply.status(400).send({ error: 'username is required' });
     try {
-      const tokens = await aulaLogin(username, password, code);
-      const client = new AulaClient(tokens);
-      const children = await client.getChildren();
-      return reply.send({ children, tokens });
+      const sessionId = await aulaAuthStart(username);
+      return reply.send({ sessionId });
     } catch (err) {
-      if (err instanceof AulaLoginError) {
-        console.error(`[aula/auth/verify] AulaLoginError code=${err.code}: ${err.message}`);
-        const status = err.code === 'expired_code' ? 400 : 401;
-        const message =
-          err.code === 'invalid_credentials' ? 'Forkert brugernavn eller adgangskode' :
-          err.code === 'expired_code' ? 'Koden er udløbet — hent en ny i MitID-appen' :
-          err.message; // return actual error during debugging
-        return reply.status(status).send({ error: message, code: err.code });
+      console.error('[aula/auth/start]', err);
+      return reply.status(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // GET /api/v1/aula/auth/poll/:sessionId — poll sidecar for QR codes / completion
+  app.get<{ Params: { sessionId: string } }>('/api/v1/aula/auth/poll/:sessionId', async (req, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (req as any).familyId as string | undefined;
+    if (!familyId) return reply.status(401).send({ error: 'unauthorized' });
+    try {
+      const result = await aulaAuthPoll(req.params.sessionId);
+      if (result.status === 'completed') {
+        const client = new AulaClient(result.tokens);
+        const children = await client.getChildren();
+        return reply.send({ ...result, children });
       }
-      console.error('[aula/auth/verify] unexpected error:', err);
-      return reply.status(500).send({ error: `Uventet fejl: ${err instanceof Error ? err.message : String(err)}` });
+      return reply.send(result);
+    } catch (err) {
+      console.error('[aula/auth/poll]', err);
+      return reply.status(502).send({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 

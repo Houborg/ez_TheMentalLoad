@@ -6,7 +6,7 @@ import { Loader2, CheckCircle, AlertCircle, RefreshCw, Unlink } from 'lucide-rea
 import type { Member, Calendar } from '@mental-load/contracts';
 import { cn } from '@/lib/utils';
 import {
-  aulaVerify, aulaConnect, aulaGetConnection, aulaDisconnect, aulaTriggerSync,
+  aulaAuthStart, aulaAuthPoll, aulaConnect, aulaGetConnection, aulaDisconnect, aulaTriggerSync,
   type AulaChild, type AulaTokens, type AulaChildMapping, type AulaSyncOptions,
   type AulaConnectionPublic,
 } from '@/lib/aula-api';
@@ -23,10 +23,10 @@ export function MobileAulaSettings({ members, calendars }: Props) {
   const [step, setStep] = useState<Step>(1);
 
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [code, setCode] = useState('');
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [pollStatus, setPollStatus] = useState<'pending' | 'qr_ready' | 'completed' | 'error'>('pending');
   const [verifiedTokens, setVerifiedTokens] = useState<AulaTokens | null>(null);
   const [aulaChildren, setAulaChildren] = useState<AulaChild[]>([]);
 
@@ -52,17 +52,39 @@ export function MobileAulaSettings({ members, calendars }: Props) {
       .catch(() => setConnection(null));
   }, []);
 
-  async function handleVerify() {
+  async function handleStartAuth() {
     setAuthError('');
     setAuthLoading(true);
+    setPollStatus('pending');
     try {
-      const { children, tokens } = await aulaVerify(username, password, code);
-      setVerifiedTokens(tokens);
-      setAulaChildren(children);
-      setStep(3);
+      const { sessionId: sid } = await aulaAuthStart(username);
+      setSessionId(sid);
+      // Poll until approved or error
+      const poll = async () => {
+        try {
+          const result = await aulaAuthPoll(sid);
+          if (result.status === 'completed') {
+            setVerifiedTokens(result.tokens);
+            setAulaChildren(result.children);
+            setPollStatus('completed');
+            setStep(3);
+          } else if (result.status === 'error') {
+            setAuthError(result.error ?? 'Login fejlede');
+            setPollStatus('error');
+            setAuthLoading(false);
+          } else {
+            if (result.status === 'qr_ready') setPollStatus('qr_ready');
+            setTimeout(poll, 2000);
+          }
+        } catch (err) {
+          setAuthError((err as Error).message ?? 'Polling fejlede');
+          setPollStatus('error');
+          setAuthLoading(false);
+        }
+      };
+      setTimeout(poll, 2000);
     } catch (err) {
-      setAuthError((err as Error).message ?? 'Login fejlede');
-    } finally {
+      setAuthError((err as Error).message ?? 'Kunne ikke starte login');
       setAuthLoading(false);
     }
   }
@@ -119,7 +141,9 @@ export function MobileAulaSettings({ members, calendars }: Props) {
       await aulaDisconnect();
       setConnection(null);
       setStep(1);
-      setUsername(''); setPassword(''); setCode('');
+      setUsername('');
+      setSessionId(null);
+      setPollStatus('pending');
       setVerifiedTokens(null);
       setAulaChildren([]);
       setMappings({});
@@ -203,44 +227,54 @@ export function MobileAulaSettings({ members, calendars }: Props) {
   if (step === 2) {
     return (
       <div className="space-y-4 py-2">
-        <div>
-          <label className={LABEL}>MitID brugernavn</label>
-          <input className={INPUT} value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" />
-        </div>
-        <div>
-          <label className={LABEL}>Adgangskode</label>
-          <input className={INPUT} type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
-        </div>
-        <div>
-          <label className={LABEL}>6-cifret kode</label>
-          <input
-            className={INPUT}
-            value={code}
-            onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            inputMode="numeric"
-            maxLength={6}
-            placeholder="000000"
-          />
-          <p className="text-xs text-muted-foreground mt-1">Åbn MitID-appen og find din 6-cifrede kode</p>
-        </div>
-        {authError && (
-          <div className="flex items-center gap-2 text-destructive text-xs">
-            <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-            {authError}
+        {!sessionId ? (
+          <>
+            <div>
+              <label className={LABEL}>MitID brugernavn</label>
+              <input className={INPUT} value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" />
+            </div>
+            {authError && (
+              <div className="flex items-center gap-2 text-destructive text-xs">
+                <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                {authError}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleStartAuth}
+              disabled={authLoading || !username}
+              className="flex items-center gap-2 w-full justify-center rounded-xl bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+            >
+              Næste
+            </button>
+          </>
+        ) : (
+          <div className="space-y-4 text-center py-4">
+            {pollStatus === 'error' ? (
+              <>
+                <AlertCircle className="h-8 w-8 text-destructive mx-auto" />
+                <p className="text-sm text-destructive">{authError}</p>
+                <button type="button" onClick={() => { setSessionId(null); setAuthError(''); setPollStatus('pending'); }}
+                  className="w-full rounded-xl border border-border px-4 py-2.5 text-sm">
+                  Prøv igen
+                </button>
+              </>
+            ) : (
+              <>
+                <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+                <p className="text-sm font-medium">
+                  {pollStatus === 'qr_ready' ? 'Scan QR-koden i MitID-appen' : 'Godkend login i MitID-appen'}
+                </p>
+                <p className="text-xs text-muted-foreground">Åbn MitID-appen på din telefon og godkend anmodningen</p>
+              </>
+            )}
           </div>
         )}
-        <button
-          type="button"
-          onClick={handleVerify}
-          disabled={authLoading || !username || !password || code.length < 6}
-          className="flex items-center gap-2 w-full justify-center rounded-xl bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium disabled:opacity-50"
-        >
-          {authLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-          {authLoading ? 'Logger ind...' : 'Log ind'}
-        </button>
-        <button type="button" onClick={() => setStep(1)} className="w-full text-xs text-muted-foreground py-1">
-          Tilbage
-        </button>
+        {!sessionId && (
+          <button type="button" onClick={() => setStep(1)} className="w-full text-xs text-muted-foreground py-1">
+            Tilbage
+          </button>
+        )}
       </div>
     );
   }
