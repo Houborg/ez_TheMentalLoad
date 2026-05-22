@@ -12,9 +12,10 @@ import {
 } from '@/lib/api';
 import { SettingsHolidays } from '@/components/settings-holidays';
 import { SyncSettings } from '@/components/sync/sync-settings';
+import { MobileAulaSettings } from './mobile-aula-settings';
 import { cn } from '@/lib/utils';
 
-type Tab = 'tema' | 'vejr' | 'familie' | 'kalendere' | 'assistent' | 'helligdage' | 'sync' | 'udvikler';
+type Tab = 'tema' | 'vejr' | 'familie' | 'kalendere' | 'assistent' | 'helligdage' | 'sync' | 'aula' | 'udvikler';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'tema', label: 'Tema' },
@@ -24,6 +25,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'assistent', label: 'Assistent' },
   { id: 'helligdage', label: 'Helligdage' },
   { id: 'sync', label: 'Sync' },
+  { id: 'aula', label: 'Aula' },
   { id: 'udvikler', label: 'Udvikler' },
 ];
 
@@ -95,7 +97,7 @@ export function MobileSettingsContent({ members, calendars, onRefresh }: Props) 
             </div>
           )}
 
-          {loadingSettings && activeTab !== 'familie' && activeTab !== 'kalendere' && activeTab !== 'helligdage' && activeTab !== 'sync' ? (
+          {loadingSettings && activeTab !== 'familie' && activeTab !== 'kalendere' && activeTab !== 'helligdage' && activeTab !== 'sync' && activeTab !== 'aula' ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
@@ -175,6 +177,11 @@ export function MobileSettingsContent({ members, calendars, onRefresh }: Props) 
               {/* ── SYNC ── */}
               {activeTab === 'sync' && (
                 <SyncSettings />
+              )}
+
+              {/* ── AULA ── */}
+              {activeTab === 'aula' && (
+                <MobileAulaSettings members={members} calendars={calendars} />
               )}
 
               {/* ── UDVIKLER ── */}
