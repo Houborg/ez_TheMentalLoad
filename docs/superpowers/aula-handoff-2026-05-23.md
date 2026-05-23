@@ -96,3 +96,35 @@ Check sidecar logs: `docker logs mentalload-aula-sidecar | grep fetch-data`
 4. **Check Aula Data tab** in desktop settings — items should appear grouped by child
 5. If `[fetch-data]` shows errors like "X has no attribute Y", adjust field names in `packages/aula-sidecar/main.py` `fetch_data` function based on what the actual Python objects expose
 6. Once sync works, **flip `importToCalendar` to true** in sync options to see Aula calendar events appear in the main MentalLoad calendar
+
+---
+
+## Resume state — 2026-05-23 (after first deploy)
+
+### What's been fixed since the original handoff
+- `mentalload-aula-sidecar` added to the Testbench-managed compose **and persisted in the Testbench SQLite DB** (`apps.compose_yaml_raw` for slug `mentalload`) so it survives redeploys.
+- Backend wired with `AULA_SIDECAR_URL=http://mentalload-aula-sidecar:8765`.
+- `aula-sync-service.ts` no longer swallows errors; route returns 502 with message; mobile UI shows the real toast.
+- Missing-tokenData case throws an explicit Danish "afbryd og forbind igen" error.
+- `apiFetch` no longer sets `Content-Type: application/json` when DELETE has no body (fix for Fastify `FST_ERR_CTP_EMPTY_JSON_BODY` 400 on disconnect).
+- Sidecar `/fetch-data` rewritten against the real `aula` Python library signatures (we introspected `inspect.signature` and `dataclasses.fields` from inside the container):
+  - `get_calendar_events(institution_profile_ids=[child_id], start=<datetime>, end=<datetime>)`
+  - `get_daily_overview(child_id=<int>)` — per-child, not plural
+  - `get_posts(institution_profile_ids=req.child_ids)`
+  - `get_message_threads()` + `get_messages_for_thread(thread_id=…, limit=1)` for body
+  - Field names: `start_datetime`, `end_datetime`, `content_html`, `timestamp`, etc.
+- DailyOverview's `entry_time` is HH:MM:SS only in this institution; we now stamp overviews with today's UTC date.
+- Backend's `upsertAulaItem` runs `publishedAt` through `Date.parse()` and stores null on any unparseable value.
+
+### What works now (latest verified sync)
+```
+[fetch-data] events=0 overviews=2 posts=0 msgs=20  → POST /fetch-data 200 OK
+```
+
+### What's still broken
+1. **Calendar events return HTTP 403 for every child** — `[fetch-data] calendar events for child <id>: HTTP 403`. Auth was good (we got tokens + 3 children), but the calendar endpoint refuses. May be an institution-level permission, may need a different `start`/`end` format, may need different scopes. Untriaged.
+2. **Posts: 0** — need to check whether `get_posts(institution_profile_ids=…)` is actually returning, or if it's erroring (no log was visible in the last run). Possible Pydantic parse failure.
+3. **Calendar entries don't yet appear in MentalLoad calendar** — `syncOptions.importToCalendar` is still false by default. Once events fetch, flip this.
+
+### Where we are
+User reconnected, sync ran, daily overviews + messages persisted. Calendar/posts pending. Taking a 2h+ break — when picking back up, fix calendar 403 first (probably needs `start`/`end` as ISO with tz, or library has a different per-child calendar endpoint).
