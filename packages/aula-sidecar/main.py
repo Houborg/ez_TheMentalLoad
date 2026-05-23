@@ -352,10 +352,21 @@ async def poll_auth(session_id: str) -> PollResponse:
         return PollResponse(status="pending")
 
 
+def _iso_or_none(v: Any) -> str | None:
+    """Convert datetime/date to ISO string, return None for empty/None."""
+    if v is None:
+        return None
+    if hasattr(v, 'isoformat'):
+        return v.isoformat()
+    s = str(v).strip()
+    return s or None
+
+
 @app.post("/fetch-data")
 async def fetch_data(req: FetchDataRequest) -> dict:
     """Fetch Aula data using the Python library client (bypasses REST API auth issues)."""
     try:
+        from datetime import datetime, timezone
         client = await create_client(req.token_data)
         result: dict[str, Any] = {
             "calendar_events": [],
@@ -364,68 +375,93 @@ async def fetch_data(req: FetchDataRequest) -> dict:
             "messages": [],
         }
 
-        # Calendar events per child
-        if req.child_ids and req.from_date and req.to_date:
+        # Parse date range once
+        start_dt = end_dt = None
+        if req.from_date and req.to_date:
+            try:
+                start_dt = datetime.fromisoformat(req.from_date).replace(tzinfo=timezone.utc) if 'T' not in req.from_date else datetime.fromisoformat(req.from_date)
+                end_dt = datetime.fromisoformat(req.to_date).replace(tzinfo=timezone.utc) if 'T' not in req.to_date else datetime.fromisoformat(req.to_date)
+            except Exception as e:
+                print(f"[fetch-data] date parse error: {e}", flush=True)
+
+        # Calendar events per child (library expects list[int] + datetime)
+        if req.child_ids and start_dt and end_dt:
             for child_id in req.child_ids:
                 try:
                     events = await client.get_calendar_events(
-                        institution_profile_id=child_id,
-                        start=req.from_date,
-                        end=req.to_date,
+                        institution_profile_ids=[child_id],
+                        start=start_dt,
+                        end=end_dt,
                     )
                     for ev in events or []:
                         result["calendar_events"].append({
-                            "id": str(getattr(ev, 'id', '') or getattr(ev, 'event_id', '')),
-                            "title": getattr(ev, 'title', '') or getattr(ev, 'name', ''),
-                            "startTime": str(getattr(ev, 'start_datetime', '') or getattr(ev, 'start', '')),
-                            "endTime": str(getattr(ev, 'end_datetime', '') or getattr(ev, 'end', '')),
-                            "allDay": bool(getattr(ev, 'all_day', False)),
+                            "id": str(getattr(ev, 'id', '')),
+                            "title": getattr(ev, 'title', '') or '',
+                            "startTime": _iso_or_none(getattr(ev, 'start_datetime', None)) or '',
+                            "endTime": _iso_or_none(getattr(ev, 'end_datetime', None)) or '',
+                            "allDay": False,
                             "location": getattr(ev, 'location', None),
                             "childId": child_id,
                         })
                 except Exception as e:
                     print(f"[fetch-data] calendar events for child {child_id}: {e}", flush=True)
 
-        # Daily overview
+        # Daily overview — library is per-child, returns single overview or None
         if req.fetch_daily_overview and req.child_ids:
-            try:
-                overviews = await client.get_daily_overview(institution_profile_ids=req.child_ids)
-                for ov in overviews or []:
+            for child_id in req.child_ids:
+                try:
+                    ov = await client.get_daily_overview(child_id=child_id)
+                    if ov is None:
+                        continue
+                    # No explicit date field — derive from entry_time / check_in_time / today
+                    date_src = (
+                        getattr(ov, 'entry_time', None)
+                        or getattr(ov, 'check_in_time', None)
+                    )
+                    date_val = _iso_or_none(date_src) or datetime.now(timezone.utc).date().isoformat()
                     result["daily_overviews"].append({
-                        "childId": getattr(ov, 'institution_profile_id', None) or getattr(ov, 'child_id', None),
-                        "date": str(getattr(ov, 'date', '')),
+                        "childId": child_id,
+                        "date": date_val[:10] if len(date_val) >= 10 else date_val,
                         "status": getattr(ov, 'status', None),
                     })
-            except Exception as e:
-                print(f"[fetch-data] daily overview: {e}", flush=True)
+                except Exception as e:
+                    print(f"[fetch-data] daily overview for child {child_id}: {e}", flush=True)
 
-        # Posts
-        if req.fetch_posts:
+        # Posts — library requires institution_profile_ids
+        if req.fetch_posts and req.child_ids:
             try:
-                posts = await client.get_posts()
+                posts = await client.get_posts(institution_profile_ids=req.child_ids)
                 for p in posts or []:
                     result["posts"].append({
-                        "id": str(getattr(p, 'id', '') or getattr(p, 'post_id', '')),
+                        "id": str(getattr(p, 'id', '')),
                         "title": getattr(p, 'title', None),
-                        "body": getattr(p, 'content', None) or getattr(p, 'text', None) or '',
-                        "author": getattr(p, 'author_name', None) or getattr(p, 'author', None),
-                        "publishedAt": str(getattr(p, 'published_at', '') or ''),
+                        "body": getattr(p, 'content_html', None) or '',
+                        "author": getattr(p, 'owner', None),
+                        "publishedAt": _iso_or_none(getattr(p, 'timestamp', None) or getattr(p, 'publish_at', None)),
                     })
             except Exception as e:
                 print(f"[fetch-data] posts: {e}", flush=True)
 
-        # Messages
+        # Messages — get threads, fetch latest message body per thread
         if req.fetch_messages:
             try:
                 threads = await client.get_message_threads()
                 for t in threads or []:
+                    tid = str(getattr(t, 'thread_id', '') or getattr(t, 'id', ''))
+                    body = ''
+                    try:
+                        msgs = await client.get_messages_for_thread(thread_id=tid, limit=1)
+                        if msgs:
+                            body = getattr(msgs[0], 'content_html', '') or ''
+                    except Exception as inner:
+                        print(f"[fetch-data] messages for thread {tid}: {inner}", flush=True)
                     result["messages"].append({
-                        "id": str(getattr(t, 'id', '') or getattr(t, 'thread_id', '')),
-                        "threadId": getattr(t, 'id', None),
+                        "id": tid,
+                        "threadId": tid,
                         "subject": getattr(t, 'subject', None),
-                        "body": str(getattr(t, 'latest_message', '') or ''),
+                        "body": body,
                         "author": None,
-                        "sentAt": str(getattr(t, 'latest_message_created_at', '') or ''),
+                        "sentAt": None,
                     })
             except Exception as e:
                 print(f"[fetch-data] messages: {e}", flush=True)

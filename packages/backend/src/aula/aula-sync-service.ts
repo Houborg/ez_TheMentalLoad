@@ -225,13 +225,14 @@ export class AulaSyncService {
     publishedAt: string | null;
     rawJson: unknown;
   }): Promise<boolean> {
+    const publishedAt = item.publishedAt && item.publishedAt.trim() !== '' ? item.publishedAt : null;
     const result = await this.pool.query(
       `insert into aula_items (family_id, aula_id, type, title, body, author, member_id, published_at, raw_json)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        on conflict (family_id, aula_id, type) do nothing`,
       [
         this.familyId, item.aulaId, item.type, item.title, item.body,
-        item.author ?? null, item.memberId, item.publishedAt,
+        item.author ?? null, item.memberId, publishedAt,
         JSON.stringify(item.rawJson),
       ],
     );
