@@ -83,6 +83,7 @@ export async function aulaAuthPoll(sessionId: string): Promise<AulaPollResult> {
 
 export async function aulaConnect(payload: {
   tokens: AulaTokens;
+  tokenData?: Record<string, unknown>;
   aulaUsername: string;
   childMappings: AulaChildMapping[];
   syncOptions: AulaSyncOptions;

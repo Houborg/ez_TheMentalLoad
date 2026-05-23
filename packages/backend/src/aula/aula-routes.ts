@@ -47,6 +47,7 @@ export async function registerAulaRoutes(app: FastifyInstance, pool: Pool): Prom
   app.post<{
     Body: {
       tokens: AulaTokens;
+      tokenData?: Record<string, unknown>;
       aulaUsername: string;
       childMappings: AulaChildMapping[];
       syncOptions: AulaSyncOptions;
@@ -57,7 +58,7 @@ export async function registerAulaRoutes(app: FastifyInstance, pool: Pool): Prom
     const familyId = (req as any).familyId as string | undefined;
     if (!familyId) return reply.status(401).send({ error: 'unauthorized' });
 
-    const { tokens, aulaUsername, childMappings, syncOptions, syncIntervalMinutes } = req.body;
+    const { tokens, tokenData, aulaUsername, childMappings, syncOptions, syncIntervalMinutes } = req.body;
     if (!tokens?.accessToken || !tokens?.refreshToken || !childMappings?.length) {
       return reply.status(400).send({ error: 'tokens and at least one childMapping are required' });
     }
@@ -69,6 +70,7 @@ export async function registerAulaRoutes(app: FastifyInstance, pool: Pool): Prom
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresAt: tokens.expiresAt,
+      tokenData,
       childMappings,
       syncOptions,
       syncIntervalMinutes: syncIntervalMinutes ?? 60,

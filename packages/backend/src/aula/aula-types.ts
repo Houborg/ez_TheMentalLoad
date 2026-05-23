@@ -23,6 +23,7 @@ export interface AulaSyncOptions {
 
 export interface AulaConnection extends AulaTokens {
   id: string;
+  tokenData?: Record<string, unknown>; // full blob from Python FileTokenStorage — needed for sidecar API calls
   isConnected: boolean;
   aulaUsername: string;
   childMappings: AulaChildMapping[];

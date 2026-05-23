@@ -209,6 +209,17 @@ class PollResponse(BaseModel):
     refresh_token: str | None = None
     expires_at: str | None = None
     error: str | None = None
+    token_data: dict[str, Any] | None = None  # full storage blob for future API calls
+
+
+class FetchDataRequest(BaseModel):
+    token_data: dict[str, Any]
+    child_ids: list[int] = []
+    from_date: str = ""
+    to_date: str = ""
+    fetch_posts: bool = True
+    fetch_messages: bool = True
+    fetch_daily_overview: bool = True
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -273,11 +284,13 @@ async def start_auth(req: StartRequest) -> StartResponse:
             if not tokens["access_token"]:
                 raise ValueError(f"Empty access_token. Keys: {list(tokens.keys())}")
 
-            # Fetch children using the library's API client (avoids 410 from our TypeScript REST client)
+            # Read full token_data — needed to reconstruct Python client for future API calls
+            with open(token_file, "r") as f:
+                token_data = json.load(f)
+
+            # Fetch children using the library's API client (avoids 410 from TypeScript REST client)
             children: list[dict[str, Any]] = []
             try:
-                with open(token_file, "r") as f:
-                    token_data = json.load(f)
                 api_client = await create_client(token_data)
                 profile = await api_client.get_profile()
                 for child in profile.children or []:
@@ -294,6 +307,7 @@ async def start_auth(req: StartRequest) -> StartResponse:
             _sessions[session_id]["status"] = "completed"
             _sessions[session_id].update(tokens)
             _sessions[session_id]["children"] = children
+            _sessions[session_id]["token_data"] = token_data  # full blob for future API calls
         except AulaAuthenticationError as e:
             try: os.unlink(token_file)
             except OSError: pass
@@ -327,7 +341,8 @@ async def poll_auth(session_id: str) -> PollResponse:
             access_token=session.get("access_token"),
             refresh_token=session.get("refresh_token"),
             expires_at=session.get("expires_at"),
-            qr_codes=session.get("children"),  # reuse qr_codes field to pass children list
+            qr_codes=session.get("children"),
+            token_data=session.get("token_data"),
         )
     elif status == "qr_ready":
         return PollResponse(status="qr_ready", qr_codes=session.get("qr_codes"))
@@ -335,6 +350,94 @@ async def poll_auth(session_id: str) -> PollResponse:
         return PollResponse(status="error", error=session.get("error", "Unknown error"))
     else:
         return PollResponse(status="pending")
+
+
+@app.post("/fetch-data")
+async def fetch_data(req: FetchDataRequest) -> dict:
+    """Fetch Aula data using the Python library client (bypasses REST API auth issues)."""
+    try:
+        client = await create_client(req.token_data)
+        result: dict[str, Any] = {
+            "calendar_events": [],
+            "daily_overviews": [],
+            "posts": [],
+            "messages": [],
+        }
+
+        # Calendar events per child
+        if req.child_ids and req.from_date and req.to_date:
+            for child_id in req.child_ids:
+                try:
+                    events = await client.get_calendar_events(
+                        institution_profile_id=child_id,
+                        start=req.from_date,
+                        end=req.to_date,
+                    )
+                    for ev in events or []:
+                        result["calendar_events"].append({
+                            "id": str(getattr(ev, 'id', '') or getattr(ev, 'event_id', '')),
+                            "title": getattr(ev, 'title', '') or getattr(ev, 'name', ''),
+                            "startTime": str(getattr(ev, 'start_datetime', '') or getattr(ev, 'start', '')),
+                            "endTime": str(getattr(ev, 'end_datetime', '') or getattr(ev, 'end', '')),
+                            "allDay": bool(getattr(ev, 'all_day', False)),
+                            "location": getattr(ev, 'location', None),
+                            "childId": child_id,
+                        })
+                except Exception as e:
+                    print(f"[fetch-data] calendar events for child {child_id}: {e}", flush=True)
+
+        # Daily overview
+        if req.fetch_daily_overview and req.child_ids:
+            try:
+                overviews = await client.get_daily_overview(institution_profile_ids=req.child_ids)
+                for ov in overviews or []:
+                    result["daily_overviews"].append({
+                        "childId": getattr(ov, 'institution_profile_id', None) or getattr(ov, 'child_id', None),
+                        "date": str(getattr(ov, 'date', '')),
+                        "status": getattr(ov, 'status', None),
+                    })
+            except Exception as e:
+                print(f"[fetch-data] daily overview: {e}", flush=True)
+
+        # Posts
+        if req.fetch_posts:
+            try:
+                posts = await client.get_posts()
+                for p in posts or []:
+                    result["posts"].append({
+                        "id": str(getattr(p, 'id', '') or getattr(p, 'post_id', '')),
+                        "title": getattr(p, 'title', None),
+                        "body": getattr(p, 'content', None) or getattr(p, 'text', None) or '',
+                        "author": getattr(p, 'author_name', None) or getattr(p, 'author', None),
+                        "publishedAt": str(getattr(p, 'published_at', '') or ''),
+                    })
+            except Exception as e:
+                print(f"[fetch-data] posts: {e}", flush=True)
+
+        # Messages
+        if req.fetch_messages:
+            try:
+                threads = await client.get_message_threads()
+                for t in threads or []:
+                    result["messages"].append({
+                        "id": str(getattr(t, 'id', '') or getattr(t, 'thread_id', '')),
+                        "threadId": getattr(t, 'id', None),
+                        "subject": getattr(t, 'subject', None),
+                        "body": str(getattr(t, 'latest_message', '') or ''),
+                        "author": None,
+                        "sentAt": str(getattr(t, 'latest_message_created_at', '') or ''),
+                    })
+            except Exception as e:
+                print(f"[fetch-data] messages: {e}", flush=True)
+
+        await client.close()
+        print(f"[fetch-data] events={len(result['calendar_events'])} overviews={len(result['daily_overviews'])} posts={len(result['posts'])} msgs={len(result['messages'])}", flush=True)
+        return result
+
+    except Exception as e:
+        import traceback
+        print(f"[fetch-data] error: {e}\n{traceback.format_exc()}", flush=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/health")

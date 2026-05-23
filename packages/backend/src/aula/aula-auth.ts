@@ -35,7 +35,7 @@ export async function aulaAuthStart(username: string): Promise<string> {
 export type AulaPollResult =
   | { status: 'pending' }
   | { status: 'qr_ready'; qrCodes: unknown[] }
-  | { status: 'completed'; tokens: AulaTokens; qrCodes?: unknown[] }
+  | { status: 'completed'; tokens: AulaTokens; qrCodes?: unknown[]; tokenData?: Record<string, unknown> }
   | { status: 'error'; error: string };
 
 export async function aulaAuthPoll(sessionId: string): Promise<AulaPollResult> {
@@ -70,7 +70,8 @@ export async function aulaAuthPoll(sessionId: string): Promise<AulaPollResult> {
         refreshToken: data.refresh_token,
         expiresAt: data.expires_at ?? new Date(Date.now() + 3600_000).toISOString(),
       },
-      qrCodes: data.qr_codes ?? [],  // children are passed via qr_codes field from sidecar
+      qrCodes: data.qr_codes ?? [],
+      tokenData: (data as Record<string, unknown>).token_data as Record<string, unknown> | undefined,
     };
   }
   if (data.status === 'qr_ready') return { status: 'qr_ready', qrCodes: data.qr_codes ?? [] };

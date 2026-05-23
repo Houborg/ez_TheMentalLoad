@@ -2,10 +2,44 @@
 import { v4 as uuid } from 'uuid';
 import type { Pool } from 'pg';
 import type { Entry } from '@mental-load/contracts';
-import { AulaClient } from './aula-client.js';
 import { AulaConnectionService } from './aula-connection-service.js';
-import { AulaAuthExpiredError, type AulaCalendarEvent } from './aula-types.js';
+import { AulaAuthExpiredError } from './aula-types.js';
 import { PostgresEntryRepository } from '../repositories/postgres/entry-repository.js';
+
+const SIDECAR_URL = process.env.AULA_SIDECAR_URL ?? 'http://localhost:8765';
+
+interface SidecarEvent {
+  id: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  allDay: boolean;
+  location?: string;
+  childId: number;
+}
+
+interface SidecarPost {
+  id: string;
+  title?: string;
+  body: string;
+  author?: string;
+  publishedAt?: string;
+}
+
+interface SidecarMessage {
+  id: string;
+  threadId?: number;
+  subject?: string;
+  body: string;
+  author?: string;
+  sentAt?: string;
+}
+
+interface SidecarOverview {
+  childId?: number;
+  date: string;
+  status?: string;
+}
 
 export class AulaSyncService {
   constructor(private readonly pool: Pool, private readonly familyId: string) {}
@@ -15,30 +49,61 @@ export class AulaSyncService {
     const conn = await connSvc.getConnection();
 
     if (!conn || !conn.isConnected) return { entriesCreated: 0, itemsCreated: 0 };
+    if (!conn.tokenData) {
+      console.warn(`[aula-sync] family ${this.familyId} has no tokenData — reconnect via Settings → Aula`);
+      return { entriesCreated: 0, itemsCreated: 0 };
+    }
 
     let entriesCreated = 0;
     let itemsCreated = 0;
 
-    const client = new AulaClient(
-      { accessToken: conn.accessToken, refreshToken: conn.refreshToken, expiresAt: conn.expiresAt },
-      async (tokens) => connSvc.updateTokens(tokens),
-    );
-
     try {
+      const from = conn.lastSyncAt
+        ? new Date(conn.lastSyncAt).toISOString().slice(0, 10)
+        : new Date().toISOString().slice(0, 10);
+      const to = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const childIds = conn.childMappings.map(m => m.aulaChildId);
+
+      const res = await fetch(`${SIDECAR_URL}/fetch-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token_data: conn.tokenData,
+          child_ids: conn.syncOptions.calendarEvents ? childIds : [],
+          from_date: from,
+          to_date: to,
+          fetch_posts: conn.syncOptions.posts,
+          fetch_messages: conn.syncOptions.messages,
+          fetch_daily_overview: conn.syncOptions.dailyOverview,
+        }),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        if (res.status === 401 || txt.toLowerCase().includes('auth')) {
+          await connSvc.setConnected(false);
+          throw new AulaAuthExpiredError();
+        }
+        throw new Error(`Sidecar fetch-data failed: ${res.status} ${txt.slice(0, 200)}`);
+      }
+
+      const data = await res.json() as {
+        calendar_events: SidecarEvent[];
+        daily_overviews: SidecarOverview[];
+        posts: SidecarPost[];
+        messages: SidecarMessage[];
+      };
+
+      // Calendar events → entries
       if (conn.syncOptions.calendarEvents) {
-        const from = conn.lastSyncAt
-          ? new Date(conn.lastSyncAt).toISOString().slice(0, 10)
-          : new Date().toISOString().slice(0, 10);
-        const to = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        for (const event of data.calendar_events) {
+          const externalUid = `aula-${event.id}`;
+          const exists = await this.findByExternalUid(externalUid);
+          if (exists) continue;
 
-        for (const mapping of conn.childMappings) {
-          const events = await client.getCalendarEvents(mapping.aulaChildId, from, to);
-          for (const event of events) {
-            const externalUid = `aula-${event.id}`;
-            const exists = await this.findByExternalUid(externalUid);
-            if (exists) continue;
-
-            if (conn.syncOptions.importToCalendar) {
+          if (conn.syncOptions.importToCalendar) {
+            const mapping = conn.childMappings.find(m => m.aulaChildId === event.childId);
+            if (mapping) {
               await this.createEntry(event, externalUid, mapping.mentalLoadMemberId, mapping.calendarId);
               entriesCreated++;
             }
@@ -46,13 +111,12 @@ export class AulaSyncService {
         }
       }
 
+      // Daily overviews → aula_items
       if (conn.syncOptions.dailyOverview) {
-        const childIds = conn.childMappings.map(m => m.aulaChildId);
-        const overviews = await client.getDailyOverview(childIds);
-        for (const ov of overviews) {
+        for (const ov of data.daily_overviews) {
           const mapping = conn.childMappings.find(m => m.aulaChildId === ov.childId);
           const inserted = await this.upsertAulaItem({
-            aulaId: `daily-${ov.childId}-${ov.date}`,
+            aulaId: `daily-${ov.childId ?? 'unknown'}-${ov.date}`,
             type: 'daily_overview',
             title: `Dagsoverblik ${ov.date}`,
             body: ov.status ?? '',
@@ -64,9 +128,9 @@ export class AulaSyncService {
         }
       }
 
+      // Posts → aula_items
       if (conn.syncOptions.posts) {
-        const posts = await client.getPosts(50);
-        for (const post of posts) {
+        for (const post of data.posts) {
           const inserted = await this.upsertAulaItem({
             aulaId: `post-${post.id}`,
             type: 'post',
@@ -81,9 +145,9 @@ export class AulaSyncService {
         }
       }
 
+      // Messages → aula_items
       if (conn.syncOptions.messages) {
-        const messages = await client.getThreads(20);
-        for (const msg of messages) {
+        for (const msg of data.messages) {
           const inserted = await this.upsertAulaItem({
             aulaId: `msg-${msg.id}`,
             type: 'message',
@@ -100,10 +164,10 @@ export class AulaSyncService {
 
       await connSvc.updateSyncStats({ entriesCreated, itemsCreated });
       return { entriesCreated, itemsCreated };
+
     } catch (err) {
       if (err instanceof AulaAuthExpiredError) {
         await connSvc.setConnected(false);
-        // lastSyncAt intentionally not updated — next tick will bail on !isConnected quickly
         console.error(`[aula-sync] auth expired for family ${this.familyId} — disconnected`);
       } else {
         console.error(`[aula-sync] sync error for family ${this.familyId}:`, err);
@@ -121,7 +185,7 @@ export class AulaSyncService {
   }
 
   private async createEntry(
-    event: AulaCalendarEvent,
+    event: SidecarEvent,
     externalUid: string,
     ownerMemberId: string,
     calendarId: string,

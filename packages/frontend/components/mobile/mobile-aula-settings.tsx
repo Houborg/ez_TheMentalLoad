@@ -77,6 +77,7 @@ export function MobileAulaSettings({ members, calendars }: Props) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [pollStatus, setPollStatus] = useState<'pending' | 'qr_ready' | 'completed' | 'error'>('pending');
   const [verifiedTokens, setVerifiedTokens] = useState<AulaTokens | null>(null);
+  const [verifiedTokenData, setVerifiedTokenData] = useState<Record<string, unknown> | null>(null);
   const [aulaChildren, setAulaChildren] = useState<AulaChild[]>([]);
 
   const [mappings, setMappings] = useState<Record<number, { memberId: string; calendarId: string }>>({});
@@ -114,6 +115,7 @@ export function MobileAulaSettings({ members, calendars }: Props) {
           const result = await aulaAuthPoll(sid);
           if (result.status === 'completed') {
             setVerifiedTokens(result.tokens);
+            setVerifiedTokenData((result as any).tokenData ?? null);
             setAulaChildren(result.children);
             setPollStatus('completed');
             setStep(3);
@@ -156,6 +158,7 @@ export function MobileAulaSettings({ members, calendars }: Props) {
 
       const { connection: conn } = await aulaConnect({
         tokens: verifiedTokens,
+        tokenData: verifiedTokenData ?? undefined,
         aulaUsername: username,
         childMappings,
         syncOptions,
