@@ -409,6 +409,167 @@ def _normalize_lessons(child_id: int, source: str, lessons_raw: list[dict[str, A
     return out
 
 
+# ── Weekplan source-specific fetchers ───────────────────────────────────────
+#
+# Profile context contract (probed 2026-05-23):
+#   profile_context["data"]["userId"]                                  → session_uuid (str)
+#   client.get_profile().children[i]._raw["userId"]                    → unilogin per child
+#   client.get_profile().children[i]._raw["institutionProfile"]
+#                       ["institutionCode"]                            → institution code per child
+#
+# Widgets are matched by name (case-insensitive substring) since multiple
+# widgets can share a supplier (UVDATA has several MinUddannelse widgets).
+#
+# If the library API changes and any of these paths break, the per-source
+# fetcher catches the KeyError/AttributeError and returns [].
+
+async def _resolve_session_and_filters(client: Any) -> dict[str, Any] | None:
+    """Pull session_uuid, institution_filter, child unilogins, widget_ids in one shot.
+
+    Returns None if the context can't be loaded — caller skips the whole weekplan block.
+    """
+    try:
+        profile = await client.get_profile()
+        profile_context = await client.get_profile_context()
+        widgets = await client.get_widgets()
+    except Exception as e:
+        print(f"[fetch-data] weekplan: cannot load profile context: {e}", flush=True)
+        return None
+
+    try:
+        session_uuid = profile_context["data"]["userId"]
+    except (KeyError, TypeError) as e:
+        print(f"[fetch-data] weekplan: session_uuid missing from profile_context: {e}", flush=True)
+        return None
+
+    institution_codes: list[str] = []
+    unilogin_by_child_id: dict[int, str] = {}
+    for child in profile.children or []:
+        raw = child._raw or {}
+        unilogin = raw.get("userId", "")
+        if unilogin:
+            unilogin_by_child_id[int(child.id)] = unilogin
+        inst_code = raw.get("institutionProfile", {}).get("institutionCode", "")
+        if inst_code and str(inst_code) not in institution_codes:
+            institution_codes.append(str(inst_code))
+
+    # Match widgets by name substring (case-insensitive)
+    def widget_id_by_name_match(*needles: str) -> str | None:
+        for w in widgets:
+            name = (w.name or "").lower()
+            if any(n in name for n in needles):
+                return w.widget_id
+        return None
+
+    widget_id_by_kind = {
+        "meebook": widget_id_by_name_match("meebook"),
+        "easyiq": widget_id_by_name_match("easyiq"),
+        "ugeplan": widget_id_by_name_match("ugenoter", "ugeplan"),
+    }
+
+    return {
+        "session_uuid": session_uuid,
+        "institution_filter": institution_codes,
+        "unilogin_by_child_id": unilogin_by_child_id,
+        "widget_id_by_kind": widget_id_by_kind,
+    }
+
+
+async def _fetch_meebook(client: Any, ctx: dict[str, Any], child_id: int, week: str) -> list[dict[str, Any]]:
+    unilogin = ctx["unilogin_by_child_id"].get(child_id)
+    if not unilogin:
+        return []
+    try:
+        plans = await client.get_meebook_weekplan(
+            child_filter=[unilogin],
+            institution_filter=ctx["institution_filter"],
+            week=week,
+            session_uuid=ctx["session_uuid"],
+        )
+    except Exception as e:
+        print(f"[fetch-data] weekplan meebook child {child_id}: {e}", flush=True)
+        return []
+    out: list[dict[str, Any]] = []
+    for plan in plans or []:
+        for day in plan.week_plan or []:
+            for task in day.tasks or []:
+                out.append({
+                    "date": day.date,
+                    "title": task.title or task.type,
+                    "description": task.content or None,
+                    # Meebook does not carry per-lesson times
+                })
+    return out
+
+
+async def _fetch_easyiq(client: Any, ctx: dict[str, Any], child_id: int, week: str) -> list[dict[str, Any]]:
+    unilogin = ctx["unilogin_by_child_id"].get(child_id)
+    if not unilogin:
+        return []
+    try:
+        appts = await client.get_easyiq_weekplan(
+            week=week,
+            session_uuid=ctx["session_uuid"],
+            institution_filter=ctx["institution_filter"],
+            child_id=unilogin,
+        )
+    except Exception as e:
+        print(f"[fetch-data] weekplan easyiq child {child_id}: {e}", flush=True)
+        return []
+    out: list[dict[str, Any]] = []
+    for a in appts or []:
+        start = a.start or ""
+        end = a.end or ""
+        if "T" in start:
+            date_part, _, start_time = start.partition("T")
+        else:
+            date_part, start_time = start[:10], ""
+        if "T" in end:
+            _, _, end_time = end.partition("T")
+        else:
+            end_time = ""
+        out.append({
+            "date": date_part,
+            "startTime": start_time[:5] if start_time else None,
+            "endTime": end_time[:5] if end_time else None,
+            "title": a.title or "",
+            "description": a.description or None,
+        })
+    return out
+
+
+async def _fetch_ugeplan(client: Any, ctx: dict[str, Any], child_id: int, week: str) -> list[dict[str, Any]]:
+    unilogin = ctx["unilogin_by_child_id"].get(child_id)
+    widget_id = ctx["widget_id_by_kind"].get("ugeplan")
+    if not (unilogin and widget_id):
+        return []
+    try:
+        persons = await client.get_ugeplan(
+            widget_id=widget_id,
+            child_filter=[unilogin],
+            institution_filter=ctx["institution_filter"],
+            week=week,
+            session_uuid=ctx["session_uuid"],
+        )
+    except Exception as e:
+        print(f"[fetch-data] weekplan ugeplan child {child_id}: {e}", flush=True)
+        return []
+    # MUWeeklyPerson does not expose structured lessons — only a weekly letter blob.
+    # Treat the whole weekly letter as a single "lesson" tagged for Monday of the target week.
+    out: list[dict[str, Any]] = []
+    target_monday_iso = ctx["target_monday_iso"]
+    for p in persons or []:
+        raw = p._raw or {}
+        body = raw.get("indhold") or raw.get("content") or ""
+        if body:
+            out.append({
+                "date": target_monday_iso,
+                "title": "Ugeplan (MinUddannelse)",
+                "description": body,
+            })
+    return out
+
+
 @app.post("/fetch-data")
 async def fetch_data(req: FetchDataRequest) -> dict:
     """Fetch Aula data using the Python library client (bypasses REST API auth issues)."""
