@@ -53,10 +53,11 @@ export interface AulaItem {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
+  const headers: Record<string, string> = { ...(init?.headers as Record<string, string> ?? {}) };
+  if (init?.body != null && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const res = await fetch(`/api${path}`, { ...init, headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText })) as { error?: string; code?: string };
     throw Object.assign(new Error(err.error ?? 'Request failed'), { status: res.status, code: err.code });
