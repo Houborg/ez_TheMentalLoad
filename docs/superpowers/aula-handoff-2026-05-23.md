@@ -121,6 +121,21 @@ Check sidecar logs: `docker logs mentalload-aula-sidecar | grep fetch-data`
 [fetch-data] events=0 overviews=2 posts=0 msgs=20  → POST /fetch-data 200 OK
 ```
 
+### Item 3 (weekplan) shipped 2026-05-23
+- `daily_overview` data path replaced with `weekplan_lesson`. Sidecar tries Meebook → EasyIQ → MinUddannelse Ugeplan and emits one normalized lesson dict per child per day. Backend stores them in `aula_items` with type `weekplan_lesson` and `published_at = lesson.date` (date-only; the real start/end times are preserved in `raw_json`).
+- See [docs/superpowers/specs/2026-05-23-aula-weekplan-design.md](specs/2026-05-23-aula-weekplan-design.md) and [docs/superpowers/plans/2026-05-23-aula-weekplan.md](plans/2026-05-23-aula-weekplan.md).
+- Verified via direct `runSync` invocation inside `mentalload-backend` (8.2s end-to-end, 200 OK, `events=0 weekplan=0 posts=0 msgs=20`).
+- Old 2 `daily_overview` rows remain in `aula_items` as dead data — item 2 will clear them.
+
+### Why weekplan = 0 for this account
+At Englystskolen:
+- Meebook: not installed → API returns 400.
+- EasyIQ: only an "EasyIQ Links" SSO widget, not a weekplan widget → 400.
+- Ugeplan: matched the right widget (`0029 MinUddannelse – Ugenoter`) but `_raw["indhold"]` was empty for the target week. May need to look at `get_easyiq_weekplan` with a different widget_id, or wait until the next school week to retry, or pivot to `get_mu_tasks` (homework) which is item 5 anyway.
+
+### Manual-sync 502s through Cloudflare (open)
+Clicking "Synkroniser nu" via the deployed UI returns `502 Bad Gateway` from Cloudflare. Cloudflared logs show `Incoming request ended abruptly: context canceled`. Backend logs show NO request received. Direct calls work fine (8s). Hypothesis: the request is dying somewhere between Cloudflare → cloudflared → frontend → backend. Possibly a stale session cookie, the Next.js proxy choking on a POST with empty body, or a tunnel layer issue. Not blocking the data pipeline — the worker auto-syncs every 60 min on its own — but needs investigation before the manual button is usable again.
+
 ### What's still broken
 1. **Calendar events return HTTP 403 for every child** — `[fetch-data] calendar events for child <id>: HTTP 403`. Auth was good (we got tokens + 3 children), but the calendar endpoint refuses. May be an institution-level permission, may need a different `start`/`end` format, may need different scopes. Untriaged.
 2. **Posts: 0** — need to check whether `get_posts(institution_profile_ids=…)` is actually returning, or if it's erroring (no log was visible in the last run). Possible Pydantic parse failure.
