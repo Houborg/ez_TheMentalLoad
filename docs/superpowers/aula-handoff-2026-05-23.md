@@ -127,11 +127,13 @@ Check sidecar logs: `docker logs mentalload-aula-sidecar | grep fetch-data`
 - Verified via direct `runSync` invocation inside `mentalload-backend` (8.2s end-to-end, 200 OK, `events=0 weekplan=0 posts=0 msgs=20`).
 - Old 2 `daily_overview` rows remain in `aula_items` as dead data — item 2 will clear them.
 
-### Why weekplan = 0 for this account
+### Why weekplan was initially 0 for this account (now fixed)
 At Englystskolen:
 - Meebook: not installed → API returns 400.
 - EasyIQ: only an "EasyIQ Links" SSO widget, not a weekplan widget → 400.
-- Ugeplan: matched the right widget (`0029 MinUddannelse – Ugenoter`) but `_raw["indhold"]` was empty for the target week. May need to look at `get_easyiq_weekplan` with a different widget_id, or wait until the next school week to retry, or pivot to `get_mu_tasks` (homework) which is item 5 anyway.
+- Ugeplan: matched the right widget (`0029 MinUddannelse – Ugenoter`) AND returns data, but the actual `indhold` lives nested at `_raw["institutioner"][i]["ugebreve"][j]["indhold"]` (Danish field names), NOT at the top level as our first pass assumed.
+- Fixed in commit `82d99f3` — now produces e.g. `Ugeplan 1D (Englystskolen)` rows with full HTML body. Also added migration `014_aula_items_weekplan_lesson.sql` to extend the `aula_items.type` CHECK constraint.
+- Emil's 4C and Saga's daycare have no ugebreve published yet (real-world gap, not a bug).
 
 ### Manual-sync 502s through Cloudflare (open)
 Clicking "Synkroniser nu" via the deployed UI returns `502 Bad Gateway` from Cloudflare. Cloudflared logs show `Incoming request ended abruptly: context canceled`. Backend logs show NO request received. Direct calls work fine (8s). Hypothesis: the request is dying somewhere between Cloudflare → cloudflared → frontend → backend. Possibly a stale session cookie, the Next.js proxy choking on a POST with empty body, or a tunnel layer issue. Not blocking the data pipeline — the worker auto-syncs every 60 min on its own — but needs investigation before the manual button is usable again.
