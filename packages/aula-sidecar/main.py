@@ -220,7 +220,7 @@ class FetchDataRequest(BaseModel):
     to_date: str = ""
     fetch_posts: bool = True
     fetch_messages: bool = True
-    fetch_daily_overview: bool = True
+    fetch_weekplan: bool = True
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -581,7 +581,7 @@ async def fetch_data(req: FetchDataRequest) -> dict:
         client = await create_client(req.token_data)
         result: dict[str, Any] = {
             "calendar_events": [],
-            "daily_overviews": [],
+            "weekplan_lessons": [],
             "posts": [],
             "messages": [],
         }
@@ -617,23 +617,26 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                 except Exception as e:
                     print(f"[fetch-data] calendar events for child {child_id}: {e}", flush=True)
 
-        # Daily overview — library is per-child, returns single overview or None.
-        # Model has no explicit date; entry/check_in_time are TIME-only in some institutions.
-        # We always tag overviews with today's date so the upstream timestamptz insert is valid.
-        if req.fetch_daily_overview and req.child_ids:
-            today_iso = datetime.now(timezone.utc).date().isoformat()
-            for child_id in req.child_ids:
-                try:
-                    ov = await client.get_daily_overview(child_id=child_id)
-                    if ov is None:
-                        continue
-                    result["daily_overviews"].append({
-                        "childId": child_id,
-                        "date": today_iso,
-                        "status": getattr(ov, 'status', None),
-                    })
-                except Exception as e:
-                    print(f"[fetch-data] daily overview for child {child_id}: {e}", flush=True)
+        # Weekplan — replaces daily_overview (item 3 from MentalLoad-Issues)
+        if req.fetch_weekplan and req.child_ids:
+            week, monday = _target_week_iso()
+            ctx_extras = await _resolve_session_and_filters(client)
+            if ctx_extras is None:
+                print("[fetch-data] weekplan: skipped (no profile context)", flush=True)
+            else:
+                ctx_extras["target_monday_iso"] = monday.isoformat()
+                for child_id in req.child_ids:
+                    for source_name, fetcher in (
+                        ("meebook", _fetch_meebook),
+                        ("easyiq", _fetch_easyiq),
+                        ("ugeplan", _fetch_ugeplan),
+                    ):
+                        lessons_raw = await fetcher(client, ctx_extras, child_id, week)
+                        if lessons_raw:
+                            result["weekplan_lessons"].extend(
+                                _normalize_lessons(child_id, source_name, lessons_raw)
+                            )
+                            break
 
         # Posts — library requires institution_profile_ids
         if req.fetch_posts and req.child_ids:
@@ -675,7 +678,7 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                 print(f"[fetch-data] messages: {e}", flush=True)
 
         await client.close()
-        print(f"[fetch-data] events={len(result['calendar_events'])} overviews={len(result['daily_overviews'])} posts={len(result['posts'])} msgs={len(result['messages'])}", flush=True)
+        print(f"[fetch-data] events={len(result['calendar_events'])} weekplan={len(result['weekplan_lessons'])} posts={len(result['posts'])} msgs={len(result['messages'])}", flush=True)
         return result
 
     except Exception as e:
