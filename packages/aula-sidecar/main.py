@@ -363,7 +363,7 @@ def _iso_or_none(v: Any) -> str | None:
     return s or None
 
 
-def _target_week_iso() -> tuple[str, "date"]:
+def _target_week_iso() -> tuple[str, date]:
     """Return ('YYYY-Wnn', monday_date) for the relevant school week.
 
     Mon-Fri  → current week.
@@ -395,14 +395,14 @@ def _normalize_lessons(child_id: int, source: str, lessons_raw: list[dict[str, A
     out: list[dict[str, Any]] = []
     for day, items in by_day.items():
         items.sort(key=lambda x: (x.get("startTime") or "99:99", x.get("title") or ""))
-        for seq, l in enumerate(items):
+        for seq, lesson in enumerate(items):
             out.append({
                 "childId": child_id,
                 "date": day,
-                "startTime": l.get("startTime"),
-                "endTime": l.get("endTime"),
-                "title": l.get("title") or "",
-                "description": l.get("description"),
+                "startTime": lesson.get("startTime"),
+                "endTime": lesson.get("endTime"),
+                "title": lesson.get("title") or "",
+                "description": lesson.get("description"),
                 "source": source,
                 "seq": seq,
             })
