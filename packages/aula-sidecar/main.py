@@ -556,8 +556,11 @@ async def _fetch_ugeplan(client: Any, ctx: dict[str, Any], child_id: int, week: 
         return []
     # MUWeeklyPerson does not expose structured lessons — only a weekly letter blob.
     # Treat the whole weekly letter as a single "lesson" tagged for Monday of the target week.
+    target_monday_iso = ctx.get("target_monday_iso")
+    if not target_monday_iso:
+        print(f"[fetch-data] weekplan ugeplan child {child_id}: target_monday_iso missing from ctx", flush=True)
+        return []
     out: list[dict[str, Any]] = []
-    target_monday_iso = ctx["target_monday_iso"]
     for p in persons or []:
         raw = p._raw or {}
         body = raw.get("indhold") or raw.get("content") or ""
