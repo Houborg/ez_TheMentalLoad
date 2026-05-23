@@ -51,7 +51,7 @@ export class AulaSyncService {
     if (!conn || !conn.isConnected) return { entriesCreated: 0, itemsCreated: 0 };
     if (!conn.tokenData) {
       console.warn(`[aula-sync] family ${this.familyId} has no tokenData — reconnect via Settings → Aula`);
-      return { entriesCreated: 0, itemsCreated: 0 };
+      throw new Error('Aula-forbindelsen mangler tokenData — afbryd og forbind igen via Indstillinger → Aula');
     }
 
     let entriesCreated = 0;
