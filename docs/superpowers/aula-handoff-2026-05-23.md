@@ -63,6 +63,7 @@ Check sidecar logs: `docker logs mentalload-aula-sidecar | grep fetch-data`
 
 - **Source clone (read by Docker build):** `/repo/TestBench/data/apps/mentalload/source` (inside testbench-webhook container)
 - **Compose file (managed by Testbench):** `~/testbench/TestBench/data/apps/mentalload/docker-compose.yml`
+- **Source of truth for that compose file:** SQLite DB at `/data/testbench.db` inside the `testbench` container, table `apps`, column `compose_yaml_raw` (slug = `mentalload`). Testbench regenerates the on-disk file from this column via `injectNetwork()` on every redeploy, so **hand-edits to the on-disk file are ephemeral** — always update the DB. Use `docker exec testbench node --experimental-sqlite` to read/write.
 - **To deploy after git push:**
   ```bash
   ssh mhouborg@192.168.1.252 "
