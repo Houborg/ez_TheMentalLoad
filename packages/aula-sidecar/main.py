@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import time
+from datetime import date
 from typing import Any
 from uuid import uuid4
 
@@ -360,6 +361,52 @@ def _iso_or_none(v: Any) -> str | None:
         return v.isoformat()
     s = str(v).strip()
     return s or None
+
+
+def _target_week_iso() -> tuple[str, "date"]:
+    """Return ('YYYY-Wnn', monday_date) for the relevant school week.
+
+    Mon-Fri  → current week.
+    Sat-Sun  → next week (so we always show an upcoming school week, never weekend dead-air).
+    """
+    from datetime import datetime, timedelta, timezone
+    today = datetime.now(timezone.utc).date()
+    if today.weekday() <= 4:  # 0=Mon..4=Fri
+        monday = today - timedelta(days=today.weekday())
+    else:
+        monday = today + timedelta(days=(7 - today.weekday()))
+    iso = monday.isocalendar()
+    return f"{iso.year}-W{iso.week:02d}", monday
+
+
+def _normalize_lessons(child_id: int, source: str, lessons_raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert source-specific lesson dicts into the canonical sidecar shape.
+
+    Input items are already pre-shaped by the source-specific fetch helpers
+    (Task 3) — this just sorts and assigns the seq field.
+
+    Sort key within (childId, date): (startTime ?? '99:99', title) — keeps
+    aula_id stable across resyncs regardless of library iteration order.
+    """
+    by_day: dict[str, list[dict[str, Any]]] = {}
+    for lesson in lessons_raw:
+        by_day.setdefault(lesson["date"], []).append(lesson)
+
+    out: list[dict[str, Any]] = []
+    for day, items in by_day.items():
+        items.sort(key=lambda x: (x.get("startTime") or "99:99", x.get("title") or ""))
+        for seq, l in enumerate(items):
+            out.append({
+                "childId": child_id,
+                "date": day,
+                "startTime": l.get("startTime"),
+                "endTime": l.get("endTime"),
+                "title": l.get("title") or "",
+                "description": l.get("description"),
+                "source": source,
+                "seq": seq,
+            })
+    return out
 
 
 @app.post("/fetch-data")
