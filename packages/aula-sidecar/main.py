@@ -633,6 +633,7 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     ):
                         lessons_raw = await fetcher(client, ctx_extras, child_id, week)
                         if lessons_raw:
+                            print(f"[fetch-data] weekplan child={child_id} source={source_name} lessons={len(lessons_raw)}", flush=True)
                             result["weekplan_lessons"].extend(
                                 _normalize_lessons(child_id, source_name, lessons_raw)
                             )
