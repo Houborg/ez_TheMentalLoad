@@ -555,7 +555,9 @@ async def _fetch_ugeplan(client: Any, ctx: dict[str, Any], child_id: int, week: 
         print(f"[fetch-data] weekplan ugeplan child {child_id}: {e}", flush=True)
         return []
     # MUWeeklyPerson does not expose structured lessons — only a weekly letter blob.
-    # Treat the whole weekly letter as a single "lesson" tagged for Monday of the target week.
+    # The actual content lives at _raw["institutioner"][i]["ugebreve"][j]["indhold"]
+    # (Danish field names: institutioner=institutions, ugebreve=weekly-letters, indhold=content).
+    # Treat each ugebrev as a single "lesson" tagged for Monday of the target week.
     target_monday_iso = ctx.get("target_monday_iso")
     if not target_monday_iso:
         print(f"[fetch-data] weekplan ugeplan child {child_id}: target_monday_iso missing from ctx", flush=True)
@@ -563,13 +565,21 @@ async def _fetch_ugeplan(client: Any, ctx: dict[str, Any], child_id: int, week: 
     out: list[dict[str, Any]] = []
     for p in persons or []:
         raw = p._raw or {}
-        body = raw.get("indhold") or raw.get("content") or ""
-        if body:
-            out.append({
-                "date": target_monday_iso,
-                "title": "Ugeplan (MinUddannelse)",
-                "description": body,
-            })
+        for inst in raw.get("institutioner", []) or []:
+            inst_name = inst.get("navn", "")
+            for ub in inst.get("ugebreve", []) or []:
+                body = ub.get("indhold") or ""
+                if not body:
+                    continue
+                klass = ub.get("tilknytningNavn", "")
+                title = f"Ugeplan {klass}" if klass else "Ugeplan"
+                if inst_name:
+                    title = f"{title} ({inst_name})"
+                out.append({
+                    "date": target_monday_iso,
+                    "title": title,
+                    "description": body,
+                })
     return out
 
 
