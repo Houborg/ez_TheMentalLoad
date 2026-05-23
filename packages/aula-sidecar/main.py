@@ -406,22 +406,19 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                 except Exception as e:
                     print(f"[fetch-data] calendar events for child {child_id}: {e}", flush=True)
 
-        # Daily overview — library is per-child, returns single overview or None
+        # Daily overview — library is per-child, returns single overview or None.
+        # Model has no explicit date; entry/check_in_time are TIME-only in some institutions.
+        # We always tag overviews with today's date so the upstream timestamptz insert is valid.
         if req.fetch_daily_overview and req.child_ids:
+            today_iso = datetime.now(timezone.utc).date().isoformat()
             for child_id in req.child_ids:
                 try:
                     ov = await client.get_daily_overview(child_id=child_id)
                     if ov is None:
                         continue
-                    # No explicit date field — derive from entry_time / check_in_time / today
-                    date_src = (
-                        getattr(ov, 'entry_time', None)
-                        or getattr(ov, 'check_in_time', None)
-                    )
-                    date_val = _iso_or_none(date_src) or datetime.now(timezone.utc).date().isoformat()
                     result["daily_overviews"].append({
                         "childId": child_id,
-                        "date": date_val[:10] if len(date_val) >= 10 else date_val,
+                        "date": today_iso,
                         "status": getattr(ov, 'status', None),
                     })
                 except Exception as e:

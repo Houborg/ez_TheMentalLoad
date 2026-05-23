@@ -8,6 +8,15 @@ import { PostgresEntryRepository } from '../repositories/postgres/entry-reposito
 
 const SIDECAR_URL = process.env.AULA_SIDECAR_URL ?? 'http://localhost:8765';
 
+function parsePublishedAt(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
 interface SidecarEvent {
   id: string;
   title: string;
@@ -225,7 +234,7 @@ export class AulaSyncService {
     publishedAt: string | null;
     rawJson: unknown;
   }): Promise<boolean> {
-    const publishedAt = item.publishedAt && item.publishedAt.trim() !== '' ? item.publishedAt : null;
+    const publishedAt = parsePublishedAt(item.publishedAt);
     const result = await this.pool.query(
       `insert into aula_items (family_id, aula_id, type, title, body, author, member_id, published_at, raw_json)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
