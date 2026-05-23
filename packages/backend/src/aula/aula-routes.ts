@@ -5,7 +5,7 @@ import { aulaAuthStart, aulaAuthPoll } from './aula-auth.js';
 import { AulaClient } from './aula-client.js';
 import { AulaConnectionService } from './aula-connection-service.js';
 import { AulaSyncService } from './aula-sync-service.js';
-import { AulaLoginError, type AulaChildMapping, type AulaSyncOptions, type AulaTokens } from './aula-types.js';
+import { AulaAuthExpiredError, AulaLoginError, type AulaChildMapping, type AulaSyncOptions, type AulaTokens } from './aula-types.js';
 
 export async function registerAulaRoutes(app: FastifyInstance, pool: Pool): Promise<void> {
 
@@ -106,8 +106,14 @@ export async function registerAulaRoutes(app: FastifyInstance, pool: Pool): Prom
     if (!familyId) return reply.status(401).send({ error: 'unauthorized' });
 
     const svc = new AulaSyncService(pool, familyId);
-    const stats = await svc.runSync();
-    return reply.send({ ok: true, stats });
+    try {
+      const stats = await svc.runSync();
+      return reply.send({ ok: true, stats });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const code = err instanceof AulaAuthExpiredError ? 'aula_auth_expired' : 'aula_sync_failed';
+      return reply.status(502).send({ error: message, code });
+    }
   });
 
   app.get<{

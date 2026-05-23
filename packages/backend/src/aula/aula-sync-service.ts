@@ -172,7 +172,7 @@ export class AulaSyncService {
       } else {
         console.error(`[aula-sync] sync error for family ${this.familyId}:`, err);
       }
-      return { entriesCreated, itemsCreated };
+      throw err;
     }
   }
 

@@ -180,8 +180,9 @@ export function MobileAulaSettings({ members, calendars }: Props) {
       setSyncMsg(`Synkroniseret: +${stats.entriesCreated} begivenheder, +${stats.itemsCreated} opslag`);
       const { connection: conn } = await aulaGetConnection();
       setConnection(conn);
-    } catch {
-      setSyncMsg('Synkronisering fejlede');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSyncMsg(`Synkronisering fejlede: ${msg}`);
     } finally {
       setSyncing(false);
     }
