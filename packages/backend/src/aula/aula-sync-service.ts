@@ -44,10 +44,15 @@ interface SidecarMessage {
   sentAt?: string;
 }
 
-interface SidecarOverview {
-  childId?: number;
-  date: string;
-  status?: string;
+interface SidecarWeekplanLesson {
+  childId: number;
+  date: string;            // 'YYYY-MM-DD'
+  startTime?: string | null;
+  endTime?: string | null;
+  title: string;
+  description?: string | null;
+  source: 'meebook' | 'easyiq' | 'ugeplan';
+  seq: number;
 }
 
 export class AulaSyncService {
@@ -83,7 +88,7 @@ export class AulaSyncService {
           to_date: to,
           fetch_posts: conn.syncOptions.posts,
           fetch_messages: conn.syncOptions.messages,
-          fetch_daily_overview: conn.syncOptions.dailyOverview,
+          fetch_weekplan: conn.syncOptions.dailyOverview,
         }),
       });
 
@@ -98,7 +103,7 @@ export class AulaSyncService {
 
       const data = await res.json() as {
         calendar_events: SidecarEvent[];
-        daily_overviews: SidecarOverview[];
+        weekplan_lessons: SidecarWeekplanLesson[];
         posts: SidecarPost[];
         messages: SidecarMessage[];
       };
@@ -120,18 +125,22 @@ export class AulaSyncService {
         }
       }
 
-      // Daily overviews → aula_items
+      // Weekplan lessons → aula_items (one row per lesson per child per day)
       if (conn.syncOptions.dailyOverview) {
-        for (const ov of data.daily_overviews) {
-          const mapping = conn.childMappings.find(m => m.aulaChildId === ov.childId);
+        for (const lesson of data.weekplan_lessons) {
+          const mapping = conn.childMappings.find(m => m.aulaChildId === lesson.childId);
+          if (!mapping) continue;
+          const aulaId = `weekplan-${lesson.childId}-${lesson.date}-${lesson.seq}`;
+          const startTime = lesson.startTime ?? '00:00';
+          const publishedAt = `${lesson.date}T${startTime}:00Z`;
           const inserted = await this.upsertAulaItem({
-            aulaId: `daily-${ov.childId ?? 'unknown'}-${ov.date}`,
-            type: 'daily_overview',
-            title: `Dagsoverblik ${ov.date}`,
-            body: ov.status ?? '',
-            memberId: mapping?.mentalLoadMemberId ?? null,
-            publishedAt: ov.date,
-            rawJson: ov,
+            aulaId,
+            type: 'weekplan_lesson',
+            title: lesson.title,
+            body: lesson.description ?? '',
+            memberId: mapping.mentalLoadMemberId,
+            publishedAt,
+            rawJson: lesson,
           });
           if (inserted) itemsCreated++;
         }
