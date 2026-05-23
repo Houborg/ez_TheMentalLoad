@@ -387,3 +387,25 @@ textarea {
     height: 44px;
   }
 }
+
+/* Aula sanitized HTML — minimal prose spacing for messages + ugeplan content */
+.aula-prose p {
+  margin: 0 0 0.5em;
+}
+.aula-prose p:last-child {
+  margin-bottom: 0;
+}
+.aula-prose ul,
+.aula-prose ol {
+  margin: 0.25em 0 0.5em 1.25em;
+}
+.aula-prose li {
+  margin-bottom: 0.15em;
+}
+.aula-prose a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.aula-prose br + br {
+  display: none;
+}

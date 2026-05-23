@@ -1,24 +1,41 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { RefreshCw, MessageSquare, Calendar, Newspaper, User } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import DOMPurify from 'dompurify';
+import { RefreshCw, MessageSquare, Calendar, Newspaper, User, BookOpen } from 'lucide-react';
 import type { Member } from '@mental-load/contracts';
 import { aulaGetItems, aulaGetConnection, type AulaItem, type AulaConnectionPublic } from '@/lib/aula-api';
 import { cn } from '@/lib/utils';
 
-type ItemType = 'post' | 'message' | 'daily_overview';
+type ItemType = 'post' | 'message' | 'daily_overview' | 'weekplan_lesson';
 
 const TYPE_LABELS: Record<ItemType, string> = {
   post: 'Opslag',
   message: 'Beskeder',
   daily_overview: 'Dagsoverblik',
+  weekplan_lesson: 'Ugeplan',
 };
 
 const TYPE_ICONS: Record<ItemType, React.ReactNode> = {
   post: <Newspaper className="h-3.5 w-3.5" />,
   message: <MessageSquare className="h-3.5 w-3.5" />,
   daily_overview: <Calendar className="h-3.5 w-3.5" />,
+  weekplan_lesson: <BookOpen className="h-3.5 w-3.5" />,
 };
+
+const SANITIZE_CONFIG = {
+  ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'a', 'ul', 'ol', 'li', 'span', 'div'],
+  ALLOWED_ATTR: ['href', 'target', 'rel'],
+  FORBID_ATTR: ['style', 'class'],
+};
+
+function looksLikeHtml(s: string): boolean {
+  return /<\s*(p|br|div|span|strong|em|ul|ol|li|a)\b/i.test(s);
+}
+
+function cleanAulaHtml(html: string): string {
+  return DOMPurify.sanitize(html, SANITIZE_CONFIG).trim();
+}
 
 function formatDate(iso?: string) {
   if (!iso) return '—';
@@ -31,12 +48,19 @@ function formatDate(iso?: string) {
 
 function ItemCard({ item, memberName }: { item: AulaItem; memberName?: string }) {
   const [expanded, setExpanded] = useState(false);
+  const body = item.body ?? '';
+  const isHtml = looksLikeHtml(body);
+  const cleanedHtml = useMemo(() => (isHtml ? cleanAulaHtml(body) : ''), [body, isHtml]);
+
+  // Decide whether to clamp: HTML uses CSS line-clamp on the wrapper; plain text uses the same.
+  const showToggle = body.length > 120;
+
   return (
     <div className="rounded-lg border border-border/50 bg-background/40 p-3 space-y-1">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs font-medium">
-          {TYPE_ICONS[item.type]}
-          <span>{item.title || item.body?.slice(0, 60) || '(ingen titel)'}</span>
+          {TYPE_ICONS[item.type as ItemType]}
+          <span>{item.title || body.slice(0, 60) || '(ingen titel)'}</span>
         </div>
         <span className="text-xs text-muted-foreground shrink-0">{formatDate(item.published_at)}</span>
       </div>
@@ -48,12 +72,22 @@ function ItemCard({ item, memberName }: { item: AulaItem; memberName?: string })
           <User className="h-3 w-3" /> {memberName}
         </p>
       )}
-      {item.body && (
+      {body && (
         <>
-          <p className={cn('text-xs text-foreground/80 whitespace-pre-wrap', !expanded && 'line-clamp-2')}>
-            {item.body}
-          </p>
-          {item.body.length > 120 && (
+          {isHtml ? (
+            <div
+              className={cn(
+                'text-xs text-foreground/80 aula-prose',
+                !expanded && 'line-clamp-3',
+              )}
+              dangerouslySetInnerHTML={{ __html: cleanedHtml }}
+            />
+          ) : (
+            <p className={cn('text-xs text-foreground/80 whitespace-pre-wrap', !expanded && 'line-clamp-2')}>
+              {body}
+            </p>
+          )}
+          {showToggle && (
             <button
               type="button"
               onClick={() => setExpanded(e => !e)}
@@ -116,12 +150,13 @@ export function AulaDataViewer({ members }: Props) {
     }
   }
 
-  const types: Array<ItemType | 'all'> = ['all', 'post', 'message', 'daily_overview'];
+  const types: Array<ItemType | 'all'> = ['all', 'weekplan_lesson', 'message', 'post', 'daily_overview'];
   const counts: Record<string, number> = {
     all: items.length,
     post: items.filter(i => i.type === 'post').length,
     message: items.filter(i => i.type === 'message').length,
     daily_overview: items.filter(i => i.type === 'daily_overview').length,
+    weekplan_lesson: items.filter(i => i.type === 'weekplan_lesson').length,
   };
 
   return (

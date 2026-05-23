@@ -43,7 +43,7 @@ export interface AulaConnectionPublic {
 export interface AulaItem {
   id: string;
   aula_id: string;
-  type: 'post' | 'message' | 'daily_overview';
+  type: 'post' | 'message' | 'daily_overview' | 'weekplan_lesson';
   title?: string;
   body?: string;
   author?: string;
