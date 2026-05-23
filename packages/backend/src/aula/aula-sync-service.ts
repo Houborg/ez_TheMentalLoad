@@ -125,21 +125,23 @@ export class AulaSyncService {
         }
       }
 
-      // Weekplan lessons → aula_items (one row per lesson per child per day)
+      // Weekplan lessons → aula_items (one row per lesson per child per day).
+      // published_at is date-only (midnight in server TZ). The actual lesson
+      // start/end times live in raw_json.startTime / raw_json.endTime — encoding
+      // them in published_at would require a TZ library since the sidecar
+      // emits HH:MM in Europe/Copenhagen local time.
       if (conn.syncOptions.dailyOverview) {
-        for (const lesson of data.weekplan_lessons) {
+        for (const lesson of data.weekplan_lessons ?? []) {
           const mapping = conn.childMappings.find(m => m.aulaChildId === lesson.childId);
           if (!mapping) continue;
           const aulaId = `weekplan-${lesson.childId}-${lesson.date}-${lesson.seq}`;
-          const startTime = lesson.startTime ?? '00:00';
-          const publishedAt = `${lesson.date}T${startTime}:00Z`;
           const inserted = await this.upsertAulaItem({
             aulaId,
             type: 'weekplan_lesson',
             title: lesson.title,
             body: lesson.description ?? '',
             memberId: mapping.mentalLoadMemberId,
-            publishedAt,
+            publishedAt: lesson.date,
             rawJson: lesson,
           });
           if (inserted) itemsCreated++;
