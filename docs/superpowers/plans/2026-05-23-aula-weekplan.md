@@ -189,16 +189,25 @@ Each library endpoint has its own parameter shape and result type. Each fetcher 
 
 - [ ] **Step 1: Add the contract comment + helpers**
 
-Insert below `_normalize_lessons`, replacing the field paths with what Task 1 discovered (the comment below has placeholders the engineer must fill in from probe output — DO NOT commit with `<DISCOVERED>` left in place):
+**Discovered context contract (Task 1 probe, 2026-05-23 against Englystskolen):**
+- `profile_context["data"]["userId"]` → session_uuid (str)
+- `Profile.children[i]._raw["userId"]` → unilogin per child (e.g. `"emil59r3"`)
+- `Profile.children[i]._raw["institutionProfile"]["institutionCode"]` → institution code per child (e.g. `"603005"`)
+- Multiple widgets share the same supplier (UVDATA hosts SSO, Ugenoter, Opgaver, Meddelelsesbog). Match widgets by NAME substring, not supplier.
+
+Insert below `_normalize_lessons`:
 
 ```python
 # ── Weekplan source-specific fetchers ───────────────────────────────────────
 #
 # Profile context contract (probed 2026-05-23):
-#   ctx[<DISCOVERED>session_uuid_path]      → str, session UUID for widget calls
-#   ctx[<DISCOVERED>institutions_path]      → list of dicts; each has institutionCode → str
-#   ctx[<DISCOVERED>children_path][i]       → dict; .unilogin → str
-#   widget_id_by_supplier['meebook'/'easyiq'/'minuddannelse'] → str
+#   profile_context["data"]["userId"]                                  → session_uuid (str)
+#   client.get_profile().children[i]._raw["userId"]                    → unilogin per child
+#   client.get_profile().children[i]._raw["institutionProfile"]
+#                       ["institutionCode"]                            → institution code per child
+#
+# Widgets are matched by name (case-insensitive substring) since multiple
+# widgets can share a supplier (UVDATA has several MinUddannelse widgets).
 #
 # If the library API changes and any of these paths break, the per-source
 # fetcher catches the KeyError/AttributeError and returns [].
@@ -209,25 +218,49 @@ async def _resolve_session_and_filters(client: Any) -> dict[str, Any] | None:
     Returns None if the context can't be loaded — caller skips the whole weekplan block.
     """
     try:
-        ctx = await client.get_profile_context()
+        profile = await client.get_profile()
+        profile_context = await client.get_profile_context()
         widgets = await client.get_widgets()
     except Exception as e:
         print(f"[fetch-data] weekplan: cannot load profile context: {e}", flush=True)
         return None
 
-    session_uuid = ctx.get(<DISCOVERED_KEY>)
-    institutions = [str(i.get("institutionCode", "")) for i in ctx.get(<DISCOVERED_KEY>, []) if i.get("institutionCode")]
-    unilogin_by_child_id = {int(c["id"]): c.get(<DISCOVERED_KEY>, "") for c in ctx.get(<DISCOVERED_KEY>, [])}
-    widget_id_by_supplier = {
-        (w.widget_supplier or "").lower(): w.widget_id
-        for w in widgets
+    try:
+        session_uuid = profile_context["data"]["userId"]
+    except (KeyError, TypeError) as e:
+        print(f"[fetch-data] weekplan: session_uuid missing from profile_context: {e}", flush=True)
+        return None
+
+    institution_codes: list[str] = []
+    unilogin_by_child_id: dict[int, str] = {}
+    for child in profile.children or []:
+        raw = child._raw or {}
+        unilogin = raw.get("userId", "")
+        if unilogin:
+            unilogin_by_child_id[int(child.id)] = unilogin
+        inst_code = raw.get("institutionProfile", {}).get("institutionCode", "")
+        if inst_code and str(inst_code) not in institution_codes:
+            institution_codes.append(str(inst_code))
+
+    # Match widgets by name substring (case-insensitive)
+    def widget_id_by_name_match(*needles: str) -> str | None:
+        for w in widgets:
+            name = (w.name or "").lower()
+            if any(n in name for n in needles):
+                return w.widget_id
+        return None
+
+    widget_id_by_kind = {
+        "meebook": widget_id_by_name_match("meebook"),
+        "easyiq": widget_id_by_name_match("easyiq"),
+        "ugeplan": widget_id_by_name_match("ugenoter", "ugeplan"),
     }
 
     return {
         "session_uuid": session_uuid,
-        "institution_filter": institutions,
+        "institution_filter": institution_codes,
         "unilogin_by_child_id": unilogin_by_child_id,
-        "widget_id_by_supplier": widget_id_by_supplier,
+        "widget_id_by_kind": widget_id_by_kind,
     }
 
 
@@ -276,8 +309,14 @@ async def _fetch_easyiq(client: Any, ctx: dict[str, Any], child_id: int, week: s
     for a in appts or []:
         start = a.start or ""
         end = a.end or ""
-        date_part, start_time = (start.split("T", 1) + [""])[:2] if "T" in start else (start[:10], "")
-        _, end_time = (end.split("T", 1) + [""])[:2] if "T" in end else (end[:10], "")
+        if "T" in start:
+            date_part, _, start_time = start.partition("T")
+        else:
+            date_part, start_time = start[:10], ""
+        if "T" in end:
+            _, _, end_time = end.partition("T")
+        else:
+            end_time = ""
         out.append({
             "date": date_part,
             "startTime": start_time[:5] if start_time else None,
@@ -290,8 +329,7 @@ async def _fetch_easyiq(client: Any, ctx: dict[str, Any], child_id: int, week: s
 
 async def _fetch_ugeplan(client: Any, ctx: dict[str, Any], child_id: int, week: str) -> list[dict[str, Any]]:
     unilogin = ctx["unilogin_by_child_id"].get(child_id)
-    widget_id = ctx["widget_id_by_supplier"].get("minuddannelse") \
-        or ctx["widget_id_by_supplier"].get("min uddannelse")
+    widget_id = ctx["widget_id_by_kind"].get("ugeplan")
     if not (unilogin and widget_id):
         return []
     try:
@@ -307,6 +345,7 @@ async def _fetch_ugeplan(client: Any, ctx: dict[str, Any], child_id: int, week: 
         return []
     # MUWeeklyPerson does not expose structured lessons — only a weekly letter blob.
     # Treat the whole weekly letter as a single "lesson" tagged for Monday of the target week.
+    # target_monday_iso is added to ctx by the caller in Task 4 (NOT here).
     out: list[dict[str, Any]] = []
     target_monday_iso = ctx["target_monday_iso"]
     for p in persons or []:
