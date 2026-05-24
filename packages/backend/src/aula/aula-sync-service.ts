@@ -66,6 +66,16 @@ interface SidecarMuTask {
   url?: string;
 }
 
+interface SidecarPresence {
+  childId: number;
+  status: string;
+  statusLabel: string;
+  entryTime?: string | null;
+  exitTime?: string | null;
+  comment?: string | null;
+  asOf: string;
+}
+
 export class AulaSyncService {
   constructor(private readonly pool: Pool, private readonly familyId: string) {}
 
@@ -101,6 +111,7 @@ export class AulaSyncService {
           fetch_messages: conn.syncOptions.messages,
           fetch_weekplan: conn.syncOptions.dailyOverview,
           fetch_mu_tasks: conn.syncOptions.muTasks,
+          fetch_presence: conn.syncOptions.presence,
         }),
       });
 
@@ -119,6 +130,7 @@ export class AulaSyncService {
         posts: SidecarPost[];
         messages: SidecarMessage[];
         mu_tasks: SidecarMuTask[];
+        presence: SidecarPresence[];
       };
 
       // Calendar events → entries
@@ -209,6 +221,28 @@ export class AulaSyncService {
             publishedAt: task.dueDate,
             rawJson: task,
             mode: 'insert',
+          });
+          if (inserted) itemsCreated++;
+        }
+      }
+
+      // Presence → aula_items (one row per child, overwritten on every sync).
+      if (conn.syncOptions.presence) {
+        for (const p of data.presence ?? []) {
+          const mapping = conn.childMappings.find(m => m.aulaChildId === p.childId);
+          if (!mapping) continue;
+          const bodyText = p.entryTime
+            ? `${p.statusLabel} — kom kl. ${p.entryTime}`
+            : p.statusLabel;
+          const inserted = await this.upsertAulaItem({
+            aulaId: `presence-${p.childId}`,
+            type: 'presence',
+            title: p.status,
+            body: bodyText,
+            memberId: mapping.mentalLoadMemberId,
+            publishedAt: p.asOf,
+            rawJson: p,
+            mode: 'upsert',
           });
           if (inserted) itemsCreated++;
         }
