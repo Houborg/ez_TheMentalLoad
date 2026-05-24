@@ -55,6 +55,17 @@ interface SidecarWeekplanLesson {
   seq: number;
 }
 
+interface SidecarMuTask {
+  childId: number;
+  id: string;
+  title: string;
+  subject?: string;
+  dueDate: string;
+  description?: string;
+  status: string;
+  url?: string;
+}
+
 export class AulaSyncService {
   constructor(private readonly pool: Pool, private readonly familyId: string) {}
 
@@ -89,6 +100,7 @@ export class AulaSyncService {
           fetch_posts: conn.syncOptions.posts,
           fetch_messages: conn.syncOptions.messages,
           fetch_weekplan: conn.syncOptions.dailyOverview,
+          fetch_mu_tasks: conn.syncOptions.muTasks,
         }),
       });
 
@@ -106,6 +118,7 @@ export class AulaSyncService {
         weekplan_lessons: SidecarWeekplanLesson[];
         posts: SidecarPost[];
         messages: SidecarMessage[];
+        mu_tasks: SidecarMuTask[];
       };
 
       // Calendar events → entries
@@ -177,6 +190,25 @@ export class AulaSyncService {
             memberId: null,
             publishedAt: msg.sentAt ?? null,
             rawJson: msg,
+          });
+          if (inserted) itemsCreated++;
+        }
+      }
+
+      // MU homework → aula_items (one row per task per child).
+      if (conn.syncOptions.muTasks) {
+        for (const task of data.mu_tasks ?? []) {
+          const mapping = conn.childMappings.find(m => m.aulaChildId === task.childId);
+          if (!mapping) continue;
+          const inserted = await this.upsertAulaItem({
+            aulaId: `mu-${task.id}`,
+            type: 'mu_task',
+            title: task.title,
+            body: task.description ?? '',
+            memberId: mapping.mentalLoadMemberId,
+            publishedAt: task.dueDate,
+            rawJson: task,
+            mode: 'insert',
           });
           if (inserted) itemsCreated++;
         }
