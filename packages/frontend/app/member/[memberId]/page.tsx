@@ -31,6 +31,7 @@ export default function MemberPage() {
   const memberId = params.memberId;
 
   const [members, setMembers] = useState<Member[]>([]);
+  const [familyPresence, setFamilyPresence] = useState<Record<string, AulaPresence>>({});
   const [member, setMember] = useState<Member | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,6 +87,7 @@ export default function MemberPage() {
         }
 
         setMembers(snapshot.members);
+        setFamilyPresence(snapshot.presence ?? {});
         setMember(selectedMember);
         setEntries(upcoming.filter((entry) => {
           if (entry.ownerMemberId === selectedMember.id) {
@@ -325,7 +327,7 @@ export default function MemberPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="flex min-h-screen">
-        <AppSidebar activeSection="family" members={members} activeMemberId={member.id} />
+        <AppSidebar activeSection="family" members={members} activeMemberId={member.id} presenceByMemberId={familyPresence} />
         <main className="flex min-h-screen flex-1 flex-col px-4 py-6 md:px-8">
           <div className="mx-auto flex w-full max-w-none flex-col gap-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
