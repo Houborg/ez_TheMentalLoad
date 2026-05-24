@@ -244,12 +244,23 @@ export class AulaSyncService {
     memberId: string | null;
     publishedAt: string | null;
     rawJson: unknown;
+    mode?: 'insert' | 'upsert';   // NEW — defaults to 'insert' for back-compat
   }): Promise<boolean> {
     const publishedAt = parsePublishedAt(item.publishedAt);
+    const mode = item.mode ?? 'insert';
+    const conflictClause = mode === 'upsert'
+      ? `on conflict (family_id, aula_id, type) do update set
+           title = excluded.title,
+           body = excluded.body,
+           author = excluded.author,
+           published_at = excluded.published_at,
+           raw_json = excluded.raw_json`
+      : `on conflict (family_id, aula_id, type) do nothing`;
+
     const result = await this.pool.query(
       `insert into aula_items (family_id, aula_id, type, title, body, author, member_id, published_at, raw_json)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       on conflict (family_id, aula_id, type) do nothing`,
+       ${conflictClause}`,
       [
         this.familyId, item.aulaId, item.type, item.title, item.body,
         item.author ?? null, item.memberId, publishedAt,
