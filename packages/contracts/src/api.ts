@@ -1,6 +1,7 @@
 import type {
   AppSettings,
   AssistantDraft,
+  AulaPresence,
   Calendar,
   DailyTimelineTemplateTask,
   Entry,
@@ -32,6 +33,7 @@ export interface DashboardSnapshot {
   entries: Entry[];
   reminderJobs?: Array<{ id: string; runAt: string }>;
   persistence?: 'memory' | 'postgres';
+  presence?: Record<string, AulaPresence>;
 }
 
 export interface AssistantParseRequest {

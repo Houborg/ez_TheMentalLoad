@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import type { Calendar, Entry, Member } from '@mental-load/contracts';
+import type { AulaPresence, Calendar, Entry, Member } from '@mental-load/contracts';
+import { MemberPresenceDot } from '@/components/aula/member-presence-dot';
 import { MobileNav, type MobileTab } from './mobile-nav';
 import { MobileCalendarView } from './mobile-calendar-view';
 import { MobileTaskList } from './mobile-task-list';
@@ -22,9 +23,10 @@ type Props = {
   calendars: Calendar[];
   onRefresh: () => void;
   onNavigateDesktopSection: (section: string) => void;
+  presenceByMemberId?: Record<string, AulaPresence>;
 };
 
-export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSection }: Props) {
+export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSection, presenceByMemberId }: Props) {
   const [activeTab, setActiveTab] = useState<MobileTab>('kalender');
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -120,8 +122,15 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
             <div className="p-4 flex flex-col gap-3">
               {members.map(m => (
                 <div key={m.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-card px-4 py-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold flex-shrink-0">
-                    {m.avatar || m.name[0]}
+                  <div className="relative flex-shrink-0">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold">
+                      {m.avatar || m.name[0]}
+                    </div>
+                    <MemberPresenceDot
+                      presence={presenceByMemberId?.[m.id]}
+                      size="md"
+                      className="absolute -bottom-0.5 -right-0.5"
+                    />
                   </div>
                   <div>
                     <div className="font-medium text-sm">{m.name}</div>

@@ -22,7 +22,7 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
-import type { AppSettings, AssistantDraft, DailyTimelineTemplateTask, Entry, Member, Calendar, ListTodayMemberTimelineResponse, MemberRole, MemberTimelineSettings, TimelineTaskInstance } from '@mental-load/contracts';
+import type { AppSettings, AssistantDraft, AulaPresence, DailyTimelineTemplateTask, Entry, Member, Calendar, ListTodayMemberTimelineResponse, MemberRole, MemberTimelineSettings, TimelineTaskInstance } from '@mental-load/contracts';
 import {
   askAssistant,
   confirmAssistant,
@@ -88,6 +88,7 @@ type DashboardState = {
   entries: Entry[];
   reminderJobs: Array<{ id: string; runAt: string }>;
   persistence?: 'memory' | 'postgres';
+  presence: Record<string, AulaPresence>;
 };
 
 type EventDraft = {
@@ -157,7 +158,7 @@ export function DashboardApp() {
   });
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [activeNav, setActiveNav] = useState<NavSection>('dashboard');
-  const [dashboard, setDashboard] = useState<DashboardState>({ members: [], calendars: [], entries: [], reminderJobs: [] });
+  const [dashboard, setDashboard] = useState<DashboardState>({ members: [], calendars: [], entries: [], reminderJobs: [], presence: {} });
   const [monthOccurrences, setMonthOccurrences] = useState<Entry[]>([]);
   const [upcomingOccurrences, setUpcomingOccurrences] = useState<Entry[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -302,6 +303,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
           entries: dashboardSnapshot.entries,
           reminderJobs: dashboardSnapshot.reminderJobs ?? [],
           persistence: dashboardSnapshot.persistence,
+          presence: dashboardSnapshot.presence ?? {},
         });
         setActiveMemberId((current) => (
           dashboardSnapshot.members.some((member) => member.id === current)
@@ -357,7 +359,15 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
     const socket = new WebSocket(wsUrl);
     socket.onmessage = (event) => {
       try {
-        const payload = JSON.parse(event.data) as { type?: string };
+        const payload = JSON.parse(event.data) as { type?: string; payload?: { memberId: string; presence: AulaPresence } };
+        if (payload.type === 'aula.presence.updated' && payload.payload) {
+          const { memberId, presence } = payload.payload;
+          setDashboard((current) => ({
+            ...current,
+            presence: { ...current.presence, [memberId]: presence },
+          }));
+          return;
+        }
         if (payload.type && payload.type !== 'connected') {
           setCurrentMonth((current) => new Date(current));
         }
@@ -1626,6 +1636,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
         <MobileShell
           members={dashboard.members}
           calendars={dashboard.calendars}
+          presenceByMemberId={dashboard.presence}
           onRefresh={() => {
             loadMonthOccurrences(currentMonth).then(entries =>
               setDashboard(d => ({ ...d, entries }))

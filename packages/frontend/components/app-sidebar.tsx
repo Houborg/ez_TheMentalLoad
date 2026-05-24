@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Settings, Users } from 'lucide-react';
-import type { Member } from '@mental-load/contracts';
+import type { AulaPresence, Member } from '@mental-load/contracts';
+import { MemberPresenceDot } from '@/components/aula/member-presence-dot';
 import { cn } from '@/lib/utils';
 
 type SidebarSection = 'dashboard' | 'planner' | 'timeline' | 'family' | 'settings';
@@ -12,6 +13,7 @@ type AppSidebarProps = {
   activeSection: SidebarSection;
   members?: Member[];
   activeMemberId?: string;
+  presenceByMemberId?: Record<string, AulaPresence>;
 };
 
 const NAV_ITEMS: Array<{ label: string; icon: typeof CalendarDays; key: SidebarSection; href: string }> = [
@@ -24,7 +26,7 @@ const NAV_ITEMS: Array<{ label: string; icon: typeof CalendarDays; key: SidebarS
 
 const MEMBER_COLOR_CLASSES = ['bg-primary', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5'];
 
-export function AppSidebar({ activeSection, members = [], activeMemberId }: AppSidebarProps) {
+export function AppSidebar({ activeSection, members = [], activeMemberId, presenceByMemberId }: AppSidebarProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   return (
@@ -92,8 +94,14 @@ export function AppSidebar({ activeSection, members = [], activeMemberId }: AppS
                 )}
                 title={isSidebarCollapsed ? `${member.name} (${member.role})` : undefined}
               >
-                <div className={cn('flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold text-primary-foreground', MEMBER_COLOR_CLASSES[index % MEMBER_COLOR_CLASSES.length])}>
-                  {member.avatar ? <span className="text-xl">{member.avatar}</span> : <Users className="h-5 w-5" />}
+                <div className="relative shrink-0">
+                  <div className={cn('flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold text-primary-foreground', MEMBER_COLOR_CLASSES[index % MEMBER_COLOR_CLASSES.length])}>
+                    {member.avatar ? <span className="text-xl">{member.avatar}</span> : <Users className="h-5 w-5" />}
+                  </div>
+                  <MemberPresenceDot
+                    presence={presenceByMemberId?.[member.id]}
+                    className="absolute -bottom-0.5 -right-0.5"
+                  />
                 </div>
                 {!isSidebarCollapsed ? (
                   <div className="min-w-0 flex-1">
