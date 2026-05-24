@@ -25,6 +25,8 @@ export interface AulaSyncOptions {
   dailyOverview: boolean;
   posts: boolean;
   messages: boolean;
+  muTasks: boolean;
+  presence: boolean;
 }
 
 export interface AulaConnectionPublic {
@@ -43,13 +45,14 @@ export interface AulaConnectionPublic {
 export interface AulaItem {
   id: string;
   aula_id: string;
-  type: 'post' | 'message' | 'daily_overview' | 'weekplan_lesson';
+  type: 'post' | 'message' | 'daily_overview' | 'weekplan_lesson' | 'mu_task' | 'presence';
   title?: string;
   body?: string;
   author?: string;
   member_id?: string;
   published_at?: string;
   created_at: string;
+  raw_json?: Record<string, unknown>;
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -126,4 +129,8 @@ export async function aulaGetItems(opts?: {
   if (opts?.page != null) params.set('page', String(opts.page));
   if (opts?.pageSize != null) params.set('pageSize', String(opts.pageSize));
   return apiFetch(`/v1/aula/items?${params}`);
+}
+
+export async function aulaDeleteItem(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/v1/aula/items/${id}`, { method: 'DELETE' });
 }

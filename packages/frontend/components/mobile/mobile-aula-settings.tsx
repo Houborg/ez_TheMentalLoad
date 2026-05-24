@@ -88,6 +88,8 @@ export function MobileAulaSettings({ members, calendars }: Props) {
     dailyOverview: false,
     posts: false,
     messages: false,
+    muTasks: true,
+    presence: true,
   });
 
   const [syncing, setSyncing] = useState(false);
