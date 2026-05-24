@@ -1,19 +1,21 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, MessageSquare, Calendar, Newspaper, User, BookOpen } from 'lucide-react';
+import { RefreshCw, MessageSquare, Calendar, Newspaper, User, BookOpen, GraduationCap, UserCheck } from 'lucide-react';
 import type { Member } from '@mental-load/contracts';
 import { aulaGetItems, aulaGetConnection, type AulaItem, type AulaConnectionPublic } from '@/lib/aula-api';
 import { cleanAulaHtml, looksLikeHtml } from '@/lib/aula-html';
 import { cn } from '@/lib/utils';
 
-type ItemType = 'post' | 'message' | 'daily_overview' | 'weekplan_lesson';
+type ItemType = 'post' | 'message' | 'daily_overview' | 'weekplan_lesson' | 'mu_task' | 'presence';
 
 const TYPE_LABELS: Record<ItemType, string> = {
   post: 'Opslag',
   message: 'Beskeder',
   daily_overview: 'Dagsoverblik',
   weekplan_lesson: 'Ugeplan',
+  mu_task: 'Lektier',
+  presence: 'Tilstedeværelse',
 };
 
 const TYPE_ICONS: Record<ItemType, React.ReactNode> = {
@@ -21,6 +23,8 @@ const TYPE_ICONS: Record<ItemType, React.ReactNode> = {
   message: <MessageSquare className="h-3.5 w-3.5" />,
   daily_overview: <Calendar className="h-3.5 w-3.5" />,
   weekplan_lesson: <BookOpen className="h-3.5 w-3.5" />,
+  mu_task: <GraduationCap className="h-3.5 w-3.5" />,
+  presence: <UserCheck className="h-3.5 w-3.5" />,
 };
 
 function formatDate(iso?: string) {
@@ -136,13 +140,15 @@ export function AulaDataViewer({ members }: Props) {
     }
   }
 
-  const types: Array<ItemType | 'all'> = ['all', 'weekplan_lesson', 'message', 'post', 'daily_overview'];
+  const types: Array<ItemType | 'all'> = ['all', 'weekplan_lesson', 'mu_task', 'message', 'post', 'presence', 'daily_overview'];
   const counts: Record<string, number> = {
     all: items.length,
     post: items.filter(i => i.type === 'post').length,
     message: items.filter(i => i.type === 'message').length,
     daily_overview: items.filter(i => i.type === 'daily_overview').length,
     weekplan_lesson: items.filter(i => i.type === 'weekplan_lesson').length,
+    mu_task: items.filter(i => i.type === 'mu_task').length,
+    presence: items.filter(i => i.type === 'presence').length,
   };
 
   return (
