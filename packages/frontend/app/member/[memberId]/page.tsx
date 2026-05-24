@@ -4,11 +4,15 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, CalendarDays, Check, CheckSquare, LoaderCircle, Users } from 'lucide-react';
-import type { Entry, ListTodayMemberTimelineResponse, Member, TimelineTaskInstance } from '@mental-load/contracts';
+import type { AulaPresence, Entry, ListTodayMemberTimelineResponse, Member, TimelineTaskInstance } from '@mental-load/contracts';
 import { AgendaView } from '@/components/agenda-view';
 import { AppSidebar } from '@/components/app-sidebar';
 import { EntryDetailsPopup } from '@/components/entry-details-popup';
 import { TodayTimelineBoard } from '@/components/today-timeline-board';
+import { MemberSchoolSchedule } from '@/components/aula/member-school-schedule';
+import { MemberHomework } from '@/components/aula/member-homework';
+import { MemberPresenceBadge } from '@/components/aula/member-presence-badge';
+import { aulaGetItems } from '@/lib/aula-api';
 import { cn } from '@/lib/utils';
 import {
   confirmTodayTimelineTask,
@@ -34,6 +38,7 @@ export default function MemberPage() {
   const [timelineByMemberId, setTimelineByMemberId] = useState<Record<string, ListTodayMemberTimelineResponse>>({});
   const [celebrationTaskId, setCelebrationTaskId] = useState<string | undefined>();
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
+  const [presence, setPresence] = useState<AulaPresence | null>(null);
 
   useEffect(() => {
     if (!memberId) {
@@ -45,9 +50,10 @@ export default function MemberPage() {
     async function loadMemberPage() {
       try {
         setErrorText('');
-        const [snapshot, upcoming] = await Promise.all([
+        const [snapshot, upcoming, presenceRes] = await Promise.all([
           loadDashboardSnapshot(),
           loadUpcomingOccurrences(30),
+          aulaGetItems({ type: 'presence', memberId, pageSize: 1 }).catch(() => ({ items: [] as Array<{ raw_json?: AulaPresence }> })),
         ]);
 
         const selectedMember = snapshot.members.find((item) => item.id === memberId) ?? null;
@@ -91,6 +97,8 @@ export default function MemberPage() {
           return entry.checklist.some((item) => item.assignedToMemberId === selectedMember.id);
         }));
         setTimelineByMemberId({ [selectedMember.id]: timeline });
+        const presenceItem = presenceRes.items?.[0];
+        setPresence((presenceItem?.raw_json as AulaPresence | undefined) ?? null);
         localStorage.setItem('activeMemberId', selectedMember.id);
       } catch (error) {
         if (!active) {
@@ -343,87 +351,94 @@ export default function MemberPage() {
               </div>
             ) : null}
 
-            <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold">Calendar view</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Agenda view for the next 7 days.</p>
-                </div>
-                <div className="flex items-center gap-2 rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
-                  <div className={cn('flex h-6 w-6 items-center justify-center rounded-full text-primary-foreground', memberColorById[member.id] ?? 'bg-primary')}>
-                    {member.avatar ? <span className="text-sm">{member.avatar}</span> : <Users className="h-3.5 w-3.5" />}
+            <div className="grid gap-5 md:grid-cols-2">
+              <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold">Calendar view</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Agenda view for the next 7 days.</p>
                   </div>
-                  <span>{member.role}</span>
+                  <div className="flex items-center gap-2 rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
+                    <div className={cn('flex h-6 w-6 items-center justify-center rounded-full text-primary-foreground', memberColorById[member.id] ?? 'bg-primary')}>
+                      {member.avatar ? <span className="text-sm">{member.avatar}</span> : <Users className="h-3.5 w-3.5" />}
+                    </div>
+                    <span>{member.role}</span>
+                  </div>
+                  <MemberPresenceBadge presence={presence} />
                 </div>
-              </div>
-              <div className="rounded-[30px] border border-border/60 bg-card/35 p-3">
-                <AgendaView
-                  members={[member]}
-                  entries={entries}
-                  memberColorById={memberColorById}
-                  onSelectEntry={(entry) => setSelectedEntry(entry)}
-                />
-              </div>
-            </section>
+                <div className="rounded-[30px] border border-border/60 bg-card/35 p-3">
+                  <AgendaView
+                    members={[member]}
+                    entries={entries}
+                    memberColorById={memberColorById}
+                    onSelectEntry={(entry) => setSelectedEntry(entry)}
+                  />
+                </div>
+              </section>
 
-            <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold">Tasks</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Unified tasks from entries storage (event checklists + standalone tasks).</p>
+              <MemberSchoolSchedule memberId={memberId} memberName={member.name} />
+
+              <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold">Tasks</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Unified tasks from entries storage (event checklists + standalone tasks).</p>
+                  </div>
+                  <div className="rounded-full border border-border/60 px-2 py-1 text-xs text-muted-foreground">{memberTasks.length} tasks</div>
                 </div>
-                <div className="rounded-full border border-border/60 px-2 py-1 text-xs text-muted-foreground">{memberTasks.length} tasks</div>
-              </div>
-              {memberTasks.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">No tasks found for this member.</div>
-              ) : (
-                <div className="grid gap-2">
-                  {memberTasks.map((task) => (
-                    <div key={task.id} className="rounded-2xl border border-border/60 bg-card/50 px-4 py-3">
-                      <div
-                        className="flex cursor-pointer items-start justify-between gap-3"
-                        onClick={() => {
-                          const found = entries.find((entry) => getEntryMutationId(entry.id) === task.entryId);
-                          if (found) {
-                            setSelectedEntry(found);
-                          }
-                        }}
-                      >
-                        <div>
+                {memberTasks.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">No tasks found for this member.</div>
+                ) : (
+                  <div className="grid gap-2">
+                    {memberTasks.map((task) => (
+                      <div key={task.id} className="rounded-2xl border border-border/60 bg-card/50 px-4 py-3">
+                        <div
+                          className="flex cursor-pointer items-start justify-between gap-3"
+                          onClick={() => {
+                            const found = entries.find((entry) => getEntryMutationId(entry.id) === task.entryId);
+                            if (found) {
+                              setSelectedEntry(found);
+                            }
+                          }}
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              {task.status === 'completed' ? <Check className="h-4 w-4 text-emerald-500" /> : null}
+                              <div className={cn('text-sm font-semibold', task.status === 'completed' && 'line-through text-muted-foreground')}>{task.title}</div>
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {task.source === 'standalone' ? 'standalone task' : `event checklist${task.eventTitle ? ` · ${task.eventTitle}` : ''}`}
+                              {' · '}
+                              {task.dueAt ? new Date(task.dueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'No due time'}
+                            </div>
+                          </div>
                           <div className="flex items-center gap-2">
-                            {task.status === 'completed' ? <Check className="h-4 w-4 text-emerald-500" /> : null}
-                            <div className={cn('text-sm font-semibold', task.status === 'completed' && 'line-through text-muted-foreground')}>{task.title}</div>
-                          </div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {task.source === 'standalone' ? 'standalone task' : `event checklist${task.eventTitle ? ` · ${task.eventTitle}` : ''}`}
-                            {' · '}
-                            {task.dueAt ? new Date(task.dueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'No due time'}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {task.status !== 'completed' ? (
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void handleCompleteMemberTask(task.id);
-                              }}
-                              className="rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-lg shadow-primary/20"
-                            >
-                              Complete
-                            </button>
-                          ) : null}
-                          <div className={cn('inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] uppercase tracking-[0.08em]', task.status === 'completed' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300')}>
-                            <CheckSquare className="h-3.5 w-3.5" />
-                            {task.status === 'completed' ? 'Done' : 'Open'}
+                            {task.status !== 'completed' ? (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleCompleteMemberTask(task.id);
+                                }}
+                                className="rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-lg shadow-primary/20"
+                              >
+                                Complete
+                              </button>
+                            ) : null}
+                            <div className={cn('inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] uppercase tracking-[0.08em]', task.status === 'completed' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300')}>
+                              <CheckSquare className="h-3.5 w-3.5" />
+                              {task.status === 'completed' ? 'Done' : 'Open'}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <MemberHomework memberId={memberId} memberName={member.name} />
+            </div>
 
             <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
               <TodayTimelineBoard
