@@ -250,7 +250,7 @@ export interface AulaPresence {
   entryTime?: string;
   exitTime?: string;
   comment?: string;
-  asOf: string;
+  asOf: string;          // ISO 8601 datetime — when this state was observed
 }
 
 export interface AulaMuTask {

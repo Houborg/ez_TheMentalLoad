@@ -15,14 +15,12 @@ export class AulaConnectionService {
     const conn = raw.aula_connection as AulaConnection | undefined;
     if (!conn) return null;
     // Default new sync options to true for connections persisted before the field existed.
+    // Partial cast: the storage type isn't actually guaranteed at runtime, and TS rejects
+    // the literal-then-spread pattern with TS2783 unless the spread source is partial.
     const storedOpts = conn.syncOptions as Partial<AulaConnection['syncOptions']>;
     return {
       ...conn,
-      syncOptions: {
-        mu_tasks: true,
-        presence: true,
-        ...storedOpts,
-      } as AulaConnection['syncOptions'],
+      syncOptions: { muTasks: true, presence: true, ...storedOpts } as AulaConnection['syncOptions'],
     };
   }
 
