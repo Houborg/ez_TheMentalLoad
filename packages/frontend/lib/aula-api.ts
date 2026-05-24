@@ -54,10 +54,19 @@ export interface AulaItem {
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...(init?.headers as Record<string, string> ?? {}) };
-  if (init?.body != null && !headers['Content-Type']) {
+  const method = (init?.method ?? 'GET').toUpperCase();
+  let body = init?.body;
+  // Workaround: empty-body POST/PUT/PATCH over HTTP/2 through the Cloudflare tunnel
+  // hangs (the body stream never closes). Send a valid empty JSON object instead
+  // and set Content-Type so Fastify accepts it. DELETE stays body-less since
+  // Fastify rejects empty JSON bodies on DELETE (FST_ERR_CTP_EMPTY_JSON_BODY).
+  if (body == null && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+    body = '{}';
+    if (!headers['Content-Type']) headers['Content-Type'] = 'application/json';
+  } else if (body != null && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
-  const res = await fetch(`/api${path}`, { ...init, headers });
+  const res = await fetch(`/api${path}`, { ...init, headers, body });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText })) as { error?: string; code?: string };
     throw Object.assign(new Error(err.error ?? 'Request failed'), { status: res.status, code: err.code });
