@@ -3,7 +3,7 @@
 **Date:** 2026-05-24
 **Status:** Approved (brainstorming complete, plan pending)
 **Related specs:** [2026-05-22-aula-integration-design.md](2026-05-22-aula-integration-design.md), [2026-05-23-aula-weekplan-design.md](2026-05-23-aula-weekplan-design.md)
-**Tracked issues:** items 2, 4, 5, 6 in [`MentalLoad-Issues.md`](../../../../Users/mhhou/OneDrive/Notebook/Projects/MentalLoad-Issues.md) ("[CHANGE] Aula intigration (remaining items after 2026-05-23/24 session)")
+**Tracked issues:** items 2, 4, 5, 6 in `MentalLoad-Issues.md` (Morten's Obsidian vault) under "[CHANGE] Aula intigration (remaining items after 2026-05-23/24 session)"
 
 ## Overview
 
@@ -238,7 +238,7 @@ packages/frontend/components/aula/
 - Internal state: `weekStartDate` (Monday in `Europe/Copenhagen`), initialised to current week's Monday.
 - Filters items to `published_at` in `[weekStartDate, weekStartDate + 5 days)` (Mon–Fri).
 - Groups by date, sorts inside each day by `raw_json.startTime` ascending.
-- Header: `‹ Uge {ISOWeek} · {className from raw_json.kl ?? "—"} ›`.
+- Header: `‹ Uge {ISOWeek} ›` with chevron buttons either side. (Class name isn't a clean field in the Ugeplan payload — it's embedded in lesson titles like "Ugeplan 1D (Englystskolen)" — so we don't try to render it separately.)
 - Body: five day cards (one per weekday). Each card has a `<LessonRow time={raw_json.startTime ?? "—"} title={item.title} onClick={…} />` per lesson.
 - Empty weekday: "Ingen lektioner".
 - Empty week entirely: "Ingen ugeplan for uge {n}." + "Synkroniser nu" link to Settings → Aula.
