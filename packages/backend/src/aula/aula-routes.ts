@@ -140,7 +140,7 @@ export async function registerAulaRoutes(
 
     params.push(Number(pageSize), offset);
     const result = await pool.query(
-      `select id, aula_id, type, title, body, author, member_id, published_at, created_at
+      `select id, aula_id, type, title, body, author, member_id, published_at, created_at, raw_json
        from aula_items
        where ${conditions.join(' and ')}
        order by published_at desc nulls last, created_at desc
