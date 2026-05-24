@@ -235,3 +235,41 @@ export interface TodayMemberTimeline {
   blockedByTaskId?: string;
   tasks: TimelineTaskInstance[];
 }
+
+export type AulaPresenceStatus =
+  | 'tilstede'
+  | 'ikke_ankommet'
+  | 'hentet'
+  | 'syg'
+  | 'ferie'
+  | 'fri';
+
+export interface AulaPresence {
+  status: AulaPresenceStatus | string; // unknown statuses pass through
+  statusLabel: string;
+  entryTime?: string;
+  exitTime?: string;
+  comment?: string;
+  asOf: string;
+}
+
+export interface AulaMuTask {
+  id: string;
+  title: string;
+  subject?: string;
+  dueDate: string;       // YYYY-MM-DD
+  description?: string;  // HTML
+  status: 'open' | 'done' | string;
+  url?: string;
+}
+
+export interface AulaWeekplanLesson {
+  childId: number;
+  date: string;          // YYYY-MM-DD
+  startTime?: string;    // HH:MM in Europe/Copenhagen
+  endTime?: string;
+  title: string;
+  description?: string;  // HTML
+  source: 'meebook' | 'easyiq' | 'ugeplan';
+  seq: number;
+}
