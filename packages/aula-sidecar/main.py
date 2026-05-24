@@ -221,6 +221,8 @@ class FetchDataRequest(BaseModel):
     fetch_posts: bool = True
     fetch_messages: bool = True
     fetch_weekplan: bool = True
+    fetch_mu_tasks: bool = False
+    fetch_presence: bool = False
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -583,6 +585,77 @@ async def _fetch_ugeplan(client: Any, ctx: dict[str, Any], child_id: int, week: 
     return out
 
 
+# ── MU tasks + presence ─────────────────────────────────────────────────────
+#
+# Field names below are educated guesses based on the patterns in other Aula
+# library models (e.g. CalendarEvent uses snake_case attributes like
+# `start_datetime`, `institution_profile_id`). Runtime introspection should
+# confirm them once the sidecar runs against a real account. Each `getattr`
+# falls back to None / sensible default, and the whole helper is wrapped in
+# try/except so a wrong attribute name degrades to an empty list instead of
+# breaking /fetch-data.
+
+_PRESENCE_LABELS = {
+    "tilstede": "Tilstede",
+    "ikke_ankommet": "Ikke ankommet",
+    "hentet": "Hentet",
+    "syg": "Syg",
+    "ferie": "Ferie",
+    "fri": "Fri",
+}
+
+
+async def _fetch_mu_tasks(client: Any, child_ids: list[int]) -> list[dict[str, Any]]:
+    """Returns list of normalized mu_task dicts, one per task per child."""
+    out: list[dict[str, Any]] = []
+    try:
+        tasks = await client.get_mu_tasks()
+    except Exception as e:
+        print(f"[fetch-data] mu_tasks failed: {e}", flush=True)
+        return out
+    for t in tasks or []:
+        out.append({
+            "childId": getattr(t, "child_id", None) or getattr(t, "institution_profile_id", None),
+            "id": str(getattr(t, "id", "") or getattr(t, "uuid", "")),
+            "title": getattr(t, "title", "") or getattr(t, "name", "") or "",
+            "subject": getattr(t, "subject", None),
+            "dueDate": str(getattr(t, "due_date", "") or getattr(t, "deadline", ""))[:10],
+            "description": getattr(t, "description", "") or getattr(t, "body", "") or "",
+            "status": getattr(t, "status", "open"),
+            "url": getattr(t, "url", None),
+        })
+    print(f"[fetch-data] mu_tasks={len(out)}", flush=True)
+    return out
+
+
+async def _fetch_presence(client: Any, child_ids: list[int]) -> list[dict[str, Any]]:
+    """Returns list of presence dicts, one per child."""
+    from datetime import datetime, timezone
+    out: list[dict[str, Any]] = []
+    try:
+        states = await client.get_presence_states(child_ids=child_ids)
+    except Exception as e:
+        print(f"[fetch-data] presence failed: {e}", flush=True)
+        return out
+    now_iso = datetime.now(timezone.utc).astimezone().isoformat()
+    for s in states or []:
+        status = (getattr(s, "status", None) or getattr(s, "state", None) or "fri").lower().replace(" ", "_")
+        label = getattr(s, "status_label", None) or _PRESENCE_LABELS.get(status, status.title())
+        entry = getattr(s, "entry_time", None) or getattr(s, "checked_in_at", None)
+        exit_ = getattr(s, "exit_time", None) or getattr(s, "checked_out_at", None)
+        out.append({
+            "childId": getattr(s, "child_id", None) or getattr(s, "institution_profile_id", None),
+            "status": status,
+            "statusLabel": label,
+            "entryTime": str(entry)[:5] if entry else None,
+            "exitTime": str(exit_)[:5] if exit_ else None,
+            "comment": getattr(s, "comment", None),
+            "asOf": now_iso,
+        })
+    print(f"[fetch-data] presence={len(out)}", flush=True)
+    return out
+
+
 @app.post("/fetch-data")
 async def fetch_data(req: FetchDataRequest) -> dict:
     """Fetch Aula data using the Python library client (bypasses REST API auth issues)."""
@@ -594,6 +667,8 @@ async def fetch_data(req: FetchDataRequest) -> dict:
             "weekplan_lessons": [],
             "posts": [],
             "messages": [],
+            "mu_tasks": [],
+            "presence": [],
         }
 
         # Parse date range once
@@ -688,8 +763,16 @@ async def fetch_data(req: FetchDataRequest) -> dict:
             except Exception as e:
                 print(f"[fetch-data] messages: {e}", flush=True)
 
+        # MU tasks (homework) — opt-in
+        if req.fetch_mu_tasks:
+            result["mu_tasks"] = await _fetch_mu_tasks(client, req.child_ids)
+
+        # Presence (check-in/out state) — opt-in
+        if req.fetch_presence and req.child_ids:
+            result["presence"] = await _fetch_presence(client, req.child_ids)
+
         await client.close()
-        print(f"[fetch-data] events={len(result['calendar_events'])} weekplan={len(result['weekplan_lessons'])} posts={len(result['posts'])} msgs={len(result['messages'])}", flush=True)
+        print(f"[fetch-data] events={len(result['calendar_events'])} weekplan={len(result['weekplan_lessons'])} posts={len(result['posts'])} msgs={len(result['messages'])} mu_tasks={len(result['mu_tasks'])} presence={len(result['presence'])}", flush=True)
         return result
 
     except Exception as e:
