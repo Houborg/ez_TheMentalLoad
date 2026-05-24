@@ -467,6 +467,7 @@ async def _resolve_session_and_filters(client: Any) -> dict[str, Any] | None:
         "meebook": widget_id_by_name_match("meebook"),
         "easyiq": widget_id_by_name_match("easyiq"),
         "ugeplan": widget_id_by_name_match("ugenoter", "ugeplan"),
+        "mu_tasks": widget_id_by_name_match("opgaver"),  # 0030 MinUddannelse - Opgaver
     }
 
     return {
@@ -587,13 +588,29 @@ async def _fetch_ugeplan(client: Any, ctx: dict[str, Any], child_id: int, week: 
 
 # ── MU tasks + presence ─────────────────────────────────────────────────────
 #
-# Field names below are educated guesses based on the patterns in other Aula
-# library models (e.g. CalendarEvent uses snake_case attributes like
-# `start_datetime`, `institution_profile_id`). Runtime introspection should
-# confirm them once the sidecar runs against a real account. Each `getattr`
-# falls back to None / sensible default, and the whole helper is wrapped in
-# try/except so a wrong attribute name degrades to an empty list instead of
-# breaking /fetch-data.
+# Library shapes (verified 2026-05-24 via runtime introspection):
+#
+# get_mu_tasks(widget_id, child_filter, institution_filter, week, session_uuid)
+#   → list[MUTask] with fields: id, title, task_type, due_date (datetime|None),
+#     weekday, week_number, is_completed, student_name, unilogin, url, classes,
+#     course (MUTaskCourse|None), placement, _raw
+#   MUTask has no child_id — map back via unilogin_by_child_id (built from the
+#   same profile context the weekplan helpers use).
+#
+# get_presence_states(institution_profile_ids=…)
+#   → list[ChildPresenceState] with fields: institution_profile_id, name,
+#     status (PresenceState enum, ints 0-8), _raw
+#
+# PresenceState enum maps to Danish codes the frontend renders as pills:
+#   0 NOT_PRESENT     → ikke_ankommet
+#   1 SICK            → syg
+#   2 REPORTED_ABSENT → fri          (parent-reported absence)
+#   3 PRESENT         → tilstede
+#   4 FIELDTRIP       → tur
+#   5 SLEEPING        → sover
+#   6 SPARE_TIME_ACTIVITY → fritid
+#   7 PHYSICAL_PLACEMENT  → placering
+#   8 CHECKED_OUT     → hentet
 
 _PRESENCE_LABELS = {
     "tilstede": "Tilstede",
@@ -602,6 +619,22 @@ _PRESENCE_LABELS = {
     "syg": "Syg",
     "ferie": "Ferie",
     "fri": "Fri",
+    "tur": "På tur",
+    "sover": "Sover",
+    "fritid": "Fritid",
+    "placering": "Placering",
+}
+
+_PRESENCE_STATE_BY_ENUM_VALUE = {
+    0: "ikke_ankommet",
+    1: "syg",
+    2: "fri",
+    3: "tilstede",
+    4: "tur",
+    5: "sover",
+    6: "fritid",
+    7: "placering",
+    8: "hentet",
 }
 
 
@@ -630,62 +663,76 @@ def _hhmm(v: Any) -> str | None:
     return s[:5] if s else None
 
 
-async def _fetch_mu_tasks(client: Any, _child_ids: list[int]) -> list[dict[str, Any]]:
-    """Returns list of normalized mu_task dicts, one per task per child.
+async def _fetch_mu_tasks(client: Any, ctx: dict[str, Any], child_id: int, week: str) -> list[dict[str, Any]]:
+    """Returns list of normalized mu_task dicts for ONE child for the given week.
 
-    The `_child_ids` parameter is unused (the library scopes tasks to the
-    authenticated user's children automatically) but kept for call-site symmetry
-    with the other `_fetch_*` helpers.
+    Uses the same widget discovery pattern as the weekplan helpers — finds the
+    `0030 MinUddannelse - Opgaver` widget by name, then calls get_mu_tasks
+    per child with the (widget_id, child_filter, institution_filter, week,
+    session_uuid) signature the library actually requires.
     """
-    out: list[dict[str, Any]] = []
+    unilogin = ctx["unilogin_by_child_id"].get(child_id)
+    widget_id = ctx["widget_id_by_kind"].get("mu_tasks")
+    if not (unilogin and widget_id):
+        return []
     try:
-        tasks = await client.get_mu_tasks()
+        tasks = await client.get_mu_tasks(
+            widget_id=widget_id,
+            child_filter=[unilogin],
+            institution_filter=ctx["institution_filter"],
+            week=week,
+            session_uuid=ctx["session_uuid"],
+        )
     except Exception as e:
-        print(f"[fetch-data] mu_tasks failed: {type(e).__name__}: {e}", flush=True)
-        return out
+        print(f"[fetch-data] mu_tasks child {child_id}: {type(e).__name__}: {e}", flush=True)
+        return []
+    out: list[dict[str, Any]] = []
     for t in tasks or []:
+        course = getattr(t, "course", None)
+        subject = getattr(course, "name", None) if course else None
         out.append({
-            "childId": getattr(t, "child_id", None) or getattr(t, "institution_profile_id", None),
-            "id": str(getattr(t, "id", "") or getattr(t, "uuid", "")),
-            "title": getattr(t, "title", "") or getattr(t, "name", "") or "",
-            "subject": getattr(t, "subject", None),
-            "dueDate": _date_only(getattr(t, "due_date", None) or getattr(t, "deadline", None)),
-            "description": getattr(t, "description", "") or getattr(t, "body", "") or "",
-            "status": getattr(t, "status", "open"),
+            "childId": child_id,
+            "id": str(getattr(t, "id", "")),
+            "title": getattr(t, "title", "") or "",
+            "subject": subject or getattr(t, "task_type", None) or None,
+            "dueDate": _date_only(getattr(t, "due_date", None)),
+            "description": "",  # MUTask has no body field — title is the headline
+            "status": "done" if getattr(t, "is_completed", False) else "open",
             "url": getattr(t, "url", None),
         })
-    print(f"[fetch-data] mu_tasks={len(out)}", flush=True)
     return out
 
 
 async def _fetch_presence(client: Any, child_ids: list[int]) -> list[dict[str, Any]]:
-    """Returns list of presence dicts, one per child."""
+    """Returns one presence dict per child via get_presence_states."""
     from datetime import datetime, timezone
     out: list[dict[str, Any]] = []
     try:
-        states = await client.get_presence_states(child_ids=child_ids)
+        states = await client.get_presence_states(institution_profile_ids=child_ids)
     except Exception as e:
         print(f"[fetch-data] presence failed: {type(e).__name__}: {e}", flush=True)
         return out
     now_iso = datetime.now(timezone.utc).astimezone().isoformat()
     for s in states or []:
-        raw_status = getattr(s, "status", None) or getattr(s, "state", None)
-        # Default to 'ukendt' (unknown) — labelling a missing state as 'fri' (holiday)
-        # would be misleading.
-        status = (raw_status or "ukendt").lower().replace(" ", "_")
-        label = getattr(s, "status_label", None) or _PRESENCE_LABELS.get(status, status.title())
-        entry_time = getattr(s, "entry_time", None) or getattr(s, "checked_in_at", None)
-        exit_time = getattr(s, "exit_time", None) or getattr(s, "checked_out_at", None)
+        enum_status = getattr(s, "status", None)
+        # PresenceState is an IntEnum; .value is the int code we map from.
+        enum_value = getattr(enum_status, "value", None) if enum_status is not None else None
+        status = _PRESENCE_STATE_BY_ENUM_VALUE.get(enum_value, "ukendt")
+        label = _PRESENCE_LABELS.get(status, status.title())
+        # Entry/exit/comment live on the underlying registration, not the
+        # ChildPresenceState summary — try _raw for them if present.
+        raw = getattr(s, "_raw", None) or {}
+        entry_time = raw.get("entryTime") or raw.get("checkedInAt")
+        exit_time = raw.get("exitTime") or raw.get("checkedOutAt")
         out.append({
-            "childId": getattr(s, "child_id", None) or getattr(s, "institution_profile_id", None),
+            "childId": getattr(s, "institution_profile_id", None),
             "status": status,
             "statusLabel": label,
             "entryTime": _hhmm(entry_time),
             "exitTime": _hhmm(exit_time),
-            "comment": getattr(s, "comment", None),
+            "comment": raw.get("comment"),
             "asOf": now_iso,
         })
-    print(f"[fetch-data] presence={len(out)}", flush=True)
     return out
 
 
@@ -796,13 +843,24 @@ async def fetch_data(req: FetchDataRequest) -> dict:
             except Exception as e:
                 print(f"[fetch-data] messages: {e}", flush=True)
 
-        # MU tasks (homework) — opt-in
-        if req.fetch_mu_tasks:
-            result["mu_tasks"] = await _fetch_mu_tasks(client, req.child_ids)
+        # MU tasks (homework) — opt-in, uses same widget/session ctx as weekplan.
+        if req.fetch_mu_tasks and req.child_ids:
+            week, _monday = _target_week_iso()
+            mu_ctx = await _resolve_session_and_filters(client)
+            if mu_ctx is None:
+                print("[fetch-data] mu_tasks: skipped (no profile context)", flush=True)
+            else:
+                for child_id in req.child_ids:
+                    tasks = await _fetch_mu_tasks(client, mu_ctx, child_id, week)
+                    if tasks:
+                        print(f"[fetch-data] mu_tasks child={child_id} count={len(tasks)}", flush=True)
+                        result["mu_tasks"].extend(tasks)
 
         # Presence (check-in/out state) — opt-in
         if req.fetch_presence and req.child_ids:
             result["presence"] = await _fetch_presence(client, req.child_ids)
+            if result["presence"]:
+                print(f"[fetch-data] presence count={len(result['presence'])}", flush=True)
 
         await client.close()
         print(f"[fetch-data] events={len(result['calendar_events'])} weekplan={len(result['weekplan_lessons'])} posts={len(result['posts'])} msgs={len(result['messages'])} mu_tasks={len(result['mu_tasks'])} presence={len(result['presence'])}", flush=True)
