@@ -605,13 +605,43 @@ _PRESENCE_LABELS = {
 }
 
 
-async def _fetch_mu_tasks(client: Any, child_ids: list[int]) -> list[dict[str, Any]]:
-    """Returns list of normalized mu_task dicts, one per task per child."""
+def _date_only(v: Any) -> str:
+    """Normalize a date/datetime/string to 'YYYY-MM-DD'. Returns '' for None or unparseable values."""
+    if v is None:
+        return ""
+    if hasattr(v, "isoformat"):
+        return v.isoformat()[:10]
+    return str(v).strip()[:10]
+
+
+def _hhmm(v: Any) -> str | None:
+    """Normalize a time/datetime/string to 'HH:MM'. Returns None for missing values.
+
+    Uses isoformat for time-like objects so a datetime renders as '2026-05-24T08:02:00' → '08:02'
+    after splitting on 'T'. Plain strings like '08:02:15' get truncated to first 5 chars.
+    """
+    if v is None:
+        return None
+    if hasattr(v, "isoformat"):
+        s = v.isoformat()
+        # datetime → split on 'T' first so we get the time half, then truncate to HH:MM
+        return s.split("T", 1)[-1][:5] if "T" in s else s[:5]
+    s = str(v).strip()
+    return s[:5] if s else None
+
+
+async def _fetch_mu_tasks(client: Any, _child_ids: list[int]) -> list[dict[str, Any]]:
+    """Returns list of normalized mu_task dicts, one per task per child.
+
+    The `_child_ids` parameter is unused (the library scopes tasks to the
+    authenticated user's children automatically) but kept for call-site symmetry
+    with the other `_fetch_*` helpers.
+    """
     out: list[dict[str, Any]] = []
     try:
         tasks = await client.get_mu_tasks()
     except Exception as e:
-        print(f"[fetch-data] mu_tasks failed: {e}", flush=True)
+        print(f"[fetch-data] mu_tasks failed: {type(e).__name__}: {e}", flush=True)
         return out
     for t in tasks or []:
         out.append({
@@ -619,7 +649,7 @@ async def _fetch_mu_tasks(client: Any, child_ids: list[int]) -> list[dict[str, A
             "id": str(getattr(t, "id", "") or getattr(t, "uuid", "")),
             "title": getattr(t, "title", "") or getattr(t, "name", "") or "",
             "subject": getattr(t, "subject", None),
-            "dueDate": str(getattr(t, "due_date", "") or getattr(t, "deadline", ""))[:10],
+            "dueDate": _date_only(getattr(t, "due_date", None) or getattr(t, "deadline", None)),
             "description": getattr(t, "description", "") or getattr(t, "body", "") or "",
             "status": getattr(t, "status", "open"),
             "url": getattr(t, "url", None),
@@ -635,20 +665,23 @@ async def _fetch_presence(client: Any, child_ids: list[int]) -> list[dict[str, A
     try:
         states = await client.get_presence_states(child_ids=child_ids)
     except Exception as e:
-        print(f"[fetch-data] presence failed: {e}", flush=True)
+        print(f"[fetch-data] presence failed: {type(e).__name__}: {e}", flush=True)
         return out
     now_iso = datetime.now(timezone.utc).astimezone().isoformat()
     for s in states or []:
-        status = (getattr(s, "status", None) or getattr(s, "state", None) or "fri").lower().replace(" ", "_")
+        raw_status = getattr(s, "status", None) or getattr(s, "state", None)
+        # Default to 'ukendt' (unknown) — labelling a missing state as 'fri' (holiday)
+        # would be misleading.
+        status = (raw_status or "ukendt").lower().replace(" ", "_")
         label = getattr(s, "status_label", None) or _PRESENCE_LABELS.get(status, status.title())
-        entry = getattr(s, "entry_time", None) or getattr(s, "checked_in_at", None)
-        exit_ = getattr(s, "exit_time", None) or getattr(s, "checked_out_at", None)
+        entry_time = getattr(s, "entry_time", None) or getattr(s, "checked_in_at", None)
+        exit_time = getattr(s, "exit_time", None) or getattr(s, "checked_out_at", None)
         out.append({
             "childId": getattr(s, "child_id", None) or getattr(s, "institution_profile_id", None),
             "status": status,
             "statusLabel": label,
-            "entryTime": str(entry)[:5] if entry else None,
-            "exitTime": str(exit_)[:5] if exit_ else None,
+            "entryTime": _hhmm(entry_time),
+            "exitTime": _hhmm(exit_time),
             "comment": getattr(s, "comment", None),
             "asOf": now_iso,
         })
