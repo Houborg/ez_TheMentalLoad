@@ -1,10 +1,11 @@
 // packages/backend/src/aula/aula-sync-service.ts
 import { v4 as uuid } from 'uuid';
 import type { Pool } from 'pg';
-import type { Entry } from '@mental-load/contracts';
+import type { Entry, AulaPresence } from '@mental-load/contracts';
 import { AulaConnectionService } from './aula-connection-service.js';
 import { AulaAuthExpiredError } from './aula-types.js';
 import { PostgresEntryRepository } from '../repositories/postgres/entry-repository.js';
+import type { DomainEventBus } from '../events/domain-event-bus.js';
 
 const SIDECAR_URL = process.env.AULA_SIDECAR_URL ?? 'http://localhost:8765';
 
@@ -77,7 +78,11 @@ interface SidecarPresence {
 }
 
 export class AulaSyncService {
-  constructor(private readonly pool: Pool, private readonly familyId: string) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly familyId: string,
+    private readonly eventBus?: DomainEventBus,
+  ) {}
 
   async runSync(): Promise<{ entriesCreated: number; itemsCreated: number }> {
     const connSvc = new AulaConnectionService(this.pool, this.familyId);
@@ -243,6 +248,23 @@ export class AulaSyncService {
             publishedAt: p.asOf,
             rawJson: p,
             mode: 'upsert',
+          });
+          // Emit on every presence sync — even if rowCount==0 from the upsert,
+          // the row's content was overwritten and listeners should refresh.
+          this.eventBus?.emit({
+            name: 'aula.presence.updated',
+            payload: {
+              memberId: mapping.mentalLoadMemberId,
+              presence: {
+                status: p.status,
+                statusLabel: p.statusLabel,
+                entryTime: p.entryTime ?? undefined,
+                exitTime: p.exitTime ?? undefined,
+                comment: p.comment ?? undefined,
+                asOf: p.asOf,
+              } satisfies AulaPresence,
+            },
+            occurredAt: new Date().toISOString(),
           });
           if (inserted) itemsCreated++;
         }

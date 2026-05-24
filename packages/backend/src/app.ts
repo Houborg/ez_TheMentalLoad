@@ -132,7 +132,7 @@ export async function buildApp() {
   if (infrastructure.pool) {
     await registerAuthRoutes(app, infrastructure.pool);
   }
-  if (infrastructure.pool) await registerAulaRoutes(app, infrastructure.pool);
+  if (infrastructure.pool) await registerAulaRoutes(app, infrastructure.pool, eventBus);
 
   // JWT preHandler — verifies session and attaches scoped services to request
   const PUBLIC_PATHS = ['/api/auth/', '/api/v1/health', '/ws'];
@@ -889,6 +889,10 @@ export async function buildApp() {
   eventBus.on('timeline.step.completed', (event) => {
     broadcast({ type: 'timeline.step.completed', payload: event.payload, occurredAt: event.occurredAt });
     // Email notifications are sent directly from the confirm handler (needs scoped memberRepository)
+  });
+
+  eventBus.on('aula.presence.updated', (event) => {
+    broadcast({ type: 'aula.presence.updated', payload: event.payload, occurredAt: event.occurredAt });
   });
 
   function broadcast(message: unknown): void {

@@ -1,4 +1,4 @@
-import type { Entry, TimelineTaskInstance } from './domain';
+import type { Entry, TimelineTaskInstance, AulaPresence } from './domain';
 
 export type DomainEventName =
   | 'entry.created'
@@ -7,7 +7,8 @@ export type DomainEventName =
   | 'reminder.scheduled'
   | 'reminder.triggered'
   | 'timeline.step.reached'
-  | 'timeline.step.completed';
+  | 'timeline.step.completed'
+  | 'aula.presence.updated';
 
 export interface DomainEvent<TPayload> {
   name: DomainEventName;
@@ -28,4 +29,9 @@ export type TimelineStepCompletedEvent = DomainEvent<{
   date: string;
   task: TimelineTaskInstance;
   completedByMemberId?: string;
+}>;
+
+export type AulaPresenceUpdatedEvent = DomainEvent<{
+  memberId: string;
+  presence: AulaPresence;
 }>;
