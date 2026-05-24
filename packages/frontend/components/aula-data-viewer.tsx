@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, MessageSquare, Calendar, Newspaper, User, BookOpen, GraduationCap, UserCheck } from 'lucide-react';
+import { RefreshCw, MessageSquare, Calendar, Newspaper, User, BookOpen, GraduationCap, UserCheck, Trash2 } from 'lucide-react';
 import type { Member } from '@mental-load/contracts';
-import { aulaGetItems, aulaGetConnection, type AulaItem, type AulaConnectionPublic } from '@/lib/aula-api';
+import { aulaDeleteItem, aulaGetItems, aulaGetConnection, type AulaItem, type AulaConnectionPublic } from '@/lib/aula-api';
 import { cleanAulaHtml, looksLikeHtml } from '@/lib/aula-html';
 import { cn } from '@/lib/utils';
 
@@ -36,14 +36,41 @@ function formatDate(iso?: string) {
   }
 }
 
-function ItemCard({ item, memberName }: { item: AulaItem; memberName?: string }) {
+function ItemCard({
+  item,
+  memberName,
+  onDelete,
+}: {
+  item: AulaItem;
+  memberName?: string;
+  onDelete?: (id: string) => Promise<void>;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const body = item.body ?? '';
   const isHtml = looksLikeHtml(body);
   const cleanedHtml = useMemo(() => (isHtml ? cleanAulaHtml(body) : ''), [body, isHtml]);
-
-  // Decide whether to clamp: HTML uses CSS line-clamp on the wrapper; plain text uses the same.
   const showToggle = body.length > 120;
+  const canDelete = !!onDelete && item.type === 'message';
+
+  // Auto-dismiss the confirm pill after 3s
+  useEffect(() => {
+    if (!confirming) return;
+    const t = setTimeout(() => setConfirming(false), 3000);
+    return () => clearTimeout(t);
+  }, [confirming]);
+
+  async function handleDeleteConfirmed() {
+    if (!onDelete) return;
+    setDeleting(true);
+    try {
+      await onDelete(item.id);
+    } finally {
+      setDeleting(false);
+      setConfirming(false);
+    }
+  }
 
   return (
     <div className="rounded-lg border border-border/50 bg-background/40 p-3 space-y-1">
@@ -52,7 +79,38 @@ function ItemCard({ item, memberName }: { item: AulaItem; memberName?: string })
           {TYPE_ICONS[item.type as ItemType]}
           <span>{item.title || body.slice(0, 60) || '(ingen titel)'}</span>
         </div>
-        <span className="text-xs text-muted-foreground shrink-0">{formatDate(item.published_at)}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          {confirming ? (
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">Slet besked?</span>
+              <button
+                type="button"
+                onClick={handleDeleteConfirmed}
+                disabled={deleting}
+                className="rounded-md bg-rose-500 px-2 py-0.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-50"
+              >Ja, slet</button>
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                className="rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent"
+              >Annullér</button>
+            </div>
+          ) : (
+            <>
+              <span className="text-xs text-muted-foreground">{formatDate(item.published_at)}</span>
+              {canDelete && (
+                <button
+                  type="button"
+                  aria-label="Slet besked"
+                  onClick={() => setConfirming(true)}
+                  className="rounded-md p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
       {item.author && (
         <p className="text-xs text-muted-foreground">Fra: {item.author}</p>
@@ -99,6 +157,19 @@ export function AulaDataViewer({ members }: Props) {
   const [items, setItems] = useState<AulaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeType, setActiveType] = useState<ItemType | 'all'>('all');
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleDelete(id: string) {
+    const prev = items;
+    setItems(items.filter(i => i.id !== id));
+    try {
+      await aulaDeleteItem(id);
+    } catch {
+      setError('Kunne ikke slette beskeden. Prøv igen.');
+      setItems(prev);
+      setTimeout(() => setError(null), 4000);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -196,6 +267,12 @@ export function AulaDataViewer({ members }: Props) {
         ))}
       </div>
 
+      {error && (
+        <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-700">
+          {error}
+        </div>
+      )}
+
       {loading ? (
         <div className="py-8 text-center text-sm text-muted-foreground">Henter data...</div>
       ) : items.length === 0 ? (
@@ -214,7 +291,7 @@ export function AulaDataViewer({ members }: Props) {
               </h3>
               <div className="space-y-2">
                 {memberItems.map(item => (
-                  <ItemCard key={item.id} item={item} />
+                  <ItemCard key={item.id} item={item} onDelete={handleDelete} />
                 ))}
               </div>
             </div>
@@ -228,7 +305,7 @@ export function AulaDataViewer({ members }: Props) {
               </h3>
               <div className="space-y-2">
                 {noMember.map(item => (
-                  <ItemCard key={item.id} item={item} />
+                  <ItemCard key={item.id} item={item} onDelete={handleDelete} />
                 ))}
               </div>
             </div>
