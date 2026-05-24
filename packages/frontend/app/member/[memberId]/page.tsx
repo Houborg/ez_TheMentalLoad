@@ -338,6 +338,7 @@ export default function MemberPage() {
                 <p className="mt-1 text-sm text-muted-foreground">Calendar, agenda, tasks, and today timeline for this member only.</p>
               </div>
               <div className="flex items-center gap-2">
+                <MemberPresenceBadge presence={presence} />
                 <Link href="/" className="inline-flex items-center gap-2 rounded-2xl border border-border/60 bg-card/60 px-4 py-2 text-sm font-medium hover:bg-accent/60">
                   <ArrowLeft className="h-4 w-4" />
                   Back to dashboard
@@ -364,7 +365,6 @@ export default function MemberPage() {
                     </div>
                     <span>{member.role}</span>
                   </div>
-                  <MemberPresenceBadge presence={presence} />
                 </div>
                 <div className="rounded-[30px] border border-border/60 bg-card/35 p-3">
                   <AgendaView
