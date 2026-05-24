@@ -35,6 +35,8 @@ const fakeConn: Omit<AulaConnection, 'id' | 'createdAt'> = {
     dailyOverview: false,
     posts: false,
     messages: false,
+    mu_tasks: true,    // NEW
+    presence: true,    // NEW
   },
   syncIntervalMinutes: 60,
 };
@@ -70,4 +72,31 @@ test('deleteConnection issues an update query', async () => {
   const svc = new AulaConnectionService(pool, 'fam-1');
   await svc.deleteConnection();
   assert.equal(stored[0], 'fam-1');
+});
+
+test('getConnection defaults mu_tasks and presence to true for legacy connections', async () => {
+  const legacyConn = {
+    id: 'legacy',
+    createdAt: new Date().toISOString(),
+    isConnected: true,
+    aulaUsername: 'legacy',
+    accessToken: 'a',
+    refreshToken: 'r',
+    expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    childMappings: [],
+    syncOptions: {
+      importToCalendar: false,
+      calendarEvents: true,
+      dailyOverview: false,
+      posts: false,
+      messages: false,
+      // mu_tasks + presence missing on purpose
+    },
+    syncIntervalMinutes: 60,
+  };
+  const { pool } = mockPool({ aula_connection: legacyConn });
+  const svc = new AulaConnectionService(pool, 'fam');
+  const conn = await svc.getConnection();
+  assert.equal(conn?.syncOptions.mu_tasks, true);
+  assert.equal(conn?.syncOptions.presence, true);
 });

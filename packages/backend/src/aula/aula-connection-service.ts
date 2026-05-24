@@ -12,7 +12,18 @@ export class AulaConnectionService {
       [this.familyId],
     );
     const raw = result.rows[0]?.settings_json ?? {};
-    return (raw.aula_connection as AulaConnection | undefined) ?? null;
+    const conn = raw.aula_connection as AulaConnection | undefined;
+    if (!conn) return null;
+    // Default new sync options to true for connections persisted before the field existed.
+    const storedOpts = conn.syncOptions as Partial<AulaConnection['syncOptions']>;
+    return {
+      ...conn,
+      syncOptions: {
+        mu_tasks: true,
+        presence: true,
+        ...storedOpts,
+      } as AulaConnection['syncOptions'],
+    };
   }
 
   async getConnectionPublic(): Promise<AulaConnectionPublic | null> {

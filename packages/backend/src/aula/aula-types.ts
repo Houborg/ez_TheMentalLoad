@@ -19,6 +19,8 @@ export interface AulaSyncOptions {
   dailyOverview: boolean;
   posts: boolean;
   messages: boolean;
+  mu_tasks: boolean;   // NEW — MinUddannelse homework
+  presence: boolean;   // NEW — current presence state per child
 }
 
 export interface AulaConnection extends AulaTokens {
