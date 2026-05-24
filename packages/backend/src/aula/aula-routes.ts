@@ -117,18 +117,19 @@ export async function registerAulaRoutes(app: FastifyInstance, pool: Pool): Prom
   });
 
   app.get<{
-    Querystring: { type?: string; memberId?: string; page?: string; pageSize?: string };
+    Querystring: { type?: string; memberId?: string; page?: string; pageSize?: string; include_hidden?: string };
   }>('/api/v1/aula/items', async (req, reply) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const familyId = (req as any).familyId as string | undefined;
     if (!familyId) return reply.status(401).send({ error: 'unauthorized' });
 
-    const { type, memberId, page = '0', pageSize = '20' } = req.query;
+    const { type, memberId, page = '0', pageSize = '20', include_hidden } = req.query;
     const offset = Number(page) * Number(pageSize);
 
     const conditions: string[] = ['family_id = $1'];
     const params: unknown[] = [familyId];
 
+    if (!include_hidden) conditions.push('hidden_at is null');
     if (type) { conditions.push(`type = $${params.length + 1}`); params.push(type); }
     if (memberId) { conditions.push(`member_id = $${params.length + 1}`); params.push(memberId); }
 
@@ -143,5 +144,18 @@ export async function registerAulaRoutes(app: FastifyInstance, pool: Pool): Prom
     );
 
     return reply.send({ items: result.rows });
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/v1/aula/items/:id', async (req, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (req as any).familyId as string | undefined;
+    if (!familyId) return reply.status(401).send({ error: 'unauthorized' });
+    const result = await pool.query(
+      `update aula_items set hidden_at = now()
+       where id = $1 and family_id = $2 and hidden_at is null`,
+      [req.params.id, familyId],
+    );
+    if ((result.rowCount ?? 0) === 0) return reply.status(404).send({ error: 'not_found' });
+    return reply.send({ ok: true });
   });
 }
