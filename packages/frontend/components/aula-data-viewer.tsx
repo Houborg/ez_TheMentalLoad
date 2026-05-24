@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import DOMPurify from 'dompurify';
 import { RefreshCw, MessageSquare, Calendar, Newspaper, User, BookOpen } from 'lucide-react';
 import type { Member } from '@mental-load/contracts';
 import { aulaGetItems, aulaGetConnection, type AulaItem, type AulaConnectionPublic } from '@/lib/aula-api';
+import { cleanAulaHtml, looksLikeHtml } from '@/lib/aula-html';
 import { cn } from '@/lib/utils';
 
 type ItemType = 'post' | 'message' | 'daily_overview' | 'weekplan_lesson';
@@ -22,20 +22,6 @@ const TYPE_ICONS: Record<ItemType, React.ReactNode> = {
   daily_overview: <Calendar className="h-3.5 w-3.5" />,
   weekplan_lesson: <BookOpen className="h-3.5 w-3.5" />,
 };
-
-const SANITIZE_CONFIG = {
-  ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'a', 'ul', 'ol', 'li', 'span', 'div'],
-  ALLOWED_ATTR: ['href', 'target', 'rel'],
-  FORBID_ATTR: ['style', 'class'],
-};
-
-function looksLikeHtml(s: string): boolean {
-  return /<\s*(p|br|div|span|strong|em|ul|ol|li|a)\b/i.test(s);
-}
-
-function cleanAulaHtml(html: string): string {
-  return DOMPurify.sanitize(html, SANITIZE_CONFIG).trim();
-}
 
 function formatDate(iso?: string) {
   if (!iso) return '—';
