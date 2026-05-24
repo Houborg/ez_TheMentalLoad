@@ -375,9 +375,11 @@ export function MobileAulaSettings({ members, calendars }: Props) {
   if (step === 4) {
     const toggles: Array<{ key: keyof AulaSyncOptions; label: string; description: string }> = [
       { key: 'calendarEvents', label: 'Kalenderbegivenheder', description: 'Skema og arrangementer' },
-      { key: 'dailyOverview', label: 'Dagsoverblik', description: 'Fremmøde og tilstedeværelse' },
+      { key: 'dailyOverview', label: 'Ugeplan', description: 'Skoleskema og ugenoter' },
       { key: 'posts', label: 'Opslag', description: 'Nyheder og beskeder fra skolen' },
       { key: 'messages', label: 'Beskeder', description: 'Direkte beskeder fra lærere' },
+      { key: 'muTasks', label: 'Lektier (MinUddannelse)', description: 'Hjemmearbejde og opgaver' },
+      { key: 'presence', label: 'Tilstedeværelse', description: 'Vises som ikoner på familiens medlemmer' },
       { key: 'importToCalendar', label: 'Importer til kalender', description: 'Skriv begivenheder direkte til MentalLoad' },
     ];
     return (
