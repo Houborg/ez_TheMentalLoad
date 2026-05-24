@@ -8,6 +8,7 @@ import type {
   AssistantConfirmRequest,
   AssistantFunRequest,
   AssistantParseRequest,
+  AulaPresence,
   ConfirmTimelineTaskCompletionRequest,
   CreateEntryRequest,
   CreateMemberRequest,
@@ -758,9 +759,12 @@ export async function buildApp() {
   app.get('/api/v1/reminders/jobs', async (request) => svc(request).entryService.listReminderJobs());
   app.get('/api/v1/dashboard', async (request) => {
     const familyId = (request as unknown as { familyId?: string }).familyId;
-    const presence: Record<string, unknown> = {};
+    // Note: keys are aula_items.member_id from the LAST sync. If the user remaps
+    // childMappings, this stays stale until the next presence sync re-upserts the
+    // row with the new member_id. Acceptable for v1 — rebinding is rare.
+    const presence: Record<string, AulaPresence> = {};
     if (infrastructure.pool && familyId) {
-      const result = await infrastructure.pool.query<{ member_id: string; raw_json: unknown }>(
+      const result = await infrastructure.pool.query<{ member_id: string; raw_json: AulaPresence }>(
         `select member_id, raw_json from aula_items
          where family_id = $1 and type = 'presence' and hidden_at is null and member_id is not null`,
         [familyId],

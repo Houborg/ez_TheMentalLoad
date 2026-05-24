@@ -217,6 +217,9 @@ export class AulaSyncService {
         for (const task of data.mu_tasks ?? []) {
           const mapping = conn.childMappings.find(m => m.aulaChildId === task.childId);
           if (!mapping) continue;
+          // TODO: dueDate is 'YYYY-MM-DD' — parsing it as a Date treats it as
+          // UTC midnight, so published_at can display one day earlier in
+          // Europe/Copenhagen during DST. Real lesson date lives in raw_json.
           const inserted = await this.upsertAulaItem({
             aulaId: `mu-${task.id}`,
             type: 'mu_task',

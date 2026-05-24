@@ -131,7 +131,14 @@ test('runSync upserts a single presence row per child with deterministic aula_id
       },
     } as unknown as Pool;
 
-    const svc = new AulaSyncService(pool, 'fam');
+    // Recording event bus to verify the optional WS wire-up still works.
+    const emitted: Array<{ name: string; payload: unknown }> = [];
+    const recordingBus = {
+      emit: (e: { name: string; payload: unknown }) => emitted.push({ name: e.name, payload: e.payload }),
+      on: () => {},
+    } as unknown as import('../events/domain-event-bus.js').DomainEventBus;
+
+    const svc = new AulaSyncService(pool, 'fam', recordingBus);
     await svc.runSync();
 
     const insertCall = queries.find(q =>
@@ -142,6 +149,14 @@ test('runSync upserts a single presence row per child with deterministic aula_id
     assert.equal((insertCall!.params as unknown[])[6], 'mem-nynne');         // member_id
     assert.match(insertCall!.sql, /on conflict.*do update set/i);
     assert.doesNotMatch(insertCall!.sql, /hidden_at/i);
+
+    // The event bus is optional, but when injected it MUST receive a presence-updated event per sync.
+    assert.equal(emitted.length, 1, 'expected exactly one aula.presence.updated event');
+    assert.equal(emitted[0]?.name, 'aula.presence.updated');
+    const payload = emitted[0]?.payload as { memberId: string; presence: { status: string; entryTime?: string } };
+    assert.equal(payload.memberId, 'mem-nynne');
+    assert.equal(payload.presence.status, 'tilstede');
+    assert.equal(payload.presence.entryTime, '08:02');
   } finally {
     global.fetch = originalFetch;
   }
