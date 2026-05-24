@@ -188,7 +188,7 @@ The assistant does not write directly to business logic. The intended flow is: *
 
 | Protocol | Path | Description |
 |----------|------|-------------|
-| WebSocket | `/ws` | Live push for `entry.created`, `entry.updated`, `entry.deleted`, `reminder.scheduled` events |
+| WebSocket | `/ws` | Live push for `entry.created`, `entry.updated`, `entry.deleted`, `reminder.scheduled`, `aula.presence.updated` events |
 
 ---
 
@@ -232,12 +232,16 @@ The `docs/backend-api/` directory contains the frozen v1 transport boundary spec
 ## Current status
 
 This repository now includes:
-- shared planner UI and realtime updates
-- Postgres-ready persistence and migrations
+- shared planner UI with realtime WebSocket updates
+- multi-family auth (email signup, JWT sessions, per-family data isolation)
+- responsive mobile dashboard (Apple Calendar-style layout, bottom nav, native sheets)
+- Postgres-ready persistence and migrations (auto-run on startup)
 - BullMQ-ready worker process
-- recurring entries and reminder job scheduling
-- ICS import and export
-- assistant draft and confirm workflow
+- recurring entries (RRULE + BYDAY) and reminder job scheduling
+- ICS import and export, Apple Calendar bidirectional sync (CalDAV)
+- assistant draft and confirm workflow (Ollama)
+- Danish public holidays import
+- **Aula integration** (via Python sidecar wrapping the `aula` library): MitID APP auth, messages, weekplan/Ugeplan, MinUddannelse homework, presence status with live WS updates, soft-delete for messages
 
 
 ##Check version
