@@ -829,11 +829,11 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                 )
                 print(f"[fetch-data] posts: got {len(posts)} posts", flush=True)
                 for p in posts or []:
-                    # owner is a ProfileReference dataclass — extract display name
+                    # owner is a ProfileReference dataclass — extract full_name
                     owner = getattr(p, 'owner', None)
                     author_name: str | None = None
                     if owner is not None:
-                        author_name = getattr(owner, 'display_name', None) or getattr(owner, 'name', None) or str(owner)
+                        author_name = getattr(owner, 'full_name', None) or getattr(owner, 'name', None) or getattr(owner, 'first_name', None)
                     result["posts"].append({
                         "id": str(getattr(p, 'id', '')),
                         "title": getattr(p, 'title', None),
