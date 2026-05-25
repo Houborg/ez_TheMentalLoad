@@ -760,27 +760,40 @@ async def fetch_data(req: FetchDataRequest) -> dict:
             except Exception as e:
                 print(f"[fetch-data] date parse error: {e}", flush=True)
 
-        # Calendar events per child (library expects list[int] + datetime)
+        # Resolve ALL institution_profile_ids (parent + children) once — used
+        # by both calendar events and posts. Falls back to child_ids only.
+        all_inst_ids: list[int] = list(req.child_ids)
+        try:
+            profile = await client.get_profile()
+            profile_inst_ids = getattr(profile, 'institution_profile_ids', None)
+            if profile_inst_ids:
+                all_inst_ids = list(profile_inst_ids)
+                print(f"[fetch-data] resolved institution_profile_ids={all_inst_ids} (child_ids={req.child_ids})", flush=True)
+        except Exception as e:
+            print(f"[fetch-data] could not load profile for inst ids, using child_ids: {e}", flush=True)
+
+        # Calendar events — pass all institution profile ids to avoid 403
+        # that occurred when using only child_ids.
         if req.child_ids and start_dt and end_dt:
-            for child_id in req.child_ids:
-                try:
-                    events = await client.get_calendar_events(
-                        institution_profile_ids=[child_id],
-                        start=start_dt,
-                        end=end_dt,
-                    )
-                    for ev in events or []:
-                        result["calendar_events"].append({
-                            "id": str(getattr(ev, 'id', '')),
-                            "title": getattr(ev, 'title', '') or '',
-                            "startTime": _iso_or_none(getattr(ev, 'start_datetime', None)) or '',
-                            "endTime": _iso_or_none(getattr(ev, 'end_datetime', None)) or '',
-                            "allDay": False,
-                            "location": getattr(ev, 'location', None),
-                            "childId": child_id,
-                        })
-                except Exception as e:
-                    print(f"[fetch-data] calendar events for child {child_id}: {e}", flush=True)
+            try:
+                events = await client.get_calendar_events(
+                    institution_profile_ids=all_inst_ids,
+                    start=start_dt,
+                    end=end_dt,
+                )
+                for ev in events or []:
+                    result["calendar_events"].append({
+                        "id": str(getattr(ev, 'id', '')),
+                        "title": getattr(ev, 'title', '') or '',
+                        "startTime": _iso_or_none(getattr(ev, 'start_datetime', None)) or '',
+                        "endTime": _iso_or_none(getattr(ev, 'end_datetime', None)) or '',
+                        "allDay": False,
+                        "location": getattr(ev, 'location', None),
+                        "childId": getattr(ev, 'belongs_to', None) or all_inst_ids[0] if all_inst_ids else 0,
+                    })
+                print(f"[fetch-data] calendar events: {len(result['calendar_events'])} events", flush=True)
+            except Exception as e:
+                print(f"[fetch-data] calendar events failed: {type(e).__name__}: {e}", flush=True)
 
         # Weekplan — replaces daily_overview (item 3 from MentalLoad-Issues)
         if req.fetch_weekplan and req.child_ids:
@@ -804,20 +817,34 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                             )
                             break
 
-        # Posts — library requires institution_profile_ids
+        # Posts — uses all_inst_ids (parent + children) resolved above.
+        # Posts from school are often scoped to the parent's profile, not
+        # the children's — passing all IDs catches both.
         if req.fetch_posts and req.child_ids:
             try:
-                posts = await client.get_posts(institution_profile_ids=req.child_ids)
+                print(f"[fetch-data] posts: fetching with institution_profile_ids={all_inst_ids}", flush=True)
+                posts = await client.get_posts(
+                    institution_profile_ids=all_inst_ids,
+                    limit=100,
+                )
+                print(f"[fetch-data] posts: got {len(posts)} posts", flush=True)
                 for p in posts or []:
+                    # owner is a ProfileReference dataclass — extract display name
+                    owner = getattr(p, 'owner', None)
+                    author_name: str | None = None
+                    if owner is not None:
+                        author_name = getattr(owner, 'display_name', None) or getattr(owner, 'name', None) or str(owner)
                     result["posts"].append({
                         "id": str(getattr(p, 'id', '')),
                         "title": getattr(p, 'title', None),
                         "body": getattr(p, 'content_html', None) or '',
-                        "author": getattr(p, 'owner', None),
+                        "author": author_name,
                         "publishedAt": _iso_or_none(getattr(p, 'timestamp', None) or getattr(p, 'publish_at', None)),
+                        "raw_json": getattr(p, '_raw', None),
                     })
             except Exception as e:
-                print(f"[fetch-data] posts: {e}", flush=True)
+                import traceback
+                print(f"[fetch-data] posts error: {e}\n{traceback.format_exc()}", flush=True)
 
         # Messages — get threads, fetch latest message body per thread
         if req.fetch_messages:

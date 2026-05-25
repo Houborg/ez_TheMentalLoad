@@ -34,6 +34,7 @@ interface SidecarPost {
   body: string;
   author?: string;
   publishedAt?: string;
+  raw_json?: Record<string, unknown>;
 }
 
 interface SidecarMessage {
