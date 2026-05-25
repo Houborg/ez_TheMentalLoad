@@ -39,22 +39,16 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.json({ ok: true });
   const setCookie = upstream.headers.get('set-cookie');
   if (setCookie) {
-    // Extract the token value and rewrite cookie attributes for production correctness.
-    // The backend doesn't know it's behind HTTPS (no x-forwarded-proto forwarded),
-    // so it omits Secure. We fix that here.
     const tokenMatch = setCookie.match(/ml_session=([^;]+)/);
     if (tokenMatch) {
       const secure = isHttpsRequest(request.headers, request.url);
-      const maxAge = 60 * 60 * 24 * 30; // 30 days
-      const cookieValue = [
-        `ml_session=${tokenMatch[1]}`,
-        'Path=/',
-        'HttpOnly',
-        `Max-Age=${maxAge}`,
-        'SameSite=Lax',
-        ...(secure ? ['Secure'] : []),
-      ].join('; ');
-      response.headers.set('set-cookie', cookieValue);
+      response.cookies.set('ml_session', tokenMatch[1], {
+        path: '/',
+        httpOnly: true,
+        maxAge: 60 * 60 * 24 * 30, // 30 days
+        sameSite: 'lax',
+        secure,
+      });
     } else {
       response.headers.set('set-cookie', setCookie);
     }
