@@ -66,8 +66,13 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 
 /**
  * Returns true when the request arrived over HTTPS — either directly
- * or via a reverse proxy that set x-forwarded-proto.
+ * or via a reverse proxy that set x-forwarded-proto or CF-Visitor.
  */
 export function isHttpsRequest(headers: Headers, url: string): boolean {
-  return headers.get('x-forwarded-proto') === 'https' || url.startsWith('https://');
+  if (headers.get('x-forwarded-proto') === 'https') return true;
+  if (url.startsWith('https://')) return true;
+  // Cloudflare Tunnel sets CF-Visitor with the original scheme
+  const cfVisitor = headers.get('cf-visitor');
+  if (cfVisitor?.includes('"https"')) return true;
+  return false;
 }
