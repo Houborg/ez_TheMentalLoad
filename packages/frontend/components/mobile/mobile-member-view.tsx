@@ -1,17 +1,53 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CalendarDays, Check, CheckSquare, LoaderCircle } from 'lucide-react';
+import {
+  BookOpen,
+  CalendarDays,
+  Check,
+  CheckSquare,
+  GraduationCap,
+  LoaderCircle,
+  MessageSquare,
+  StickyNote,
+} from 'lucide-react';
 import type { AulaPresence, Entry, Member } from '@mental-load/contracts';
 import { MemberSchoolSchedule } from '@/components/aula/member-school-schedule';
 import { MemberHomework } from '@/components/aula/member-homework';
+import { MemberWeekNotes } from '@/components/aula/member-week-notes';
+import { MemberMessages } from '@/components/aula/member-messages';
 import { MemberPresenceDot } from '@/components/aula/member-presence-dot';
+import {
+  MemberSectionToggle,
+  useSectionVisibility,
+  type SectionDef,
+  type SectionKey,
+} from '@/components/member-section-toggle';
 import { aulaGetItems } from '@/lib/aula-api';
 import { cn } from '@/lib/utils';
 import {
   loadUpcomingOccurrences,
   updateEntry,
 } from '@/lib/api';
+
+const ALL_SECTIONS: SectionDef[] = [
+  { key: 'kalender',   label: 'Kalender',   Icon: CalendarDays },
+  { key: 'ugenoter',   label: 'Uge noter',  Icon: StickyNote },
+  { key: 'skoleskema',  label: 'Skoleskema', Icon: BookOpen },
+  { key: 'lektier',    label: 'Lektier',    Icon: GraduationCap },
+  { key: 'opgaver',    label: 'Opgaver',    Icon: CheckSquare },
+  { key: 'beskeder',   label: 'Beskeder',   Icon: MessageSquare },
+];
+
+const CHILD_DEFAULTS: Record<SectionKey, boolean> = {
+  kalender: true, ugenoter: true, skoleskema: true,
+  lektier: true, opgaver: true, beskeder: true,
+};
+
+const PARENT_DEFAULTS: Record<SectionKey, boolean> = {
+  kalender: true, ugenoter: false, skoleskema: false,
+  lektier: false, opgaver: true, beskeder: false,
+};
 
 type Props = {
   member: Member;
@@ -50,6 +86,9 @@ export function MobileMemberView({ member, onBack, onSelectEntry }: Props) {
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState('');
   const [presence, setPresence] = useState<AulaPresence | null>(null);
+
+  const isChild = member.role === 'child';
+  const { visible, toggle } = useSectionVisibility(isChild ? CHILD_DEFAULTS : PARENT_DEFAULTS);
 
   useEffect(() => {
     let active = true;
@@ -251,6 +290,11 @@ export function MobileMemberView({ member, onBack, onSelectEntry }: Props) {
         </div>
       </div>
 
+      {/* Toggle bar */}
+      <div className="px-4 pt-3 pb-1 flex-shrink-0 overflow-x-auto">
+        <MemberSectionToggle sections={ALL_SECTIONS} visible={visible} onToggle={toggle} />
+      </div>
+
       {/* Scrollable content */}
       <div className="flex-1 overflow-auto pb-24">
         {errorText && (
@@ -259,133 +303,155 @@ export function MobileMemberView({ member, onBack, onSelectEntry }: Props) {
           </div>
         )}
 
-        {/* ── Section 1: Mobile Agenda ── */}
-        <section className="px-4 pt-4 pb-2">
-          <div className="flex items-center gap-2 mb-3">
-            <CalendarDays className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">Kalender</h2>
-            <span className="text-xs text-muted-foreground">Næste 30 dage</span>
-          </div>
-
-          {agendaDays.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground text-center">
-              Ingen begivenheder
+        {/* ── Section 1: Kalender ── */}
+        {visible.kalender && (
+          <section className="px-4 pt-4 pb-2">
+            <div className="flex items-center gap-2 mb-3">
+              <CalendarDays className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">Kalender</h2>
+              <span className="text-xs text-muted-foreground">Næste 30 dage</span>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {agendaDays.map(([dateStr, dayEntries]) => (
-                <div key={dateStr}>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-primary mb-1.5">
-                    {formatDateLabel(dateStr)}
+
+            {agendaDays.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground text-center">
+                Ingen begivenheder
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {agendaDays.map(([dateStr, dayEntries]) => (
+                  <div key={dateStr}>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-primary mb-1.5">
+                      {formatDateLabel(dateStr)}
+                    </div>
+                    <div className="space-y-1">
+                      {dayEntries.map(entry => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          onClick={() => onSelectEntry?.(entry)}
+                          className="flex w-full items-start gap-3 rounded-xl border border-border/60 bg-card/50 px-3 py-2.5 text-left active:bg-accent/60 transition-colors"
+                        >
+                          {/* Time column */}
+                          <div className="w-12 shrink-0 text-xs tabular-nums text-muted-foreground pt-0.5">
+                            {entry.allDay ? 'Heldag' : formatTime(entry.startTime) || '—'}
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{entry.title}</div>
+                            {entry.location && (
+                              <div className="text-xs text-muted-foreground truncate mt-0.5">{entry.location}</div>
+                            )}
+                          </div>
+
+                          {/* Type badge */}
+                          <div className={cn(
+                            'shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider font-medium',
+                            entry.type === 'task'
+                              ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                              : 'bg-primary/15 text-primary',
+                          )}>
+                            {entry.type === 'task' ? 'Opgave' : 'Event'}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    {dayEntries.map(entry => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        onClick={() => onSelectEntry?.(entry)}
-                        className="flex w-full items-start gap-3 rounded-xl border border-border/60 bg-card/50 px-3 py-2.5 text-left active:bg-accent/60 transition-colors"
-                      >
-                        {/* Time column */}
-                        <div className="w-12 shrink-0 text-xs tabular-nums text-muted-foreground pt-0.5">
-                          {entry.allDay ? 'Heldag' : formatTime(entry.startTime) || '—'}
-                        </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">{entry.title}</div>
-                          {entry.location && (
-                            <div className="text-xs text-muted-foreground truncate mt-0.5">{entry.location}</div>
-                          )}
-                        </div>
+        {/* ── Section 2: Uge noter ── */}
+        {visible.ugenoter && (
+          <section className="px-4 pt-2 pb-2">
+            <MemberWeekNotes memberId={member.id} memberName={member.name} />
+          </section>
+        )}
 
-                        {/* Type badge */}
-                        <div className={cn(
-                          'shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider font-medium',
-                          entry.type === 'task'
-                            ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                            : 'bg-primary/15 text-primary',
-                        )}>
-                          {entry.type === 'task' ? 'Opgave' : 'Event'}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
+        {/* ── Section 3: Skoleskema ── */}
+        {visible.skoleskema && (
+          <section className="px-4 pt-2 pb-2">
+            <MemberSchoolSchedule memberId={member.id} memberName={member.name} />
+          </section>
+        )}
+
+        {/* ── Section 4: Lektier ── */}
+        {visible.lektier && (
+          <section className="px-4 pt-2 pb-2">
+            <MemberHomework memberId={member.id} memberName={member.name} />
+          </section>
+        )}
+
+        {/* ── Section 5: Opgaver ── */}
+        {visible.opgaver && (
+          <section className="px-4 pt-2 pb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckSquare className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">Opgaver</h2>
+              <span className="text-xs text-muted-foreground">{memberTasks.length} opgaver</span>
             </div>
-          )}
-        </section>
 
-        {/* ── Section 2: School schedule (self-contained) ── */}
-        <section className="px-4 pt-2 pb-2">
-          <MemberSchoolSchedule memberId={member.id} memberName={member.name} />
-        </section>
-
-        {/* ── Section 3: Homework (self-contained) ── */}
-        <section className="px-4 pt-2 pb-2">
-          <MemberHomework memberId={member.id} memberName={member.name} />
-        </section>
-
-        {/* ── Section 4: Tasks ── */}
-        <section className="px-4 pt-2 pb-4">
-          <div className="flex items-center gap-2 mb-3">
-            <CheckSquare className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">Opgaver</h2>
-            <span className="text-xs text-muted-foreground">{memberTasks.length} opgaver</span>
-          </div>
-
-          {memberTasks.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground text-center">
-              Ingen opgaver
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {memberTasks.map(task => (
-                <div
-                  key={task.id}
-                  className="flex items-start gap-3 rounded-xl border border-border/60 bg-card/50 px-3 py-2.5"
-                >
-                  {/* Complete button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (task.status !== 'completed') void handleCompleteTask(task.id);
-                    }}
-                    className={cn(
-                      'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors',
-                      task.status === 'completed'
-                        ? 'border-emerald-500 bg-emerald-500 text-white'
-                        : 'border-border hover:border-primary',
-                    )}
-                  >
-                    {task.status === 'completed' && <Check className="h-3 w-3" />}
-                  </button>
-
-                  {/* Task info */}
+            {memberTasks.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground text-center">
+                Ingen opgaver
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {memberTasks.map(task => (
                   <div
-                    className="flex-1 min-w-0 cursor-pointer"
-                    onClick={() => {
-                      const found = entries.find(e => getEntryMutationId(e.id) === task.entryId);
-                      if (found) onSelectEntry?.(found);
-                    }}
+                    key={task.id}
+                    className="flex items-start gap-3 rounded-xl border border-border/60 bg-card/50 px-3 py-2.5"
                   >
-                    <div className={cn(
-                      'text-sm font-medium',
-                      task.status === 'completed' && 'line-through text-muted-foreground',
-                    )}>
-                      {task.title}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {task.source === 'standalone' ? 'Opgave' : `Tjekliste · ${task.eventTitle ?? ''}`}
-                      {task.dueAt ? ` · ${formatTime(task.dueAt)}` : ''}
+                    {/* Complete button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (task.status !== 'completed') void handleCompleteTask(task.id);
+                      }}
+                      className={cn(
+                        'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors',
+                        task.status === 'completed'
+                          ? 'border-emerald-500 bg-emerald-500 text-white'
+                          : 'border-border hover:border-primary',
+                      )}
+                    >
+                      {task.status === 'completed' && <Check className="h-3 w-3" />}
+                    </button>
+
+                    {/* Task info */}
+                    <div
+                      className="flex-1 min-w-0 cursor-pointer"
+                      onClick={() => {
+                        const found = entries.find(e => getEntryMutationId(e.id) === task.entryId);
+                        if (found) onSelectEntry?.(found);
+                      }}
+                    >
+                      <div className={cn(
+                        'text-sm font-medium',
+                        task.status === 'completed' && 'line-through text-muted-foreground',
+                      )}>
+                        {task.title}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {task.source === 'standalone' ? 'Opgave' : `Tjekliste · ${task.eventTitle ?? ''}`}
+                        {task.dueAt ? ` · ${formatTime(task.dueAt)}` : ''}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ── Section 6: Beskeder ── */}
+        {visible.beskeder && (
+          <section className="px-4 pt-2 pb-4">
+            <MemberMessages memberId={member.id} memberName={member.name} />
+          </section>
+        )}
       </div>
     </div>
   );
