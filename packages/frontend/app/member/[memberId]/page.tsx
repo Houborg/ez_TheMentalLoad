@@ -3,7 +3,18 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CalendarDays, Check, CheckSquare, LoaderCircle, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  BookOpen,
+  CalendarDays,
+  Check,
+  CheckSquare,
+  GraduationCap,
+  LoaderCircle,
+  MessageSquare,
+  StickyNote,
+  Users,
+} from 'lucide-react';
 import type { AulaPresence, Entry, ListTodayMemberTimelineResponse, Member, TimelineTaskInstance } from '@mental-load/contracts';
 import { AgendaView } from '@/components/agenda-view';
 import { AppSidebar } from '@/components/app-sidebar';
@@ -11,7 +22,15 @@ import { EntryDetailsPopup } from '@/components/entry-details-popup';
 import { TodayTimelineBoard } from '@/components/today-timeline-board';
 import { MemberSchoolSchedule } from '@/components/aula/member-school-schedule';
 import { MemberHomework } from '@/components/aula/member-homework';
+import { MemberWeekNotes } from '@/components/aula/member-week-notes';
+import { MemberMessages } from '@/components/aula/member-messages';
 import { MemberPresenceBadge } from '@/components/aula/member-presence-badge';
+import {
+  MemberSectionToggle,
+  useSectionVisibility,
+  type SectionDef,
+  type SectionKey,
+} from '@/components/member-section-toggle';
 import { aulaGetItems } from '@/lib/aula-api';
 import { cn } from '@/lib/utils';
 import {
@@ -25,6 +44,33 @@ import {
 } from '@/lib/api';
 
 const MEMBER_COLOR_CLASSES = ['bg-primary', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5'];
+
+const ALL_SECTIONS: SectionDef[] = [
+  { key: 'kalender',   label: 'Kalender',   Icon: CalendarDays },
+  { key: 'ugenoter',   label: 'Uge noter',  Icon: StickyNote },
+  { key: 'skoleskema',  label: 'Skoleskema', Icon: BookOpen },
+  { key: 'lektier',    label: 'Lektier',    Icon: GraduationCap },
+  { key: 'opgaver',    label: 'Opgaver',    Icon: CheckSquare },
+  { key: 'beskeder',   label: 'Beskeder',   Icon: MessageSquare },
+];
+
+const CHILD_DEFAULTS: Record<SectionKey, boolean> = {
+  kalender: true,
+  ugenoter: true,
+  skoleskema: true,
+  lektier: true,
+  opgaver: true,
+  beskeder: true,
+};
+
+const PARENT_DEFAULTS: Record<SectionKey, boolean> = {
+  kalender: true,
+  ugenoter: false,
+  skoleskema: false,
+  lektier: false,
+  opgaver: true,
+  beskeder: false,
+};
 
 export default function MemberPage() {
   const params = useParams<{ memberId: string }>();
@@ -41,11 +87,11 @@ export default function MemberPage() {
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
   const [presence, setPresence] = useState<AulaPresence | null>(null);
 
-  useEffect(() => {
-    if (!memberId) {
-      return;
-    }
+  const isChild = member?.role === 'child';
+  const { visible, toggle } = useSectionVisibility(isChild ? CHILD_DEFAULTS : PARENT_DEFAULTS);
 
+  useEffect(() => {
+    if (!memberId) return;
     let active = true;
 
     async function loadMemberPage() {
@@ -58,44 +104,26 @@ export default function MemberPage() {
         ]);
 
         const selectedMember = snapshot.members.find((item) => item.id === memberId) ?? null;
-        if (!selectedMember) {
-          throw new Error('Member not found');
-        }
+        if (!selectedMember) throw new Error('Member not found');
 
         let timeline: ListTodayMemberTimelineResponse;
         try {
           timeline = await loadTodayTimeline(memberId);
         } catch {
           timeline = {
-            settings: {
-              memberId,
-              enabled: false,
-              maxTasksPerDay: 10,
-              updatedAt: new Date().toISOString(),
-            },
-            timeline: {
-              memberId,
-              date: new Date().toISOString().slice(0, 10),
-              timezone: 'UTC',
-              tasks: [],
-            },
+            settings: { memberId, enabled: false, maxTasksPerDay: 10, updatedAt: new Date().toISOString() },
+            timeline: { memberId, date: new Date().toISOString().slice(0, 10), timezone: 'UTC', tasks: [] },
           };
         }
 
-        if (!active) {
-          return;
-        }
+        if (!active) return;
 
         setMembers(snapshot.members);
         setFamilyPresence(snapshot.presence ?? {});
         setMember(selectedMember);
         setEntries(upcoming.filter((entry) => {
-          if (entry.ownerMemberId === selectedMember.id) {
-            return true;
-          }
-          if (entry.assignedToMemberId === selectedMember.id) {
-            return true;
-          }
+          if (entry.ownerMemberId === selectedMember.id) return true;
+          if (entry.assignedToMemberId === selectedMember.id) return true;
           return entry.checklist.some((item) => item.assignedToMemberId === selectedMember.id);
         }));
         setTimelineByMemberId({ [selectedMember.id]: timeline });
@@ -103,31 +131,20 @@ export default function MemberPage() {
         setPresence((presenceItem?.raw_json as AulaPresence | undefined) ?? null);
         localStorage.setItem('activeMemberId', selectedMember.id);
       } catch (error) {
-        if (!active) {
-          return;
-        }
+        if (!active) return;
         setErrorText(error instanceof Error ? error.message : 'Could not load member page');
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     }
 
     void loadMemberPage();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [memberId]);
 
   const memberColorById = useMemo(() => {
-    if (!member) {
-      return {} as Record<string, string>;
-    }
-
-    return {
-      [member.id]: MEMBER_COLOR_CLASSES[0],
-    };
+    if (!member) return {} as Record<string, string>;
+    return { [member.id]: MEMBER_COLOR_CLASSES[0] };
   }, [member]);
 
   const memberTasks = useMemo(() => {
@@ -138,65 +155,37 @@ export default function MemberPage() {
       source: 'standalone' | 'event_checklist';
       dueAt?: string;
       eventTitle?: string;
-      eventId?: string;
-      checklistItemId?: string;
       entryId: string;
     }> = [];
 
     for (const entry of entries) {
       const entryId = getEntryMutationId(entry.id);
-
       if (entry.type === 'task') {
-        const relevantToMember = (entry.assignedToMemberId ?? entry.ownerMemberId) === memberId;
-        if (!relevantToMember) {
-          continue;
-        }
+        if ((entry.assignedToMemberId ?? entry.ownerMemberId) !== memberId) continue;
         items.push({
-          id: `entry:${entryId}`,
-          title: entry.title,
+          id: `entry:${entryId}`, title: entry.title,
           status: entry.status === 'completed' ? 'completed' : 'open',
-          source: 'standalone',
-          dueAt: entry.startTime,
-          entryId,
+          source: 'standalone', dueAt: entry.startTime, entryId,
         });
         continue;
       }
-
-      for (const checklistItem of entry.checklist) {
-        const relevantToMember = (checklistItem.assignedToMemberId ?? entry.ownerMemberId) === memberId;
-        if (!relevantToMember) {
-          continue;
-        }
+      for (const ci of entry.checklist) {
+        if ((ci.assignedToMemberId ?? entry.ownerMemberId) !== memberId) continue;
         items.push({
-          id: `check:${entryId}:${checklistItem.id}`,
-          title: checklistItem.text,
-          status: checklistItem.isCompleted ? 'completed' : 'open',
-          source: 'event_checklist',
-          dueAt: entry.startTime,
-          eventTitle: entry.title,
-          eventId: entryId,
-          checklistItemId: checklistItem.id,
-          entryId,
+          id: `check:${entryId}:${ci.id}`, title: ci.text,
+          status: ci.isCompleted ? 'completed' : 'open',
+          source: 'event_checklist', dueAt: entry.startTime, eventTitle: entry.title, entryId,
         });
       }
     }
 
-    items.sort((left, right) => {
-      if (left.status !== right.status) {
-        return left.status === 'open' ? -1 : 1;
-      }
-      if (left.dueAt && right.dueAt && left.dueAt !== right.dueAt) {
-        return left.dueAt.localeCompare(right.dueAt);
-      }
-      if (left.dueAt && !right.dueAt) {
-        return -1;
-      }
-      if (!left.dueAt && right.dueAt) {
-        return 1;
-      }
-      return left.title.localeCompare(right.title);
+    items.sort((a, b) => {
+      if (a.status !== b.status) return a.status === 'open' ? -1 : 1;
+      if (a.dueAt && b.dueAt && a.dueAt !== b.dueAt) return a.dueAt.localeCompare(b.dueAt);
+      if (a.dueAt && !b.dueAt) return -1;
+      if (!a.dueAt && b.dueAt) return 1;
+      return a.title.localeCompare(b.title);
     });
-
     return items;
   }, [entries, memberId]);
 
@@ -205,54 +194,34 @@ export default function MemberPage() {
       loadUpcomingOccurrences(30),
       loadTodayTimeline(memberId),
     ]);
-
     setEntries(upcoming.filter((entry) => {
-      if (entry.ownerMemberId === memberId) {
-        return true;
-      }
-      if (entry.assignedToMemberId === memberId) {
-        return true;
-      }
+      if (entry.ownerMemberId === memberId) return true;
+      if (entry.assignedToMemberId === memberId) return true;
       return entry.checklist.some((item) => item.assignedToMemberId === memberId);
     }));
-    setTimelineByMemberId((current) => ({ ...current, [memberId]: refreshedTimeline }));
+    setTimelineByMemberId((c) => ({ ...c, [memberId]: refreshedTimeline }));
   }
 
   async function handleCompleteMemberTask(taskId: string) {
     try {
       setErrorText('');
       if (taskId.startsWith('entry:')) {
-        const entryId = taskId.slice(6);
-        await updateEntry(entryId, { status: 'completed' });
+        await updateEntry(taskId.slice(6), { status: 'completed' });
         await reloadMemberEntriesAndTimeline();
         return;
       }
-
-      if (!taskId.startsWith('check:')) {
-        return;
-      }
-
+      if (!taskId.startsWith('check:')) return;
       const payload = taskId.slice(6);
-      const separator = payload.lastIndexOf(':');
-      if (separator === -1) {
-        return;
-      }
-
-      const eventId = payload.slice(0, separator);
-      const checklistItemId = payload.slice(separator + 1);
-      const sourceEntry = entries.find((entry) => getEntryMutationId(entry.id) === eventId);
-      if (!sourceEntry) {
-        return;
-      }
-
-      const updatedChecklist = sourceEntry.checklist.map((item) => (
-        item.id === checklistItemId ? { ...item, isCompleted: true } : item
-      ));
-
+      const sep = payload.lastIndexOf(':');
+      if (sep === -1) return;
+      const eventId = payload.slice(0, sep);
+      const checklistItemId = payload.slice(sep + 1);
+      const sourceEntry = entries.find((e) => getEntryMutationId(e.id) === eventId);
+      if (!sourceEntry) return;
       await updateEntry(eventId, {
-        checklist: updatedChecklist.map((item) => ({
+        checklist: sourceEntry.checklist.map((item) => ({
           text: item.text,
-          isCompleted: item.isCompleted,
+          isCompleted: item.id === checklistItemId ? true : item.isCompleted,
           assignedToMemberId: item.assignedToMemberId,
         })),
       });
@@ -262,26 +231,24 @@ export default function MemberPage() {
     }
   }
 
-  async function handleDeleteTask(memberIdToDelete: string, taskId: string) {
+  async function handleDeleteTask(mid: string, taskId: string) {
     try {
-      await deleteMemberTimelineTask(memberIdToDelete, taskId);
-      const refreshed = await loadTodayTimeline(memberIdToDelete);
-      setTimelineByMemberId((current) => ({ ...current, [memberIdToDelete]: refreshed }));
+      await deleteMemberTimelineTask(mid, taskId);
+      const refreshed = await loadTodayTimeline(mid);
+      setTimelineByMemberId((c) => ({ ...c, [mid]: refreshed }));
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Could not delete timeline task');
     }
   }
 
-  async function handleConfirmTask(memberIdToConfirm: string, taskId: string) {
+  async function handleConfirmTask(mid: string, taskId: string) {
     try {
       setErrorText('');
-      const result = await confirmTodayTimelineTask(memberIdToConfirm, { taskId });
-      setTimelineByMemberId((current) => ({
-        ...current,
-        [memberIdToConfirm]: {
-          ...(current[memberIdToConfirm] ?? {
-            settings: { memberId: memberIdToConfirm, enabled: true, maxTasksPerDay: 10, updatedAt: new Date().toISOString() },
-          }),
+      const result = await confirmTodayTimelineTask(mid, { taskId });
+      setTimelineByMemberId((c) => ({
+        ...c,
+        [mid]: {
+          ...(c[mid] ?? { settings: { memberId: mid, enabled: true, maxTasksPerDay: 10, updatedAt: new Date().toISOString() } }),
           timeline: result.timeline,
         },
       }));
@@ -294,17 +261,16 @@ export default function MemberPage() {
 
   function handleOpenTaskDetails(task: TimelineTaskInstance) {
     const linked = task.linkedEntryId?.split('#')[0];
-    if (!linked) {
-      return;
-    }
-
+    if (!linked) return;
     const found = entries.find((entry) => getEntryMutationId(entry.id) === linked);
-    if (!found) {
-      return;
-    }
-
-    setSelectedEntry(found);
+    if (found) setSelectedEntry(found);
   }
+
+  // Compute visible top-row and bottom-row sections for grid
+  const topVisible = (['kalender', 'ugenoter', 'beskeder'] as SectionKey[]).filter(k => visible[k]);
+  const bottomVisible = (['skoleskema', 'lektier', 'opgaver'] as SectionKey[]).filter(k => visible[k]);
+  const gridCols = (count: number) =>
+    count === 3 ? 'md:grid-cols-3' : count === 2 ? 'md:grid-cols-2' : '';
 
   if (loading) {
     return (
@@ -330,20 +296,20 @@ export default function MemberPage() {
         <AppSidebar activeSection="family" members={members} activeMemberId={member.id} presenceByMemberId={familyPresence} />
         <main className="flex min-h-screen flex-1 flex-col px-4 py-6 md:px-8">
           <div className="mx-auto flex w-full max-w-none flex-col gap-5">
+
+            {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  <CalendarDays className="h-3.5 w-3.5 text-primary" />
-                  Member view
-                </div>
                 <h1 className="text-3xl font-semibold tracking-tight">{member.name}</h1>
-                <p className="mt-1 text-sm text-muted-foreground">Calendar, agenda, tasks, and today timeline for this member only.</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Kalender, skole, opgaver og beskeder for dette medlem
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <MemberPresenceBadge presence={presence} />
                 <Link href="/" className="inline-flex items-center gap-2 rounded-2xl border border-border/60 bg-card/60 px-4 py-2 text-sm font-medium hover:bg-accent/60">
                   <ArrowLeft className="h-4 w-4" />
-                  Back to dashboard
+                  Tilbage
                 </Link>
               </div>
             </div>
@@ -354,94 +320,123 @@ export default function MemberPage() {
               </div>
             ) : null}
 
-            <div className="grid gap-5 md:grid-cols-2">
-              <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold">Calendar view</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Agenda view for the next 7 days.</p>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
-                    <div className={cn('flex h-6 w-6 items-center justify-center rounded-full text-primary-foreground', memberColorById[member.id] ?? 'bg-primary')}>
-                      {member.avatar ? <span className="text-sm">{member.avatar}</span> : <Users className="h-3.5 w-3.5" />}
-                    </div>
-                    <span>{member.role}</span>
-                  </div>
-                </div>
-                <div className="rounded-[30px] border border-border/60 bg-card/35 p-3">
-                  <AgendaView
-                    members={[member]}
-                    entries={entries}
-                    memberColorById={memberColorById}
-                    onSelectEntry={(entry) => setSelectedEntry(entry)}
-                  />
-                </div>
-              </section>
+            {/* Section toggle bar */}
+            <MemberSectionToggle sections={ALL_SECTIONS} visible={visible} onToggle={toggle} />
 
-              <MemberSchoolSchedule memberId={memberId} memberName={member.name} />
-
-              <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold">Tasks</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Unified tasks from entries storage (event checklists + standalone tasks).</p>
-                  </div>
-                  <div className="rounded-full border border-border/60 px-2 py-1 text-xs text-muted-foreground">{memberTasks.length} tasks</div>
-                </div>
-                {memberTasks.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">No tasks found for this member.</div>
-                ) : (
-                  <div className="grid gap-2">
-                    {memberTasks.map((task) => (
-                      <div key={task.id} className="rounded-2xl border border-border/60 bg-card/50 px-4 py-3">
-                        <div
-                          className="flex cursor-pointer items-start justify-between gap-3"
-                          onClick={() => {
-                            const found = entries.find((entry) => getEntryMutationId(entry.id) === task.entryId);
-                            if (found) {
-                              setSelectedEntry(found);
-                            }
-                          }}
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              {task.status === 'completed' ? <Check className="h-4 w-4 text-emerald-500" /> : null}
-                              <div className={cn('text-sm font-semibold', task.status === 'completed' && 'line-through text-muted-foreground')}>{task.title}</div>
-                            </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {task.source === 'standalone' ? 'standalone task' : `event checklist${task.eventTitle ? ` · ${task.eventTitle}` : ''}`}
-                              {' · '}
-                              {task.dueAt ? new Date(task.dueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'No due time'}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {task.status !== 'completed' ? (
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void handleCompleteMemberTask(task.id);
-                                }}
-                                className="rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-lg shadow-primary/20"
-                              >
-                                Complete
-                              </button>
-                            ) : null}
-                            <div className={cn('inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] uppercase tracking-[0.08em]', task.status === 'completed' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300')}>
-                              <CheckSquare className="h-3.5 w-3.5" />
-                              {task.status === 'completed' ? 'Done' : 'Open'}
-                            </div>
-                          </div>
-                        </div>
+            {/* Top row: Kalender | Uge noter | Beskeder */}
+            {topVisible.length > 0 && (
+              <div className={cn('grid gap-5', gridCols(topVisible.length))}>
+                {visible.kalender && (
+                  <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="h-5 w-5 text-primary" />
+                        <h2 className="text-lg font-semibold">Kalender</h2>
                       </div>
-                    ))}
-                  </div>
+                      <span className="rounded-full border border-border/60 px-2.5 py-1 text-xs text-muted-foreground">
+                        Næste 7 dage
+                      </span>
+                    </div>
+                    <div className="rounded-[20px] border border-border/60 bg-card/35 p-3">
+                      <AgendaView
+                        members={[member]}
+                        entries={entries}
+                        memberColorById={memberColorById}
+                        onSelectEntry={(entry) => setSelectedEntry(entry)}
+                      />
+                    </div>
+                  </section>
                 )}
-              </section>
 
-              <MemberHomework memberId={memberId} memberName={member.name} />
-            </div>
+                {visible.ugenoter && (
+                  <MemberWeekNotes memberId={memberId} memberName={member.name} />
+                )}
 
+                {visible.beskeder && (
+                  <MemberMessages memberId={memberId} memberName={member.name} />
+                )}
+              </div>
+            )}
+
+            {/* Bottom row: Skoleskema | Lektier | Opgaver */}
+            {bottomVisible.length > 0 && (
+              <div className={cn('grid gap-5', gridCols(bottomVisible.length))}>
+                {visible.skoleskema && (
+                  <MemberSchoolSchedule memberId={memberId} memberName={member.name} />
+                )}
+
+                {visible.lektier && (
+                  <MemberHomework memberId={memberId} memberName={member.name} />
+                )}
+
+                {visible.opgaver && (
+                  <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <CheckSquare className="h-5 w-5 text-primary" />
+                        <h2 className="text-lg font-semibold">Opgaver</h2>
+                      </div>
+                      <span className="rounded-full border border-border/60 px-2.5 py-1 text-xs text-muted-foreground">
+                        {memberTasks.length} opgaver
+                      </span>
+                    </div>
+                    {memberTasks.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">
+                        Ingen opgaver for dette medlem.
+                      </div>
+                    ) : (
+                      <div className="grid gap-2">
+                        {memberTasks.map((task) => (
+                          <div key={task.id} className="rounded-2xl border border-border/60 bg-card/50 px-4 py-3">
+                            <div
+                              className="flex cursor-pointer items-start justify-between gap-3"
+                              onClick={() => {
+                                const found = entries.find((e) => getEntryMutationId(e.id) === task.entryId);
+                                if (found) setSelectedEntry(found);
+                              }}
+                            >
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  {task.status === 'completed' ? <Check className="h-4 w-4 text-emerald-500" /> : null}
+                                  <div className={cn('text-sm font-semibold', task.status === 'completed' && 'line-through text-muted-foreground')}>{task.title}</div>
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {task.source === 'standalone' ? 'Opgave' : `Tjekliste${task.eventTitle ? ` · ${task.eventTitle}` : ''}`}
+                                  {' · '}
+                                  {task.dueAt ? new Date(task.dueAt).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : 'Ingen tid'}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {task.status !== 'completed' ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); void handleCompleteMemberTask(task.id); }}
+                                    className="rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-lg shadow-primary/20"
+                                  >
+                                    Udfør
+                                  </button>
+                                ) : null}
+                                <div className={cn(
+                                  'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] uppercase tracking-[0.08em]',
+                                  task.status === 'completed'
+                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                    : 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+                                )}>
+                                  <CheckSquare className="h-3.5 w-3.5" />
+                                  {task.status === 'completed' ? 'Udført' : 'Åben'}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )}
+              </div>
+            )}
+
+            {/* Timeline board (always visible) */}
             <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
               <TodayTimelineBoard
                 members={[member]}
@@ -449,7 +444,7 @@ export default function MemberPage() {
                 celebrationTaskId={celebrationTaskId}
                 onConfirmTask={handleConfirmTask}
                 onDeleteTask={handleDeleteTask}
-                onSelectTask={(_memberId, task) => handleOpenTaskDetails(task)}
+                onSelectTask={(_mid, task) => handleOpenTaskDetails(task)}
               />
             </section>
           </div>
@@ -476,9 +471,6 @@ export default function MemberPage() {
 }
 
 function getEntryMutationId(id: string): string {
-  const separatorIndex = id.indexOf(':');
-  if (separatorIndex === -1) {
-    return id;
-  }
-  return id.slice(0, separatorIndex);
+  const sep = id.indexOf(':');
+  return sep === -1 ? id : id.slice(0, sep);
 }
