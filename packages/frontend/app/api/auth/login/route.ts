@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { isHttpsRequest } from '@/lib/auth';
+import { COOKIE_NAME } from '@/lib/auth';
 
 function getBackendUrl(): string {
   return (process.env.BACKEND_URL ?? 'http://localhost:3000').replace(/\/$/, '');
@@ -36,23 +36,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: data.message ?? 'Login failed' }, { status: upstream.status });
   }
 
-  const response = NextResponse.json({ ok: true });
   const setCookie = upstream.headers.get('set-cookie');
-  if (setCookie) {
-    const tokenMatch = setCookie.match(/ml_session=([^;]+)/);
-    if (tokenMatch) {
-      const secure = isHttpsRequest(request.headers, request.url);
-      response.cookies.set('ml_session', tokenMatch[1], {
-        path: '/',
-        httpOnly: true,
-        maxAge: 60 * 60 * 24 * 30, // 30 days
-        sameSite: 'lax',
-        secure,
-      });
-    } else {
-      response.headers.set('set-cookie', setCookie);
-    }
+  const tokenMatch = setCookie?.match(/ml_session=([^;]+)/);
+
+  // Build response with Set-Cookie header written directly to avoid
+  // Next.js response cookie API issues.
+  const headers = new Headers({ 'Content-Type': 'application/json' });
+  if (tokenMatch) {
+    const maxAge = 60 * 60 * 24 * 30; // 30 days
+    headers.append('Set-Cookie', [
+      `${COOKIE_NAME}=${tokenMatch[1]}`,
+      'Path=/',
+      'HttpOnly',
+      `Max-Age=${maxAge}`,
+      'SameSite=Lax',
+      'Secure',
+    ].join('; '));
   }
 
-  return response;
+  return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
 }

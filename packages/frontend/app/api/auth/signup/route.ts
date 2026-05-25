@@ -1,11 +1,11 @@
-import { type NextRequest, NextResponse } from 'next/server';
-import { isHttpsRequest } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+import { COOKIE_NAME } from '@/lib/auth';
 
 function getBackendUrl(): string {
   return (process.env.BACKEND_URL ?? 'http://localhost:3000').replace(/\/$/, '');
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   const body = await request.text();
   let upstream: Response;
   try {
@@ -19,22 +19,21 @@ export async function POST(request: NextRequest) {
   }
 
   const data = await upstream.json();
-  const response = NextResponse.json(data, { status: upstream.status });
   const setCookie = upstream.headers.get('set-cookie');
-  if (setCookie) {
-    const tokenMatch = setCookie.match(/ml_session=([^;]+)/);
-    if (tokenMatch) {
-      const secure = isHttpsRequest(request.headers, request.url);
-      response.cookies.set('ml_session', tokenMatch[1], {
-        path: '/',
-        httpOnly: true,
-        maxAge: 60 * 60 * 24 * 30,
-        sameSite: 'lax',
-        secure,
-      });
-    } else {
-      response.headers.set('set-cookie', setCookie);
-    }
+  const tokenMatch = setCookie?.match(/ml_session=([^;]+)/);
+
+  const headers = new Headers({ 'Content-Type': 'application/json' });
+  if (tokenMatch) {
+    const maxAge = 60 * 60 * 24 * 30;
+    headers.append('Set-Cookie', [
+      `${COOKIE_NAME}=${tokenMatch[1]}`,
+      'Path=/',
+      'HttpOnly',
+      `Max-Age=${maxAge}`,
+      'SameSite=Lax',
+      'Secure',
+    ].join('; '));
   }
-  return response;
+
+  return new Response(JSON.stringify(data), { status: upstream.status, headers });
 }
