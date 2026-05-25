@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import type { AulaPresence, Calendar, Entry, Member } from '@mental-load/contracts';
-import { MemberPresenceDot } from '@/components/aula/member-presence-dot';
 import { MobileNav, type MobileTab } from './mobile-nav';
 import { MobileCalendarView } from './mobile-calendar-view';
 import { MobileTaskList } from './mobile-task-list';
@@ -12,6 +11,8 @@ import { MobileQuickAdd } from './mobile-quick-add';
 import { MobileMoreSheet, type MoreSection } from './mobile-more-sheet';
 import { MobileEntrySheet } from './mobile-entry-sheet';
 import { MobileSettingsContent } from './mobile-settings-content';
+import { MobileMemberList } from './mobile-member-list';
+import { MobileMemberView } from './mobile-member-view';
 import type { MobileEntryDraft } from './mobile-entry-draft';
 
 type EntrySheetState =
@@ -35,11 +36,15 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
   const [moreSection, setMoreSection] = useState<MoreSection | null>(null);
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
   const [entrySheet, setEntrySheet] = useState<EntrySheetState | null>(null);
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
 
   function handleTabSelect(tab: MobileTab) {
     if (tab === 'mere') {
       setMoreOpen(true);
       return;
+    }
+    if (tab !== 'familie') {
+      setSelectedMember(null);
     }
     setActiveTab(tab);
   }
@@ -82,16 +87,46 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
     setEntrySheet({ mode: 'create', draft });
   }
 
+  // Per-member overlay (from Familie tab)
+  if (selectedMember) {
+    return (
+      <>
+        <MobileMemberView
+          member={selectedMember}
+          onBack={() => setSelectedMember(null)}
+          onSelectEntry={setSelectedEntry}
+        />
+        {/* Event detail sheet needs to be accessible from member view */}
+        <MobileEventSheet
+          entry={selectedEntry}
+          members={members}
+          calendars={calendars}
+          onClose={() => setSelectedEntry(null)}
+          onEdit={handleEditEntry}
+          onDeleted={handleEntryDeleted}
+        />
+        <MobileEntrySheet
+          open={entrySheet !== null}
+          mode={entrySheet?.mode ?? 'create'}
+          entry={entrySheet?.mode === 'edit' ? entrySheet.entry : undefined}
+          initialDraft={entrySheet?.mode === 'create' ? entrySheet.draft : undefined}
+          members={members}
+          calendars={calendars}
+          onClose={() => setEntrySheet(null)}
+          onSaved={handleEntrySaved}
+        />
+      </>
+    );
+  }
+
   // "Mere" sub-sections: full-screen overlays with a back button
   if (moreSection) {
     const sectionLabel =
       moreSection === 'idag'
         ? 'I dag'
-        : moreSection === 'familie'
-          ? 'Familie'
-          : moreSection === 'assistent'
-            ? 'Assistent'
-            : 'Indstillinger';
+        : moreSection === 'assistent'
+          ? 'Assistent'
+          : 'Indstillinger';
 
     return (
       <div className="fixed inset-0 z-30 bg-background flex flex-col">
@@ -117,28 +152,6 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
               calendars={calendars}
               onRefresh={() => { onRefresh(); setCalendarRefreshKey(k => k + 1); }}
             />
-          )}
-          {moreSection === 'familie' && (
-            <div className="p-4 flex flex-col gap-3">
-              {members.map(m => (
-                <div key={m.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-card px-4 py-3">
-                  <div className="relative flex-shrink-0">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold">
-                      {m.avatar || m.name[0]}
-                    </div>
-                    <MemberPresenceDot
-                      presence={presenceByMemberId?.[m.id]}
-                      size="md"
-                      className="absolute -bottom-0.5 -right-0.5"
-                    />
-                  </div>
-                  <div>
-                    <div className="font-medium text-sm">{m.name}</div>
-                    <div className="text-xs text-muted-foreground">{m.role === 'parent' ? 'Forælder' : 'Barn'}{m.email ? ` · ${m.email}` : ''}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
           )}
           {moreSection === 'assistent' && (
             <div className="flex items-center justify-center h-full">
@@ -172,6 +185,13 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
           />
         )}
         {activeTab === 'mad' && <MobileFoodPlanner />}
+        {activeTab === 'familie' && (
+          <MobileMemberList
+            members={members}
+            presenceByMemberId={presenceByMemberId}
+            onSelectMember={setSelectedMember}
+          />
+        )}
       </div>
 
       {/* Bottom nav */}

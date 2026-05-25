@@ -1,10 +1,10 @@
 'use client';
 
-import { CalendarDays, CheckSquare, ChefHat, MoreHorizontal } from 'lucide-react';
+import { CalendarDays, CheckSquare, ChefHat, MoreHorizontal, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export type MobileTab = 'kalender' | 'opgaver' | 'mad' | 'mere';
+export type MobileTab = 'kalender' | 'opgaver' | 'mad' | 'familie' | 'mere';
 
 type MobileNavProps = {
   active: MobileTab;
@@ -15,6 +15,7 @@ const TABS: Array<{ key: MobileTab; label: string; Icon: LucideIcon }> = [
   { key: 'kalender', label: 'Kalender', Icon: CalendarDays },
   { key: 'opgaver',  label: 'Opgaver',  Icon: CheckSquare },
   { key: 'mad',      label: 'Mad',      Icon: ChefHat },
+  { key: 'familie',  label: 'Familie',  Icon: Users },
   { key: 'mere',     label: 'Mere',     Icon: MoreHorizontal },
 ];
 
