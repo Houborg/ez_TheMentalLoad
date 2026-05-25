@@ -15,7 +15,7 @@ export interface SessionPayload {
 function getSecret(): string {
   return (
     process.env.AUTH_SECRET ??
-    'dev-secret-please-set-AUTH_SECRET-env-in-production'
+    'dev-secret-please-set-AUTH_SECRET'
   );
 }
 
