@@ -3,7 +3,6 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  Bell,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
@@ -11,15 +10,10 @@ import {
   Clock3,
   Edit2,
   LoaderCircle,
-  LogOut,
   Plus,
-  RefreshCcw,
-  Search,
-  Settings,
   Sparkles,
   Trash2,
   Users,
-  Wifi,
   X,
 } from 'lucide-react';
 import type { AppSettings, AssistantDraft, AulaPresence, DailyTimelineTemplateTask, Entry, Member, Calendar, ListTodayMemberTimelineResponse, MemberRole, MemberTimelineSettings, TimelineTaskInstance } from '@mental-load/contracts';
@@ -67,6 +61,8 @@ import { PlannerView } from '@/components/planner-view';
 import { SyncSettings } from './sync/sync-settings';
 import { MobileAulaSettings } from './mobile/mobile-aula-settings';
 import { AulaDataViewer } from './aula-data-viewer';
+import { SlimHeader } from '@/components/slim-header';
+import { BottomNav, type NavSection } from '@/components/bottom-nav';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
 type RecurrenceFreq = 'none' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
@@ -119,8 +115,6 @@ type TimelineQuickTaskDraft = {
   position: string;
   treat: string;
 };
-
-type NavSection = 'dashboard' | 'planner' | 'timeline' | 'family' | 'settings';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = [
@@ -185,7 +179,6 @@ export function DashboardApp() {
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [assistantSuggestionBusy, setAssistantSuggestionBusy] = useState(false);
@@ -1669,175 +1662,13 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
           </button>
         </div>
       )}
-      <div className="flex min-h-screen">
-        <aside
-          className={cn(
-            'hidden md:flex shrink-0 border-r border-sidebar-border bg-sidebar/80 py-5 backdrop-blur transition-all duration-300 flex-col sticky top-0 h-screen overflow-y-auto',
-            isSidebarCollapsed ? 'w-20 px-2' : 'w-72 px-4',
-          )}
-        >
-          <div className={cn('mb-5 flex items-center', isSidebarCollapsed ? 'flex-col gap-3' : 'gap-3')}>
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-              <CalendarDays className="h-5 w-5" />
-            </div>
-            {!isSidebarCollapsed ? (
-              <div>
-                <div className="text-sm font-semibold tracking-tight">MentalLoad</div>
-                <div className="text-xs text-muted-foreground">Refit frontend, stable backend</div>
-              </div>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setIsSidebarCollapsed((current) => !current)}
-              className={cn(
-                'flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-background/55 text-muted-foreground transition hover:text-foreground',
-                isSidebarCollapsed ? '' : 'ml-auto',
-              )}
-              aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              {isSidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-            </button>
-          </div>
-
-          <nav className="space-y-2" aria-label="Primary navigation">
-            {[
-              { label: 'Dashboard', icon: CalendarDays, key: 'dashboard' },
-              { label: 'Planner', icon: Clock3, key: 'planner' },
-              { label: 'Timeline', icon: CheckCircle2, key: 'timeline' },
-              { label: 'Family', icon: Users, key: 'family' },
-              { label: 'Settings', icon: Settings, key: 'settings' },
-            ].map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => handleNavClick(item.key as NavSection)}
-                className={cn(
-                  'flex w-full items-center rounded-2xl py-3 text-sm transition-colors',
-                  isSidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3',
-                  activeNav === item.key ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm' : 'text-muted-foreground hover:bg-sidebar-accent/70 hover:text-foreground',
-                )}
-                aria-label={item.label}
-                title={isSidebarCollapsed ? item.label : undefined}
-              >
-                <item.icon className="h-4 w-4" />
-                {!isSidebarCollapsed ? <span>{item.label}</span> : null}
-              </button>
-            ))}
-          </nav>
-
-          {isSidebarCollapsed ? (
-            <div className="mt-auto flex flex-col items-center gap-2">
-              <div className="rounded-2xl border border-border/60 bg-card/70 p-2.5 shadow-lg shadow-black/10 backdrop-blur" title={assistantStatusText}>
-                <Wifi className={cn('h-4 w-4', assistantReady ? 'text-primary' : 'text-muted-foreground')} />
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleLogout()}
-                title="Sign out"
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-background/55 text-muted-foreground transition hover:text-destructive hover:border-destructive/60"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
-            </div>
-          ) : (
-            <div className="mt-auto space-y-3">
-              <div className="rounded-3xl border border-border/60 bg-card/70 p-4 shadow-lg shadow-black/10 backdrop-blur">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Wifi className={cn('h-4 w-4', assistantReady ? 'text-primary' : 'text-muted-foreground')} />
-                  {assistantReady ? 'Assistant online' : 'Assistant fallback'}
-                </div>
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">{assistantStatusText}</p>
-                <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                  <span className="rounded-full border border-border/60 px-2 py-1">Persistence: {dashboard.persistence ?? 'unknown'}</span>
-                  <span className="rounded-full border border-border/60 px-2 py-1">Server time: {formatStamp(healthNow)}</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleLogout()}
-                className="flex w-full items-center gap-2 rounded-2xl border border-border/60 bg-background/55 px-3 py-2.5 text-sm text-muted-foreground transition hover:text-destructive hover:border-destructive/60"
-              >
-                <LogOut className="h-4 w-4" />
-                Sign out
-              </button>
-            </div>
-          )}
-        </aside>
-
-        <main className="flex min-h-screen flex-1 flex-col">
-          <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-4 border-b border-border/50 bg-card/40 px-4 backdrop-blur md:px-6">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/15 md:hidden">
-              <CalendarDays className="h-5 w-5" />
-            </div>
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search entries, members, or categories"
-                aria-label="Search"
-                className="h-11 w-full rounded-2xl border border-border/60 bg-background/60 pl-10 pr-4 text-sm outline-none ring-0 transition focus:border-primary/60"
-              />
-            </div>
-            <label className="hidden min-w-[180px] lg:block">
-              <span className="sr-only">Filter member</span>
-              <select
-                aria-label="Filter by member"
-                value={memberFilterId}
-                onChange={(event) => setMemberFilterId(event.target.value)}
-                className="h-11 w-full rounded-2xl border border-border/60 bg-background/60 px-3 text-sm outline-none transition focus:border-primary/60"
-              >
-                <option value="">All members</option>
-                {dashboard.members.map((member) => (
-                  <option key={member.id} value={member.id}>{member.name}</option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={() => void handleRefresh()}
-              className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/60 bg-background/60 text-muted-foreground transition hover:text-foreground"
-              aria-label="Refresh dashboard"
-            >
-              <RefreshCcw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
-            </button>
-              <label className="hidden items-center gap-2 lg:flex" title="Signed in as">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-primary-foreground" style={{ backgroundColor: memberColorById[activeMember?.id ?? ''] ?? '#6d5efc' }}>
-                  {activeMember?.avatar ? <span className="text-base">{activeMember.avatar}</span> : <Users className="h-4 w-4" />}
-                </div>
-                <select
-                  aria-label="Signed in as"
-                  value={activeMember?.id ?? ''}
-                  onChange={(event) => setActiveMemberId(event.target.value)}
-                  className="h-9 rounded-2xl border border-border/60 bg-background/60 px-3 text-sm outline-none transition focus:border-primary/60"
-                >
-                  {dashboard.members.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.name} ({member.role})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-              type="button"
-              onClick={() => setNotificationsOpen(true)}
-              className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-border/60 bg-background/60 text-muted-foreground transition hover:text-foreground"
-              aria-label="Notifications"
-            >
-              <Bell className="h-4 w-4" />
-              <span className="absolute right-3 top-3 h-2 w-2 rounded-full bg-primary" />
-            </button>
-            <button
-              type="button"
-              onClick={() => openCreateEntryComposer()}
-              className="flex h-10 items-center gap-2 rounded-2xl bg-primary px-4 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 transition hover:brightness-110"
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Add event</span>
-            </button>
-          </header>
+      <div className="flex min-h-screen flex-col">
+        <main className="flex flex-1 flex-col">
+          <SlimHeader
+            weatherForecast={weatherForecast}
+            onAdd={() => openCreateEntryComposer()}
+            onAI={() => handleNavClick('dashboard')}
+          />
 
           <section className="flex-1 overflow-auto px-4 py-6 pb-20 md:px-6 md:pb-6">
             {activeNav === 'planner' ? (
@@ -2658,6 +2489,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
             )}
           </section>
         </main>
+        <BottomNav active={activeNav} onSelect={(s) => handleNavClick(s)} />
       </div>
 
       {showConfetti ? (
