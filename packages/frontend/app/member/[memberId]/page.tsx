@@ -43,7 +43,7 @@ import {
   updateEntry,
 } from '@/lib/api';
 
-const MEMBER_COLOR_CLASSES = ['bg-primary', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5'];
+const MEMBER_HEX_PALETTE = ['#6d5efc','#ef4444','#f59e0b','#22c55e','#3b82f6','#8b5cf6','#ec4899','#f97316','#14b8a6','#6366f1'];
 
 const ALL_SECTIONS: SectionDef[] = [
   { key: 'kalender',   label: 'Kalender',   Icon: CalendarDays },
@@ -145,7 +145,7 @@ export default function MemberPage() {
 
   const memberColorById = useMemo(() => {
     if (!member) return {} as Record<string, string>;
-    return { [member.id]: MEMBER_COLOR_CLASSES[0] };
+    return { [member.id]: member.color ?? MEMBER_HEX_PALETTE[0] };
   }, [member]);
 
   const memberTasks = useMemo(() => {

@@ -82,6 +82,7 @@ export interface CreateMemberRequest {
   role: MemberRole;
   email?: string;
   avatar?: string;
+  color?: string;
 }
 
 export interface UpdateMemberRequest {
@@ -89,6 +90,7 @@ export interface UpdateMemberRequest {
   role?: MemberRole;
   email?: string;
   avatar?: string;
+  color?: string;
 }
 
 export interface UpdateSettingsRequest {

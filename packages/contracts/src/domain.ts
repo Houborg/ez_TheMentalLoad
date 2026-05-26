@@ -14,6 +14,7 @@ export interface Member {
   role: MemberRole;
   email?: string;
   avatar?: string;
+  color?: string;
   createdAt: string;
 }
 

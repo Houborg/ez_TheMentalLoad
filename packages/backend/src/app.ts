@@ -442,6 +442,7 @@ export async function buildApp() {
       role: request.body.role,
       email: request.body.email?.trim() || undefined,
       avatar: typeof request.body.avatar === 'string' ? request.body.avatar.trim() || undefined : undefined,
+      color: typeof request.body.color === 'string' ? request.body.color.trim() || undefined : undefined,
       createdAt: new Date().toISOString(),
     };
 
@@ -485,6 +486,10 @@ export async function buildApp() {
 
     if (typeof request.body.avatar === 'string') {
       patch.avatar = request.body.avatar.trim() || undefined;
+    }
+
+    if (typeof request.body.color === 'string') {
+      patch.color = request.body.color.trim() || undefined;
     }
 
     const updated = await svc(request).memberRepository.update(request.params.id, patch);

@@ -21,7 +21,7 @@ import {
   type WeatherForecastResponse,
 } from '@/lib/api';
 
-const MEMBER_COLOR_CLASSES = ['bg-primary', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5'];
+const MEMBER_HEX_PALETTE = ['#6d5efc','#ef4444','#f59e0b','#22c55e','#3b82f6','#8b5cf6','#ec4899','#f97316','#14b8a6','#6366f1'];
 
 type FoodPlanDraft = {
   weekStart: string;
@@ -107,10 +107,9 @@ export function PlannerView({ members: membersProp, memberColorById: colorsProp 
 
   const memberColorById = useMemo(() => {
     if (colorsProp) return colorsProp;
-    return members.reduce<Record<string, string>>((acc, m, i) => {
-      acc[m.id] = MEMBER_COLOR_CLASSES[i % MEMBER_COLOR_CLASSES.length];
-      return acc;
-    }, {});
+    return Object.fromEntries(
+      members.map((m, i) => [m.id, m.color ?? MEMBER_HEX_PALETTE[i % MEMBER_HEX_PALETTE.length]]),
+    );
   }, [members, colorsProp]);
 
   const dayWeatherByDate = useMemo(() => {

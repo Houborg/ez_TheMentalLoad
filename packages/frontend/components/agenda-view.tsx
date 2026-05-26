@@ -95,7 +95,7 @@ export function AgendaView({ members, entries, memberColorById, onSelectEntry, o
                           title={entry.title}
                         >
                           <span className="flex items-center gap-1.5">
-                            <span className={cn('h-1.5 w-1.5 rounded-full', memberColorById[member.id] ?? 'bg-primary')} />
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: memberColorById[member.id] ?? '#6d5efc' }} />
                             {entry.type === 'task' ? (
                               entry.status === 'completed' ? <Check className="h-3 w-3" /> : <Circle className="h-3 w-3" />
                             ) : (

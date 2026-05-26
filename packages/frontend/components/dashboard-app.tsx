@@ -137,7 +137,8 @@ const MONTHS = [
   'November',
   'December',
 ];
-const MEMBER_COLOR_CLASSES = ['bg-primary', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5'];
+const MEMBER_HEX_PALETTE = ['#6d5efc','#ef4444','#f59e0b','#22c55e','#3b82f6','#8b5cf6','#ec4899','#f97316','#14b8a6','#6366f1'];
+const MEMBER_COLOR_SWATCHES = ['#ef4444','#f97316','#f59e0b','#84cc16','#22c55e','#14b8a6','#3b82f6','#6d5efc','#8b5cf6','#ec4899','#64748b','#78716c'];
 const REMINDER_OPTIONS: Array<{ value: Exclude<ReminderDraftMode, 'custom'>; label: string }> = [
   { value: 'none', label: 'No reminder' },
   { value: '5', label: '5 min before' },
@@ -193,7 +194,7 @@ export function DashboardApp() {
   const [updateMessage, setUpdateMessage] = useState('');
   const [serverVersion, setServerVersion] = useState<{ version: string; commit: string; deployedAt: string | null } | null>(null);
   const [remoteVersion, setRemoteVersion] = useState<{ sha: string; shortSha: string; message: string; date: string } | null | 'loading' | 'unavailable'>('unavailable');
-  const [memberDraft, setMemberDraft] = useState<{ name: string; role: MemberRole; email: string; avatar: string }>({ name: '', role: 'parent', email: '', avatar: '' });
+  const [memberDraft, setMemberDraft] = useState<{ name: string; role: MemberRole; email: string; avatar: string; color: string }>({ name: '', role: 'parent', email: '', avatar: '', color: '' });
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [memberDeleteTarget, setMemberDeleteTarget] = useState<Member | null>(null);
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
@@ -383,10 +384,12 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
   }, []);
 
   const memberColorById = useMemo(() => {
-    return dashboard.members.reduce<Record<string, string>>((accumulator, member, index) => {
-      accumulator[member.id] = MEMBER_COLOR_CLASSES[index % MEMBER_COLOR_CLASSES.length];
-      return accumulator;
-    }, {});
+    return Object.fromEntries(
+      dashboard.members.map((member, index) => [
+        member.id,
+        member.color ?? MEMBER_HEX_PALETTE[index % MEMBER_HEX_PALETTE.length],
+      ]),
+    );
   }, [dashboard.members]);
   const activeMember = dashboard.members.find((member) => member.id === activeMemberId) ?? dashboard.members[0];
   const canManageMembers = activeMember?.role === 'parent';
@@ -958,7 +961,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
 
       if (editingMemberId === targetMember.id) {
         setEditingMemberId(null);
-        setMemberDraft({ name: '', role: 'parent', email: '', avatar: '' });
+        setMemberDraft({ name: '', role: 'parent', email: '', avatar: '', color: '' });
       }
 
       setSettingsMessage(`Member "${targetMember.name}" deleted.`);
@@ -1012,6 +1015,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
           role: memberDraft.role,
           email: memberDraft.email.trim() || undefined,
           avatar: memberDraft.avatar.trim() || undefined,
+          color: memberDraft.color.trim() || undefined,
         });
       } else {
         await createMember({
@@ -1019,11 +1023,12 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
           role: memberDraft.role,
           email: memberDraft.email.trim() || undefined,
           avatar: memberDraft.avatar.trim() || undefined,
+          color: memberDraft.color.trim() || undefined,
         });
       }
 
       await refreshMembers();
-      setMemberDraft({ name: '', role: 'parent', email: '', avatar: '' });
+      setMemberDraft({ name: '', role: 'parent', email: '', avatar: '', color: '' });
       setEditingMemberId(null);
       setSettingsMessage(editingMemberId ? 'Member updated.' : 'Member created.');
     } catch (error) {
@@ -1038,6 +1043,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
       role: member.role,
       email: member.email ?? '',
       avatar: member.avatar ?? '',
+      color: member.color ?? '',
     });
   }
 
@@ -1798,7 +1804,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
               <RefreshCcw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
             </button>
               <label className="hidden items-center gap-2 lg:flex" title="Signed in as">
-                <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-primary-foreground', memberColorById[activeMember?.id ?? ''] ?? 'bg-primary')}>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-primary-foreground" style={{ backgroundColor: memberColorById[activeMember?.id ?? ''] ?? '#6d5efc' }}>
                   {activeMember?.avatar ? <span className="text-base">{activeMember.avatar}</span> : <Users className="h-4 w-4" />}
                 </div>
                 <select
@@ -1926,7 +1932,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                   {memberTaskProgress.map(({ member, done, total, pct }) => (
                     <div key={member.id} className="flex-shrink-0 rounded-2xl border border-border/60 bg-background/30 px-3 py-2.5 min-w-[120px]">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className={cn('flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-primary-foreground', memberColorById[member.id] ?? 'bg-primary')}>
+                        <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-primary-foreground" style={{ backgroundColor: memberColorById[member.id] ?? '#6d5efc' }}>
                           {member.avatar ? <span className="text-xs">{member.avatar}</span> : member.name[0]}
                         </div>
                         <div className="text-xs font-semibold truncate">{member.name}</div>
@@ -2060,11 +2066,8 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                                         event.stopPropagation();
                                         handleEditEntry(entry);
                                       }}
-                                      className={cn(
-                                        isBirthdayEntry
-                                          ? 'w-full bg-transparent px-0 py-0.5 text-left text-[10px] font-medium text-foreground hover:bg-transparent'
-                                          : `w-full truncate rounded-xl px-2 py-1 text-left text-xs font-medium text-primary-foreground ${memberColorById[entry.ownerMemberId] ?? 'bg-primary'}`,
-                                      )}
+                                      className={isBirthdayEntry ? 'w-full bg-transparent px-0 py-0.5 text-left text-[10px] font-medium text-foreground hover:bg-transparent' : 'w-full truncate rounded-xl px-2 py-1 text-left text-xs font-medium text-primary-foreground'}
+                                      style={isBirthdayEntry ? undefined : { backgroundColor: memberColorById[entry.ownerMemberId] ?? '#6d5efc' }}
                                     >
                                       {isBirthdayEntry ? (
                                         <span className="flex min-w-0 items-center gap-1.5">
@@ -2115,7 +2118,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                             }}
                             className="flex w-full items-start gap-3 rounded-2xl border border-border/60 bg-card/60 px-4 py-3 text-left"
                           >
-                            <div className={cn('mt-1 h-10 w-1 rounded-full', isVirtualBirthdayEntry(entry) ? 'bg-[#C60C30]' : (memberColorById[entry.ownerMemberId] ?? 'bg-primary'))} />
+                            <div className="mt-1 h-10 w-1 shrink-0 rounded-full" style={{ backgroundColor: isVirtualBirthdayEntry(entry) ? '#C60C30' : (memberColorById[entry.ownerMemberId] ?? '#6d5efc') }} />
                             <div className="min-w-0 flex-1">
                               <div className="flex items-start justify-between gap-3">
                                 <div>
@@ -2211,7 +2214,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                             className="w-full rounded-2xl border border-border/60 bg-card/55 p-4 text-left transition hover:bg-accent/45"
                           >
                             <div className="flex items-start gap-3">
-                              <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-primary-foreground', memberColorById[entry.ownerMemberId] ?? 'bg-primary')}>
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-primary-foreground" style={{ backgroundColor: memberColorById[entry.ownerMemberId] ?? '#6d5efc' }}>
                                 <Users className="h-5 w-5" />
                               </div>
                               <div className="min-w-0 flex-1">
@@ -2291,7 +2294,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                     <p className="mt-1 text-sm text-muted-foreground">Add and edit family members synced with the backend.</p>
                   </div>
                   {editingMemberId ? (
-                    <button type="button" onClick={() => { setEditingMemberId(null); setMemberDraft({ name: '', role: 'parent', email: '', avatar: '' }); }} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">
+                    <button type="button" onClick={() => { setEditingMemberId(null); setMemberDraft({ name: '', role: 'parent', email: '', avatar: '', color: '' }); }} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">
                       Cancel edit
                     </button>
                   ) : null}
@@ -2313,10 +2316,24 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                     </select>
                   </label>
                   <div className="grid gap-1.5">
+                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Farve</span>
+                    <div className="flex flex-wrap gap-2">
+                      {MEMBER_COLOR_SWATCHES.map((hex) => (
+                        <button
+                          key={hex}
+                          type="button"
+                          onClick={() => setMemberDraft((current) => ({ ...current, color: current.color === hex ? '' : hex }))}
+                          className="h-7 w-7 rounded-full border-2 transition-transform hover:scale-110"
+                          style={{ backgroundColor: hex, borderColor: memberDraft.color === hex ? '#000' : 'transparent', outline: memberDraft.color === hex ? `2px solid ${hex}` : 'none', outlineOffset: '2px' }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-1.5">
                     <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Avatar (emoji)</span>
                     <div className="flex flex-wrap items-center gap-2">
                       <input value={memberDraft.avatar} onChange={(event) => setMemberDraft((current) => ({ ...current, avatar: event.target.value }))} className="w-16 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-center text-sm outline-none focus:border-primary/60" placeholder="👤" maxLength={4} />
-                      {['👩', '👨', '👧', '👦', '👵', '👴', '🧑', '👶'].map((emoji) => (
+                      {['👩','👨','👧','👦','👵','👴','🧑','👶','🧒','🧑‍💼','👩‍💼','👨‍💼','🧑‍🎓','👩‍🎓','👨‍🎓','🐶','🐱','🦊','🐼','🦁'].map((emoji) => (
                         <button key={emoji} type="button" onClick={() => setMemberDraft((current) => ({ ...current, avatar: emoji }))} className={cn('rounded-lg border px-2 py-1 text-base transition', memberDraft.avatar === emoji ? 'border-primary bg-primary/10' : 'border-border/60 hover:bg-accent/60')}>{emoji}</button>
                       ))}
                     </div>
@@ -2340,7 +2357,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                           className="flex min-w-0 items-center gap-3 rounded-xl text-left hover:bg-accent/40"
                           aria-label={`Open ${member.name}`}
                         >
-                          <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-full', member.avatar ? 'text-2xl' : ('text-primary-foreground ' + (memberColorById[member.id] ?? 'bg-primary')))}>
+                          <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-full', member.avatar ? 'text-2xl' : 'text-primary-foreground')} style={member.avatar ? undefined : { backgroundColor: memberColorById[member.id] ?? '#6d5efc' }}>
                             {member.avatar ? member.avatar : <Users className="h-5 w-5" />}
                           </div>
                           <div className="min-w-0">
@@ -2394,7 +2411,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                           className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-accent/40 rounded-2xl"
                         >
                           <div className="flex items-center gap-3">
-                            <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', member.avatar ? 'text-xl' : ('text-primary-foreground ' + (memberColorById[member.id] ?? 'bg-primary')))}>
+                            <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', member.avatar ? 'text-xl' : 'text-primary-foreground')} style={member.avatar ? undefined : { backgroundColor: memberColorById[member.id] ?? '#6d5efc' }}>
                               {member.avatar ? member.avatar : <Users className="h-4 w-4" />}
                             </div>
                             <div>
@@ -2682,8 +2699,26 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
               <div className="grid gap-1.5">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Deltagere</span>
                 <div className="flex flex-wrap gap-2">
+                  {/* Alle button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraft((current) => {
+                        const allIds = dashboard.members.map((m) => m.id);
+                        const allSelected = allIds.every((id) => current.visibleMemberIds.includes(id));
+                        const next = allSelected ? [] : allIds;
+                        const newOwner = next[0] ?? '';
+                        const familyCal = dashboard.calendars.find((c) => !c.ownerMemberId);
+                        const memberCal = dashboard.calendars.find((c) => c.ownerMemberId === newOwner);
+                        const newCalendar = next.length > 1 && familyCal ? familyCal.id : (memberCal?.id ?? current.calendarId);
+                        return { ...current, visibleMemberIds: next, ownerMemberId: newOwner, calendarId: newCalendar };
+                      });
+                    }}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${dashboard.members.every((m) => draft.visibleMemberIds.includes(m.id)) ? 'border-primary bg-primary text-primary-foreground' : 'border-border/60 bg-background/60 text-muted-foreground hover:border-primary/60'}`}
+                  >Alle</button>
                   {dashboard.members.map((member) => {
                     const checked = draft.visibleMemberIds.includes(member.id);
+                    const hex = memberColorById[member.id] ?? '#6d5efc';
                     return (
                       <button
                         key={member.id}
@@ -2700,7 +2735,8 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                             return { ...current, visibleMemberIds: next, ownerMemberId: newOwner, calendarId: newCalendar };
                           });
                         }}
-                        className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${checked ? 'border-primary bg-primary text-primary-foreground' : 'border-border/60 bg-background/60 text-muted-foreground hover:border-primary/60'}`}
+                        className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors"
+                        style={checked ? { backgroundColor: hex, borderColor: hex, color: '#fff' } : undefined}
                       >
                         {member.avatar && <span>{member.avatar}</span>}
                         {member.name}
@@ -3142,10 +3178,24 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                     </select>
                   </label>
                   <div className="grid gap-1.5">
+                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Farve</span>
+                    <div className="flex flex-wrap gap-2">
+                      {MEMBER_COLOR_SWATCHES.map((hex) => (
+                        <button
+                          key={hex}
+                          type="button"
+                          onClick={() => setMemberDraft((current) => ({ ...current, color: current.color === hex ? '' : hex }))}
+                          className="h-7 w-7 rounded-full border-2 transition-transform hover:scale-110"
+                          style={{ backgroundColor: hex, borderColor: memberDraft.color === hex ? '#000' : 'transparent', outline: memberDraft.color === hex ? `2px solid ${hex}` : 'none', outlineOffset: '2px' }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-1.5">
                     <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Avatar (emoji)</span>
                     <div className="flex flex-wrap items-center gap-2">
                       <input value={memberDraft.avatar} onChange={(event) => setMemberDraft((current) => ({ ...current, avatar: event.target.value }))} className="w-16 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-center text-sm outline-none focus:border-primary/60" placeholder="👤" maxLength={4} />
-                      {['👩', '👨', '👧', '👦', '👵', '👴', '🧑', '👶'].map((emoji) => (
+                      {['👩','👨','👧','👦','👵','👴','🧑','👶','🧒','🧑‍💼','👩‍💼','👨‍💼','🧑‍🎓','👩‍🎓','👨‍🎓','🐶','🐱','🦊','🐼','🦁'].map((emoji) => (
                         <button key={emoji} type="button" onClick={() => setMemberDraft((current) => ({ ...current, avatar: emoji }))} className={cn('rounded-lg border px-2 py-1 text-base transition', memberDraft.avatar === emoji ? 'border-primary bg-primary/10' : 'border-border/60 hover:bg-accent/60')}>{emoji}</button>
                       ))}
                     </div>
@@ -3155,7 +3205,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                       {editingMemberId ? 'Update member' : 'Add member'}
                     </button>
                     {editingMemberId ? (
-                      <button type="button" onClick={() => { setEditingMemberId(null); setMemberDraft({ name: '', role: 'parent', email: '', avatar: '' }); }} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">
+                      <button type="button" onClick={() => { setEditingMemberId(null); setMemberDraft({ name: '', role: 'parent', email: '', avatar: '', color: '' }); }} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">
                         Cancel
                       </button>
                     ) : null}

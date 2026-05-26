@@ -176,6 +176,26 @@ export function MobileEntryForm({ draft, onChange, members, calendars }: Props) 
       <div>
         <p className={SECTION_LABEL_CLS}>Deltagere</p>
         <div className="flex gap-2 flex-wrap">
+          {/* Alle button */}
+          <button
+            type="button"
+            onClick={() => {
+              const allIds = members.map(m => m.id);
+              const allSelected = allIds.every(id => draft.visibleMemberIds.includes(id));
+              const next = allSelected ? [] : allIds;
+              const newOwner = next[0] ?? '';
+              const familyCal = calendars.find(c => !c.ownerMemberId);
+              const memberCal = calendars.find(c => c.ownerMemberId === newOwner);
+              const newCalendar = next.length > 1 && familyCal ? familyCal.id : (memberCal?.id ?? draft.calendarId);
+              onChange({ visibleMemberIds: next, ownerMemberId: newOwner, calendarId: newCalendar });
+            }}
+            className={cn(
+              'flex h-9 items-center px-3 rounded-full text-xs font-semibold transition-all',
+              members.every(m => draft.visibleMemberIds.includes(m.id))
+                ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background'
+                : 'bg-muted text-muted-foreground',
+            )}
+          >Alle</button>
           {members.map(m => {
             const checked = draft.visibleMemberIds.includes(m.id);
             return (
