@@ -95,6 +95,7 @@ type EventDraft = {
   title: string;
   type: Entry['type'];
   ownerMemberId: string;
+  visibleMemberIds: string[];
   calendarId: string;
   startTime: string;
   endTime: string;
@@ -629,6 +630,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
           .filter((item) => item.text.trim()),
         invitees: draft.invitees.map((inv) => ({ email: inv.email })),
         assignedToMemberId: undefined,
+        visibleMemberIds: draft.visibleMemberIds,
       };
 
       if (editingEntryId) {
@@ -819,6 +821,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
       title: entry.title,
       type: entry.type,
       ownerMemberId: entry.ownerMemberId,
+      visibleMemberIds: entry.visibleMemberIds?.length ? entry.visibleMemberIds : [entry.ownerMemberId],
       calendarId: entry.calendarId,
       startTime: toLocalInputValue(new Date(entry.startTime)),
       endTime: toLocalInputValue(new Date(entry.endTime)),
@@ -2676,12 +2679,37 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                   <option value="yes">All day</option>
                 </select>
               </label>
-              <label className="grid gap-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Member</span>
-                <select aria-label="Member" value={draft.ownerMemberId} onChange={(event) => setDraft((current) => ({ ...current, ownerMemberId: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60">
-                  {dashboard.members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
-                </select>
-              </label>
+              <div className="grid gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Deltagere</span>
+                <div className="flex flex-wrap gap-2">
+                  {dashboard.members.map((member) => {
+                    const checked = draft.visibleMemberIds.includes(member.id);
+                    return (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => {
+                          setDraft((current) => {
+                            const next = checked
+                              ? current.visibleMemberIds.filter((id) => id !== member.id)
+                              : [...current.visibleMemberIds, member.id];
+                            const newOwner = next[0] ?? '';
+                            const familyCal = dashboard.calendars.find((c) => !c.ownerMemberId);
+                            const memberCal = dashboard.calendars.find((c) => c.ownerMemberId === newOwner);
+                            const newCalendar = next.length > 1 && familyCal ? familyCal.id : (memberCal?.id ?? current.calendarId);
+                            return { ...current, visibleMemberIds: next, ownerMemberId: newOwner, calendarId: newCalendar };
+                          });
+                        }}
+                        className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${checked ? 'border-primary bg-primary text-primary-foreground' : 'border-border/60 bg-background/60 text-muted-foreground hover:border-primary/60'}`}
+                      >
+                        {member.avatar && <span>{member.avatar}</span>}
+                        {member.name}
+                        {checked && draft.ownerMemberId === member.id && <span className="opacity-70 text-[10px]">ejer</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <label className="grid gap-1.5">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Calendar</span>
                 <select aria-label="Calendar" value={draft.calendarId} onChange={(event) => setDraft((current) => ({ ...current, calendarId: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60">
@@ -3988,6 +4016,7 @@ function createDefaultDraft(ownerMemberId = '', calendarId = '', date = new Date
     title: '',
     type: 'event',
     ownerMemberId,
+    visibleMemberIds: ownerMemberId ? [ownerMemberId] : [],
     calendarId,
     startTime: toLocalInputValue(start),
     endTime: toLocalInputValue(end),
@@ -4189,11 +4218,9 @@ function getEntriesForDate(entries: Entry[], members: Member[], date: Date, sear
 }
 
 function matchesMemberFilter(entry: Entry, memberFilterId: string) {
-  if (!memberFilterId) {
-    return true;
-  }
-
-  return entry.ownerMemberId === memberFilterId;
+  if (!memberFilterId) return true;
+  if (entry.ownerMemberId === memberFilterId) return true;
+  return (entry.visibleMemberIds ?? []).includes(memberFilterId);
 }
 
 function matchesSearch(entry: Entry, members: Member[], query: string) {

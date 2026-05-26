@@ -172,27 +172,44 @@ export function MobileEntryForm({ draft, onChange, members, calendars }: Props) 
         )}
       </div>
 
-      {/* ── Owner ── */}
+      {/* ── Participants ── */}
       <div>
-        <p className={SECTION_LABEL_CLS}>Ejer</p>
+        <p className={SECTION_LABEL_CLS}>Deltagere</p>
         <div className="flex gap-2 flex-wrap">
-          {members.map(m => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => onChange({ ownerMemberId: m.id })}
-              className={cn(
-                'flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold',
-                draft.ownerMemberId === m.id
-                  ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background'
-                  : 'bg-muted text-muted-foreground',
-              )}
-              title={m.name}
-            >
-              {m.name[0]}
-            </button>
-          ))}
+          {members.map(m => {
+            const checked = draft.visibleMemberIds.includes(m.id);
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  const next = checked
+                    ? draft.visibleMemberIds.filter(id => id !== m.id)
+                    : [...draft.visibleMemberIds, m.id];
+                  const newOwner = next[0] ?? '';
+                  const familyCal = calendars.find(c => !c.ownerMemberId);
+                  const memberCal = calendars.find(c => c.ownerMemberId === newOwner);
+                  const newCalendar = next.length > 1 && familyCal ? familyCal.id : (memberCal?.id ?? draft.calendarId);
+                  onChange({ visibleMemberIds: next, ownerMemberId: newOwner, calendarId: newCalendar });
+                }}
+                className={cn(
+                  'flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold transition-all',
+                  checked
+                    ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background'
+                    : 'bg-muted text-muted-foreground',
+                )}
+                title={m.name}
+              >
+                {m.avatar ?? m.name[0]}
+              </button>
+            );
+          })}
         </div>
+        {draft.visibleMemberIds.length > 1 && (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Ejer: {members.find(m => m.id === draft.ownerMemberId)?.name ?? '—'}
+          </p>
+        )}
       </div>
 
       {/* ── Calendar ── */}

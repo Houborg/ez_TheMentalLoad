@@ -173,6 +173,7 @@ export type CreateEntryRequest = Pick<
   | 'location'
   | 'recurrenceRule'
   | 'assignedToMemberId'
+  | 'visibleMemberIds'
 > & {
   reminders?: Array<{ minutesBefore: number }>;
   checklist?: Array<{ text: string; isCompleted?: boolean; assignedToMemberId?: string }>;

@@ -25,6 +25,7 @@ export type MobileEntryDraft = {
   title: string;
   type: 'event' | 'task';
   ownerMemberId: string;
+  visibleMemberIds: string[];
   calendarId: string;
   startTime: string;
   endTime: string;
@@ -51,6 +52,7 @@ export function entryToDraft(entry: Entry, members: Member[]): MobileEntryDraft 
     title: entry.title,
     type: entry.type,
     ownerMemberId: entry.ownerMemberId,
+    visibleMemberIds: entry.visibleMemberIds?.length ? entry.visibleMemberIds : [entry.ownerMemberId],
     calendarId: entry.calendarId,
     startTime: entry.startTime,
     endTime: entry.endTime,
@@ -91,6 +93,7 @@ export function emptyDraft(ownerMemberId: string, calendarId: string, date = new
     title: '',
     type: 'event',
     ownerMemberId,
+    visibleMemberIds: ownerMemberId ? [ownerMemberId] : [],
     calendarId,
     startTime: start.toISOString(),
     endTime: end.toISOString(),
@@ -113,6 +116,7 @@ export function draftToPayload(draft: MobileEntryDraft): CreateEntryRequest {
     title: draft.title.trim(),
     type: draft.type,
     ownerMemberId: draft.ownerMemberId,
+    visibleMemberIds: draft.visibleMemberIds,
     calendarId: draft.calendarId,
     startTime: draft.startTime,
     endTime: draft.endTime,

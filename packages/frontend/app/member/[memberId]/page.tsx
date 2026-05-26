@@ -124,6 +124,7 @@ export default function MemberPage() {
         setEntries(upcoming.filter((entry) => {
           if (entry.ownerMemberId === selectedMember.id) return true;
           if (entry.assignedToMemberId === selectedMember.id) return true;
+          if ((entry.visibleMemberIds ?? []).includes(selectedMember.id)) return true;
           return entry.checklist.some((item) => item.assignedToMemberId === selectedMember.id);
         }));
         setTimelineByMemberId({ [selectedMember.id]: timeline });
@@ -197,6 +198,7 @@ export default function MemberPage() {
     setEntries(upcoming.filter((entry) => {
       if (entry.ownerMemberId === memberId) return true;
       if (entry.assignedToMemberId === memberId) return true;
+      if ((entry.visibleMemberIds ?? []).includes(memberId)) return true;
       return entry.checklist.some((item) => item.assignedToMemberId === memberId);
     }));
     setTimelineByMemberId((c) => ({ ...c, [memberId]: refreshedTimeline }));

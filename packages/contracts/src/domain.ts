@@ -63,6 +63,8 @@ export interface Entry {
   parentEntryId?: string;
   assignedToMemberId?: string;
   externalUid?: string;
+  /** Additional members who can see this event on their calendar/member page, beyond the ownerMemberId */
+  visibleMemberIds?: string[];
   createdAt: string;
   updatedAt: string;
 }

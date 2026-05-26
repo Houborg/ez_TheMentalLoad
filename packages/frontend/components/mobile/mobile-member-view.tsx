@@ -106,6 +106,7 @@ export function MobileMemberView({ member, onBack, onSelectEntry }: Props) {
         setEntries(upcoming.filter(entry => {
           if (entry.ownerMemberId === member.id) return true;
           if (entry.assignedToMemberId === member.id) return true;
+          if ((entry.visibleMemberIds ?? []).includes(member.id)) return true;
           return entry.checklist.some(item => item.assignedToMemberId === member.id);
         }));
 
@@ -209,6 +210,7 @@ export function MobileMemberView({ member, onBack, onSelectEntry }: Props) {
         setEntries(upcoming.filter(entry => {
           if (entry.ownerMemberId === member.id) return true;
           if (entry.assignedToMemberId === member.id) return true;
+          if ((entry.visibleMemberIds ?? []).includes(member.id)) return true;
           return entry.checklist.some(item => item.assignedToMemberId === member.id);
         }));
         return;

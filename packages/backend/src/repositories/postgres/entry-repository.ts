@@ -87,7 +87,7 @@ export class PostgresEntryRepository implements EntryRepository {
       await client.query('delete from entry_checklist_items where entry_id = $1', [id]);
       await client.query('delete from entry_invitees where entry_id = $1', [id]);
       await client.query(
-        'update entries set title = $2, type = $3, owner_member_id = $4, calendar_id = $5, start_time = $6, end_time = $7, all_day = $8, location = $9, status = $10, recurrence_rule = $11, parent_entry_id = $12, timezone = $13, assigned_to_member_id = $14, updated_at = $15 where id = $1 and family_id = $16',
+        'update entries set title = $2, type = $3, owner_member_id = $4, calendar_id = $5, start_time = $6, end_time = $7, all_day = $8, location = $9, status = $10, recurrence_rule = $11, parent_entry_id = $12, timezone = $13, assigned_to_member_id = $14, updated_at = $15, visible_member_ids = $17 where id = $1 and family_id = $16',
         [
           id,
           updated.title,
@@ -105,6 +105,7 @@ export class PostgresEntryRepository implements EntryRepository {
           updated.assignedToMemberId ?? null,
           updated.updatedAt,
           familyId,
+          JSON.stringify(updated.visibleMemberIds ?? []),
         ],
       );
       await this.writeRelations(updated, client);
@@ -129,7 +130,7 @@ export class PostgresEntryRepository implements EntryRepository {
 
   private async writeEntry(entry: Entry, familyId: string, client: PoolClient): Promise<void> {
     await client.query(
-      'insert into entries (id, title, type, owner_member_id, calendar_id, start_time, end_time, all_day, location, status, recurrence_rule, parent_entry_id, timezone, assigned_to_member_id, external_uid, created_at, updated_at, family_id) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)',
+      'insert into entries (id, title, type, owner_member_id, calendar_id, start_time, end_time, all_day, location, status, recurrence_rule, parent_entry_id, timezone, assigned_to_member_id, external_uid, created_at, updated_at, family_id, visible_member_ids) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)',
       [
         entry.id,
         entry.title,
@@ -149,6 +150,7 @@ export class PostgresEntryRepository implements EntryRepository {
         entry.createdAt,
         entry.updatedAt,
         familyId,
+        JSON.stringify(entry.visibleMemberIds ?? []),
       ],
     );
 
@@ -239,6 +241,7 @@ export class PostgresEntryRepository implements EntryRepository {
       parentEntryId: row.parent_entry_id ? String(row.parent_entry_id) : undefined,
       assignedToMemberId: row.assigned_to_member_id ? String(row.assigned_to_member_id) : undefined,
       externalUid: row.external_uid ? String(row.external_uid) : undefined,
+      visibleMemberIds: Array.isArray(row.visible_member_ids) ? (row.visible_member_ids as string[]) : [],
       createdAt: new Date(String(row.created_at)).toISOString(),
       updatedAt: new Date(String(row.updated_at)).toISOString(),
     };

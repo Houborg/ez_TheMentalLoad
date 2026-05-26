@@ -78,6 +78,7 @@ export class EntryService {
       recurrenceRule: input.recurrenceRule,
       parentEntryId: input.parentEntryId,
       assignedToMemberId: input.assignedToMemberId,
+      visibleMemberIds: input.visibleMemberIds ?? [],
       invitees: normalizeInvitees(input.invitees),
       linkedEntryIds: [],
       createdAt: now,
