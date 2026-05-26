@@ -129,9 +129,11 @@ export class SyncConnectionService {
     let importedCount = 0;
     let exportedCount = 0;
 
-    if (conn.importEnabled && conn.targetCalendarId && conn.targetMemberId) {
+    if (conn.importEnabled && conn.targetCalendarId && (conn.targetMemberId !== undefined || conn.isSharedCalendar)) {
       const since = conn.lastSyncAt ? new Date(conn.lastSyncAt) : undefined;
       const remoteEvents = await this.adapter.importEvents(adapterConfig, since);
+      // For shared calendars ownerMemberId is '' (no specific member), for personal use the assigned member
+      const ownerMemberId = conn.isSharedCalendar ? '' : (conn.targetMemberId ?? '');
 
       for (const event of remoteEvents) {
         if (!event.uid) continue;
@@ -150,7 +152,7 @@ export class SyncConnectionService {
             externalUid: event.uid,
             title: (component.summary as string | undefined) ?? 'Imported event',
             type: 'event',
-            ownerMemberId: conn.targetMemberId,
+            ownerMemberId,
             calendarId: conn.targetCalendarId,
             startTime: component.start.toISOString(),
             endTime: component.end instanceof Date ? component.end.toISOString() : component.start.toISOString(),
@@ -169,7 +171,7 @@ export class SyncConnectionService {
         }
       }
     } else if (conn.importEnabled) {
-      console.warn(`[sync] connection ${connectionId} has importEnabled but no targetCalendarId/targetMemberId — skipping import`);
+      console.warn(`[sync] connection ${connectionId} has importEnabled but no targetCalendarId — skipping import`);
     }
 
     if (conn.exportEnabled) {

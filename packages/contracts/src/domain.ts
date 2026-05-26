@@ -21,7 +21,7 @@ export interface Calendar {
   id: string;
   name: string;
   color: string;
-  ownerMemberId: string;
+  ownerMemberId?: string;
   createdAt: string;
 }
 
@@ -145,6 +145,8 @@ export interface SyncConnection {
   // Import target — which local calendar/member to assign imported events to
   targetCalendarId?: string;
   targetMemberId?: string;
+  /** When true, imported events go into the shared family calendar (ownerMemberId = '') instead of a specific member's calendar */
+  isSharedCalendar?: boolean;
   // Shared
   syncIntervalMinutes: number;
   lastSyncAt?: string;

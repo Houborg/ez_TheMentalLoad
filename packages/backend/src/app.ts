@@ -276,13 +276,26 @@ export async function buildApp() {
   app.post<{ Body: CreateSyncConnectionRequest }>('/api/v1/sync/connections', async (request, reply) => {
     try {
       const { calendarRepository, memberRepository, syncConnectionService } = svc(request);
-      // Auto-assign import targets from first available calendar + member if not provided
       let targetCalendarId: string | undefined;
       let targetMemberId: string | undefined;
       if (request.body.importEnabled) {
-        const [calendars, members] = await Promise.all([calendarRepository.list(), memberRepository.list()]);
-        targetCalendarId = calendars[0]?.id;
-        targetMemberId = members[0]?.id;
+        const calendars = await calendarRepository.list();
+        if (request.body.isSharedCalendar) {
+          // Shared family calendar: owner is '' (falsy)
+          const familyCal = calendars.find((c) => !c.ownerMemberId);
+          targetCalendarId = familyCal?.id ?? calendars[0]?.id;
+          targetMemberId = '';
+        } else if (request.body.targetMemberId) {
+          // Specific member calendar
+          const memberCal = calendars.find((c) => c.ownerMemberId === request.body.targetMemberId);
+          targetCalendarId = memberCal?.id ?? calendars[0]?.id;
+          targetMemberId = request.body.targetMemberId;
+        } else {
+          // Fallback: first calendar + first member (legacy behaviour)
+          const members = await memberRepository.list();
+          targetCalendarId = calendars[0]?.id;
+          targetMemberId = members[0]?.id;
+        }
       }
       return await syncConnectionService.createConnection({ ...request.body, targetCalendarId, targetMemberId });
     } catch (error) {
@@ -341,11 +354,11 @@ export async function buildApp() {
     try {
       // Auto-assign import targets for connections created before this feature was added
       const existing = await syncConnectionService.getConnection(id);
-      if (existing?.importEnabled && (!existing.targetCalendarId || !existing.targetMemberId)) {
+      if (existing?.importEnabled && !existing.targetCalendarId) {
         const [calendars, members] = await Promise.all([calendarRepository.list(), memberRepository.list()]);
         await syncConnectionService.updateConnection(id, {
           targetCalendarId: existing.targetCalendarId ?? calendars[0]?.id,
-          targetMemberId: existing.targetMemberId ?? members[0]?.id,
+          targetMemberId: existing.targetMemberId ?? (existing.isSharedCalendar ? '' : members[0]?.id),
         });
       }
       const result = await syncConnectionService.runSync(id, entryRepository);

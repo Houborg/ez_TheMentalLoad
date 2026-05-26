@@ -240,6 +240,9 @@ export interface CreateSyncConnectionRequest {
   appPassword?: string;
   calendarPath?: string;
   calendarName?: string;
+  // Import target selection from wizard
+  targetMemberId?: string;
+  isSharedCalendar?: boolean;
 }
 
 export interface UpdateSyncConnectionRequest {
