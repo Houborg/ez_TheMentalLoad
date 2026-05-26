@@ -165,7 +165,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   });
 
   if (!forecastResponse.ok) {
-    return Response.json({ message: 'Could not fetch weather forecast' }, { status: 502 });
+    return Response.json({ message: 'Could not fetch weather forecast' }, { status: 503 });
   }
 
   const forecastPayload = (await forecastResponse.json()) as OpenMeteoForecastResponse;

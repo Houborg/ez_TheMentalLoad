@@ -58,7 +58,9 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
       }
 
       const text = (await response.text()).trim();
-      throw new Error(text || fallback);
+      // Don't surface raw HTML (e.g. Cloudflare error pages) as the error message
+      if (!text || text.startsWith('<')) throw new Error(fallback);
+      throw new Error(text);
     } catch (error) {
       if (error instanceof Error && error.message && error.message !== fallback) {
         throw error;
