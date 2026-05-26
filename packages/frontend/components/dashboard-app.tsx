@@ -2058,30 +2058,48 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                                 {entries.slice(0, 3).map((entry) => {
                                   const isBirthdayEntry = isVirtualBirthdayEntry(entry);
                                   const birthdayInfo = isBirthdayEntry ? getBirthdayInfo(entry, birthdays) : null;
+                                  if (isBirthdayEntry) {
+                                    return (
+                                      <button
+                                        key={entry.id}
+                                        type="button"
+                                        onClick={(event) => { event.stopPropagation(); handleEditEntry(entry); }}
+                                        className="w-full bg-transparent px-0 py-0.5 text-left text-[10px] font-medium text-foreground hover:bg-transparent"
+                                      >
+                                        <span className="flex min-w-0 items-center gap-1.5">
+                                          <span aria-hidden="true" className="h-3.5 w-5 shrink-0 bg-contain bg-center bg-no-repeat" style={{ backgroundImage: 'url(/birthday-pill.png)' }} />
+                                          <span className="truncate">{birthdayInfo?.name ?? entry.title}</span>
+                                          {birthdayInfo ? <span className="shrink-0 text-[10px] text-muted-foreground">{birthdayInfo.age}yr</span> : null}
+                                        </span>
+                                      </button>
+                                    );
+                                  }
+                                  const pos = getEntryDayPosition(entry, date as Date);
+                                  const bg = pillBackground(entry, memberColorById);
+                                  const isMultiMember = (entry.visibleMemberIds?.length ?? 0) > 1;
+                                  const radius = pos === 'single' ? '0.75rem'
+                                    : pos === 'start' ? '0.75rem 0 0 0.75rem'
+                                    : pos === 'end'   ? '0 0.75rem 0.75rem 0'
+                                    : '0';
+                                  // Extend pill to cell edge for continuation segments
+                                  const mxClass = pos === 'single' ? '' : pos === 'start' ? '-mr-3' : pos === 'end' ? '-ml-3' : '-mx-3';
                                   return (
                                     <button
                                       key={entry.id}
                                       type="button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        handleEditEntry(entry);
-                                      }}
-                                      className={isBirthdayEntry ? 'w-full bg-transparent px-0 py-0.5 text-left text-[10px] font-medium text-foreground hover:bg-transparent' : 'w-full truncate rounded-xl px-2 py-1 text-left text-xs font-medium text-primary-foreground'}
-                                      style={isBirthdayEntry ? undefined : { backgroundColor: memberColorById[entry.ownerMemberId] ?? '#6d5efc' }}
+                                      onClick={(event) => { event.stopPropagation(); handleEditEntry(entry); }}
+                                      className={`flex w-full items-center py-1 text-left text-xs font-medium text-white ${mxClass}`}
+                                      style={{ background: bg, borderRadius: radius, paddingLeft: pos === 'end' || pos === 'middle' ? '6px' : '8px', paddingRight: pos === 'start' || pos === 'middle' ? '4px' : '8px' }}
+                                      title={entry.title}
                                     >
-                                      {isBirthdayEntry ? (
-                                        <span className="flex min-w-0 items-center gap-1.5">
-                                          <span
-                                            aria-hidden="true"
-                                            className="h-3.5 w-5 shrink-0 bg-contain bg-center bg-no-repeat"
-                                            style={{ backgroundImage: 'url(/birthday-pill.png)' }}
-                                          />
-                                          <span className="truncate">{birthdayInfo?.name ?? entry.title}</span>
-                                          {birthdayInfo ? <span className="shrink-0 text-[10px] text-muted-foreground">{birthdayInfo.age}yr</span> : null}
+                                      {pos === 'middle' ? null : (
+                                        <span className="min-w-0 flex-1 truncate leading-none">
+                                          {pos === 'end' ? <span className="mr-1 opacity-60">‹</span> : null}
+                                          {entry.title}
+                                          {isMultiMember && pos === 'single' ? <span className="ml-1 opacity-70">·{(entry.visibleMemberIds?.length ?? 1)}</span> : null}
                                         </span>
-                                      ) : (
-                                        entry.title
                                       )}
+                                      {pos === 'start' ? <span className="ml-auto shrink-0 pl-1 opacity-60 text-[9px]">›</span> : null}
                                     </button>
                                   );
                                 })}
@@ -4259,12 +4277,46 @@ function buildMonthGrid(date: Date) {
   return days;
 }
 
+function dayOf(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+function getEntryDayPosition(entry: Entry, date: Date): 'single' | 'start' | 'middle' | 'end' {
+  const start = dayOf(new Date(entry.startTime));
+  const end = dayOf(new Date(entry.endTime));
+  const d = dayOf(date);
+  const isStart = start === d;
+  const isEnd = end === d;
+  if (isStart && isEnd) return 'single';
+  if (isStart) return 'start';
+  if (isEnd) return 'end';
+  return 'middle';
+}
+
+function pillBackground(entry: Entry, colorById: Record<string, string>): string {
+  const ids = entry.visibleMemberIds?.length
+    ? [...new Set(entry.visibleMemberIds)]
+    : [entry.ownerMemberId];
+  const colors = ids.map((id) => colorById[id]).filter(Boolean) as string[];
+  if (!colors.length) return '#6d5efc';
+  if (colors.length === 1) return colors[0];
+  const step = 100 / colors.length;
+  const stops = colors.flatMap((c, i) => [
+    `${c} ${(i * step).toFixed(1)}%`,
+    `${c} ${((i + 1) * step).toFixed(1)}%`,
+  ]);
+  return `linear-gradient(90deg, ${stops.join(', ')})`;
+}
+
 function getEntriesForDate(entries: Entry[], members: Member[], date: Date, searchQuery: string, memberFilterId: string) {
-  return entries.filter((entry) =>
-    sameDay(new Date(entry.startTime), date)
-    && matchesMemberFilter(entry, memberFilterId)
-    && matchesSearch(entry, members, searchQuery),
-  );
+  const d = dayOf(date);
+  return entries.filter((entry) => {
+    const start = dayOf(new Date(entry.startTime));
+    const end = dayOf(new Date(entry.endTime));
+    return start <= d && d <= end
+      && matchesMemberFilter(entry, memberFilterId)
+      && matchesSearch(entry, members, searchQuery);
+  });
 }
 
 function matchesMemberFilter(entry: Entry, memberFilterId: string) {
