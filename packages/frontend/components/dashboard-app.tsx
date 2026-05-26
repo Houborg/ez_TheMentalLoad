@@ -166,14 +166,11 @@ export function DashboardApp() {
   const [healthNow, setHealthNow] = useState<string>('');
   const [assistantReady, setAssistantReady] = useState(false);
   const [assistantStatusText, setAssistantStatusText] = useState('Checking assistant...');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [memberFilterId, setMemberFilterId] = useState('');
   const [activeMemberId, setActiveMemberId] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     return localStorage.getItem('activeMemberId') ?? '';
   });
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [isComposerOpen, setIsComposerOpen] = useState(false);
@@ -267,7 +264,6 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
     async function loadAll() {
       try {
         setErrorText('');
-        setRefreshing(true);
         const [dashboardSnapshot, monthEntries, upcoming, health, assistantStatus, settingsSnapshot] = await Promise.all([
           loadDashboardSnapshot(),
           loadMonthOccurrences(currentMonth),
@@ -329,7 +325,6 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
       } finally {
         if (active) {
           setLoading(false);
-          setRefreshing(false);
         }
       }
     }
@@ -418,19 +413,19 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
   const filteredUpcoming = useMemo(() => {
     return upcomingEntriesForView
       .filter((entry) => entry.type !== 'task')
-      .filter((entry) => matchesMemberFilter(entry, memberFilterId))
-      .filter((entry) => matchesSearch(entry, dashboard.members, searchQuery))
+      .filter((entry) => matchesMemberFilter(entry, ''))
+      .filter((entry) => matchesSearch(entry, dashboard.members, ''))
       .sort((left, right) => left.startTime.localeCompare(right.startTime))
       .slice(0, 8);
-  }, [dashboard.members, memberFilterId, searchQuery, upcomingEntriesForView]);
+  }, [dashboard.members, upcomingEntriesForView]);
 
   const selectedEntries = useMemo(() => {
     return monthEntriesForView
       .filter((entry) => sameDay(new Date(entry.startTime), selectedDate))
-      .filter((entry) => matchesMemberFilter(entry, memberFilterId))
-      .filter((entry) => matchesSearch(entry, dashboard.members, searchQuery))
+      .filter((entry) => matchesMemberFilter(entry, ''))
+      .filter((entry) => matchesSearch(entry, dashboard.members, ''))
       .sort((left, right) => left.startTime.localeCompare(right.startTime));
-  }, [dashboard.members, memberFilterId, monthEntriesForView, searchQuery, selectedDate]);
+  }, [dashboard.members, monthEntriesForView, selectedDate]);
 
   const statCards = useMemo(() => {
     const today = new Date();
@@ -1668,9 +1663,10 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
             weatherForecast={weatherForecast}
             onAdd={() => openCreateEntryComposer()}
             onAI={() => handleNavClick('dashboard')}
+            onLogout={() => void handleLogout()}
           />
 
-          <section className="flex-1 overflow-auto px-4 py-6 pb-20 md:px-6 md:pb-6">
+          <section className="flex-1 overflow-auto px-4 py-6 md:px-6">
             {activeNav === 'planner' ? (
               <PlannerView members={dashboard.members} memberColorById={memberColorById} />
             ) : activeNav !== 'family' && activeNav !== 'timeline' ? (
@@ -1850,7 +1846,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                     ))}
                     {monthDays.map((day, index) => {
                       const date = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
-                      const entries = date ? getEntriesForDate(monthEntriesForView, dashboard.members, date, searchQuery, memberFilterId) : [];
+                      const entries = date ? getEntriesForDate(monthEntriesForView, dashboard.members, date, '', '') : [];
                       return (
                         <div
                           key={`${day ?? 'empty'}-${index}`}

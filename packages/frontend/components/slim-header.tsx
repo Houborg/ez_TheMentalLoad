@@ -1,16 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Sparkles } from 'lucide-react';
+import { LogOut, Plus, Sparkles } from 'lucide-react';
 import type { WeatherForecastResponse } from '@/lib/api';
 
 type Props = {
   weatherForecast: WeatherForecastResponse | null;
   onAdd: () => void;
   onAI: () => void;
+  onLogout?: () => void;
 };
 
-export function SlimHeader({ weatherForecast, onAdd, onAI }: Props) {
+export function SlimHeader({ weatherForecast, onAdd, onAI, onLogout }: Props) {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -32,6 +33,17 @@ export function SlimHeader({ weatherForecast, onAdd, onAI }: Props) {
         </div>
       )}
       <div className="flex-1" />
+      {onLogout && (
+        <button
+          type="button"
+          onClick={onLogout}
+          aria-label="Log ud"
+          title="Log ud"
+          className="flex h-9 w-9 items-center justify-center rounded-2xl border border-border/60 bg-background/60 text-muted-foreground transition hover:border-destructive/60 hover:text-destructive"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
+      )}
       <button
         type="button"
         onClick={onAI}
