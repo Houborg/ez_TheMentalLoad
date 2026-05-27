@@ -57,7 +57,7 @@ import { MobileShell } from '@/components/mobile/mobile-shell';
 import { cn } from '@/lib/utils';
 import { deduplicateRecurringTasks, WEEKDAY_OPTIONS } from '@/lib/entry-utils';
 import { SettingsHolidays } from '@/components/settings-holidays';
-import { PlannerView } from '@/components/planner-view';
+import { KioskPlanner } from '@/components/kiosk-planner';
 import { SyncSettings } from './sync/sync-settings';
 import { MobileAulaSettings } from './mobile/mobile-aula-settings';
 import { AulaDataViewer } from './aula-data-viewer';
@@ -1627,6 +1627,18 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
     );
   }
 
+  if (activeNav === 'planner') {
+    return (
+      <KioskPlanner
+        members={dashboard.members}
+        memberColorById={memberColorById}
+        onAdd={() => openCreateEntryComposer()}
+        onAI={() => handleNavClick('dashboard')}
+        onExit={() => handleNavClick('dashboard')}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {isMobile && !mobileDesktopOverride ? (
@@ -1667,9 +1679,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
           />
 
           <section className="flex-1 overflow-auto px-4 py-6 md:px-6">
-            {activeNav === 'planner' ? (
-              <PlannerView members={dashboard.members} memberColorById={memberColorById} />
-            ) : activeNav !== 'family' && activeNav !== 'timeline' ? (
+            {activeNav !== 'family' && activeNav !== 'timeline' ? (
             <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
               <div id="hero-section" className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
