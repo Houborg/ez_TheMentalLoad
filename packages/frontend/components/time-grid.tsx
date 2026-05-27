@@ -1,124 +1,151 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Entry, Member } from '@mental-load/contracts';
 
 const START_HOUR = 6;
 const END_HOUR = 23;
-const HOUR_HEIGHT = 64; // px per hour
-const TOTAL_HEIGHT = (END_HOUR - START_HOUR) * HOUR_HEIGHT;
-const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
+const NUM_HOURS = END_HOUR - START_HOUR;
+const HOURS = Array.from({ length: NUM_HOURS }, (_, i) => START_HOUR + i);
+const MIN_HOUR_HEIGHT = 40;
 
 function entryBelongsToMember(entry: Entry, memberId: string): boolean {
   return entry.ownerMemberId === memberId || (entry.visibleMemberIds?.includes(memberId) ?? false);
 }
 
-function timeToY(iso: string): number {
-  const d = new Date(iso);
-  return (d.getHours() - START_HOUR + d.getMinutes() / 60) * HOUR_HEIGHT;
-}
-
-function durationPx(startIso: string, endIso: string): number {
-  const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
-  return Math.max(20, (ms / 3_600_000) * HOUR_HEIGHT);
-}
-
-function calcNowY(): number {
+function calcNowFraction(): number {
   const d = new Date();
-  return (d.getHours() - START_HOUR + d.getMinutes() / 60) * HOUR_HEIGHT;
+  return (d.getHours() - START_HOUR + d.getMinutes() / 60) / NUM_HOURS;
 }
 
 type Props = {
   members: Member[];
   memberColorById: Record<string, string>;
-  entries: Entry[]; // today's events only
+  entries: Entry[];
 };
 
 export function TimeGrid({ members, memberColorById, entries }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [nowY, setNowY] = useState(() => calcNowY());
+  const [hourHeight, setHourHeight] = useState(MIN_HOUR_HEIGHT);
+  const [nowFrac, setNowFrac] = useState(() => calcNowFraction());
 
-  // Auto-scroll to now on mount
-  useEffect(() => {
-    const y = calcNowY();
-    setNowY(y);
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = Math.max(0, y - scrollRef.current.clientHeight / 2);
-    }
+  // Dynamically size rows to fill the container
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const h = entry.contentRect.height;
+      setHourHeight(Math.max(MIN_HOUR_HEIGHT, h / NUM_HOURS));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
+
+  // Auto-scroll to center now-line on mount (after hourHeight is measured)
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const totalHeight = hourHeight * NUM_HOURS;
+    const y = nowFrac * totalHeight;
+    scrollRef.current.scrollTop = Math.max(0, y - scrollRef.current.clientHeight / 2);
+  }, [hourHeight, nowFrac]);
 
   // Update now-line every minute
   useEffect(() => {
-    const id = setInterval(() => setNowY(calcNowY()), 60_000);
+    const id = setInterval(() => setNowFrac(calcNowFraction()), 60_000);
     return () => clearInterval(id);
   }, []);
 
-  const TIME_COL_WIDTH = 36;
+  const totalHeight = hourHeight * NUM_HOURS;
+  const nowY = nowFrac * totalHeight;
+  const inBounds = nowFrac >= 0 && nowFrac <= 1;
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto">
-      <div className="flex" style={{ minHeight: TOTAL_HEIGHT }}>
-        {/* Time axis */}
-        <div style={{ width: TIME_COL_WIDTH, flexShrink: 0 }}>
-          {HOURS.map((h) => (
-            <div
-              key={h}
-              style={{ height: HOUR_HEIGHT }}
-              className="flex items-start justify-end pr-2 pt-0.5 text-[10px] text-white/20"
-            >
-              {h}
-            </div>
-          ))}
-        </div>
+    <div ref={containerRef} className="flex flex-1 overflow-hidden">
+      <div ref={scrollRef} className="flex flex-1 overflow-y-auto">
+        <div className="flex flex-1" style={{ height: totalHeight, minHeight: totalHeight }}>
 
-        {/* Member columns */}
-        <div className="relative flex flex-1 gap-1 pr-2">
-          {/* Hour grid lines */}
-          {HOURS.map((h) => (
-            <div
-              key={h}
-              className="pointer-events-none absolute inset-x-0 border-t border-white/5"
-              style={{ top: (h - START_HOUR) * HOUR_HEIGHT }}
-            />
-          ))}
-
-          {/* Now line */}
-          {nowY >= 0 && nowY <= TOTAL_HEIGHT && (
-            <div
-              className="pointer-events-none absolute inset-x-0 z-10 flex items-center"
-              style={{ top: nowY }}
-            >
-              <div className="h-2 w-2 shrink-0 rounded-full bg-red-500" style={{ marginLeft: -4 }} />
-              <div className="h-px flex-1 bg-red-500/60" />
-            </div>
-          )}
-
-          {members.map((member) => {
-            const color = memberColorById[member.id] ?? '#6366f1';
-            const memberEntries = entries.filter((e) => entryBelongsToMember(e, member.id));
-            return (
-              <div key={member.id} className="relative flex-1 border-l border-white/4">
-                {memberEntries.map((entry) => {
-                  const top = timeToY(entry.startTime);
-                  const height = durationPx(entry.startTime, entry.endTime);
-                  if (top + height < 0 || top > TOTAL_HEIGHT) return null;
-                  return (
-                    <div
-                      key={entry.id}
-                      title={entry.title}
-                      className="absolute inset-x-0.5 overflow-hidden rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white/90"
-                      style={{ top, height, background: color + 'cc' }}
-                    >
-                      <div className="truncate leading-tight">
-                        {new Date(entry.startTime).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                      <div className="truncate leading-tight">{entry.title}</div>
-                    </div>
-                  );
-                })}
+          {/* Time axis */}
+          <div className="relative shrink-0 w-10 border-r border-white/10">
+            {HOURS.map((h) => (
+              <div
+                key={h}
+                className="absolute right-0 pr-2 text-[11px] font-medium text-white/30 leading-none"
+                style={{ top: (h - START_HOUR) * hourHeight - 6 }}
+              >
+                {h}
               </div>
-            );
-          })}
+            ))}
+          </div>
+
+          {/* Member columns */}
+          <div className="relative flex flex-1">
+            {/* Hour grid lines */}
+            {HOURS.map((h) => (
+              <div
+                key={h}
+                className="pointer-events-none absolute inset-x-0 border-t border-white/8"
+                style={{ top: (h - START_HOUR) * hourHeight }}
+              />
+            ))}
+
+            {/* Now line */}
+            {inBounds && (
+              <div
+                className="pointer-events-none absolute inset-x-0 z-20 flex items-center"
+                style={{ top: nowY }}
+              >
+                <div className="ml-0 h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 shadow-md shadow-red-500/50" />
+                <div className="h-px flex-1 bg-red-500/70" />
+              </div>
+            )}
+
+            {/* Member columns */}
+            {members.map((member, i) => {
+              const color = memberColorById[member.id] ?? '#6366f1';
+              const memberEntries = entries.filter((e) => entryBelongsToMember(e, member.id));
+              return (
+                <div
+                  key={member.id}
+                  className="relative flex-1"
+                  style={{
+                    borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.08)' : undefined,
+                    background: `${color}0a`,
+                  }}
+                >
+                  {memberEntries.map((entry) => {
+                    const startD = new Date(entry.startTime);
+                    const topFrac = (startD.getHours() - START_HOUR + startD.getMinutes() / 60) / NUM_HOURS;
+                    const durH = (new Date(entry.endTime).getTime() - startD.getTime()) / 3_600_000;
+                    const heightFrac = Math.max(20 / totalHeight, durH / NUM_HOURS);
+                    const top = topFrac * totalHeight;
+                    const height = heightFrac * totalHeight;
+                    if (top + height < 0 || top > totalHeight) return null;
+                    return (
+                      <div
+                        key={entry.id}
+                        title={entry.title}
+                        className="absolute mx-1 overflow-hidden rounded-lg px-2 py-1 text-[11px] font-semibold text-white shadow-lg"
+                        style={{
+                          top,
+                          height,
+                          left: 0,
+                          right: 0,
+                          background: color + 'dd',
+                          boxShadow: `0 2px 8px ${color}44`,
+                        }}
+                      >
+                        <div className="truncate opacity-75 text-[10px]">
+                          {startD.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                        <div className="truncate font-bold leading-tight">{entry.title}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

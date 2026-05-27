@@ -28,7 +28,7 @@ export function KioskTopBar({ view, onViewChange, weatherForecast, onAdd, onAI, 
   const dateStr = now.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <div className="flex shrink-0 items-center gap-3 border-b border-white/10 bg-black/30 px-4 py-3 backdrop-blur">
+    <div className="flex shrink-0 items-center gap-3 border-b border-white/10 bg-black/40 px-4 py-2 backdrop-blur">
       <span className="text-2xl font-black tabular-nums tracking-tight text-white/90">{timeStr}</span>
       <span className="text-sm text-white/40">{dateStr}</span>
       {weatherForecast && (

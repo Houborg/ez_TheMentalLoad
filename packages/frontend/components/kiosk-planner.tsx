@@ -142,26 +142,26 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
       />
 
       {/* Member avatar row — centered over columns */}
-      <div className="flex shrink-0 items-center border-b border-white/7 py-2.5">
-        {/* Offset matching time-axis width (only shown on today view) */}
-        {kioskView === 'today' && <div className="w-9 shrink-0" />}
-        {/* Member axis offset for week view */}
-        {kioskView === 'week' && <div className="w-14 shrink-0" />}
+      <div className="flex shrink-0 items-center border-b border-white/10 bg-white/3 py-2">
+        <div className="w-10 shrink-0" />
         <div
-          className="grid flex-1 gap-1 pr-2"
+          className="grid flex-1"
           style={{ gridTemplateColumns: `repeat(${members.length}, 1fr)` }}
         >
-          {members.map((member) => (
-            <div key={member.id} className="flex items-center justify-center gap-1.5">
-              <div
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-                style={{ background: memberColorById[member.id] ?? '#6366f1' }}
-              >
-                {member.avatar ?? member.name[0].toUpperCase()}
+          {members.map((member) => {
+            const color = memberColorById[member.id] ?? '#6366f1';
+            return (
+              <div key={member.id} className="flex items-center justify-center gap-2">
+                <div
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white shadow-lg"
+                  style={{ background: color, boxShadow: `0 0 12px ${color}60` }}
+                >
+                  {member.avatar ?? member.name[0].toUpperCase()}
+                </div>
+                <span className="text-[12px] font-semibold text-white/70">{member.name}</span>
               </div>
-              <span className="hidden text-[11px] text-white/50 sm:block">{member.name}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -175,17 +175,17 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
           />
 
           {/* Bottom split: meal + tasks */}
-          <div className="grid shrink-0 grid-cols-2 border-t border-white/7">
+          <div className="grid shrink-0 grid-cols-2 border-t border-white/10" style={{ maxHeight: '22vh' }}>
             {/* Today's meal */}
-            <div className="border-r border-white/7 px-4 py-3">
-              <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/25">
+            <div className="overflow-y-auto border-r border-white/10 px-4 py-2">
+              <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-white/30">
                 🍽 Aftensmad i dag
               </div>
               {todayMeal ? (
                 <>
-                  <div className="text-sm font-bold text-white/85">{todayMeal.dishName}</div>
+                  <div className="text-sm font-bold text-white/90">{todayMeal.dishName}</div>
                   {todayMeal.groceryList.length > 0 && (
-                    <div className="mt-1 text-xs text-white/35">
+                    <div className="mt-0.5 text-[11px] text-white/35 leading-relaxed">
                       {todayMeal.groceryList.join(' · ')}
                     </div>
                   )}
@@ -196,11 +196,11 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
             </div>
 
             {/* Today's tasks */}
-            <div className="px-4 py-3">
-              <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/25">
+            <div className="overflow-y-auto px-4 py-2">
+              <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-white/30">
                 ✅ Opgaver i dag
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {members.map((member) => {
                   const timeline = timelineByMember[member.id];
                   const tasks: TimelineTaskInstance[] = timeline?.tasks ?? [];
@@ -218,7 +218,7 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
                           <div
                             key={task.id}
                             className={cn(
-                              'flex items-center gap-1 text-xs',
+                              'flex items-center gap-1 text-[11px]',
                               task.status === 'completed' ? 'text-white/25 line-through' : 'text-white/65',
                             )}
                           >
@@ -246,11 +246,8 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
       )}
 
       {/* Food plan strip — always visible at bottom */}
-      <div className="shrink-0 border-t border-white/7 px-4 py-3">
-        <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/25">
-          Madplan · Denne uge
-        </div>
-        <div className="grid grid-cols-7 gap-1.5">
+      <div className="shrink-0 border-t border-white/10 px-4 py-2">
+        <div className="grid grid-cols-7 gap-1">
           {FOOD_PLAN_DAYS.map((day) => {
             const item = foodPlan.find((fp) => fp.day.toLowerCase() === day);
             const isToday = day === todayFoodPlanKey();
@@ -258,18 +255,18 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
               <div
                 key={day}
                 className={cn(
-                  'rounded-lg px-1.5 py-2 text-center',
+                  'rounded-lg px-2 py-1.5 text-center',
                   isToday
-                    ? 'border border-primary/30 bg-primary/15'
+                    ? 'border border-primary/40 bg-primary/20'
                     : item
-                      ? 'bg-white/5'
-                      : 'border border-dashed border-white/8 bg-white/2',
+                      ? 'bg-white/6'
+                      : 'border border-dashed border-white/10',
                 )}
               >
-                <div className={cn('mb-1 text-[9px] font-bold', isToday ? 'text-primary/70' : 'text-white/25')}>
+                <div className={cn('text-[9px] font-bold uppercase tracking-wide', isToday ? 'text-primary/80' : 'text-white/30')}>
                   {FOOD_DAY_LABELS[day]}
                 </div>
-                <div className={cn('text-[10px] font-semibold leading-tight', isToday ? 'text-primary/90' : item ? 'text-white/60' : 'text-white/15')}>
+                <div className={cn('mt-0.5 text-[10px] font-semibold leading-tight truncate', isToday ? 'text-white/95' : item ? 'text-white/65' : 'text-white/20')}>
                   {item?.dishName ?? '—'}
                 </div>
               </div>
