@@ -184,6 +184,7 @@ export function MobileSettingsContent({ members, calendars, onRefresh }: Props) 
                 <MobileAulaSettings members={members} calendars={calendars} />
               )}
 
+
               {/* ── UDVIKLER ── */}
               {activeTab === 'udvikler' && (
                 <DeveloperTab />

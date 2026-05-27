@@ -40,6 +40,7 @@ export function AppleWizard({ onComplete, onCancel, existingConnectionId }: Appl
     loadMembers().then(setMembers).catch(() => {});
   }, []);
 
+
   async function handleVerify() {
     setError('');
     setBusy(true);
@@ -90,6 +91,7 @@ export function AppleWizard({ onComplete, onCancel, existingConnectionId }: Appl
     selectedTarget === null ? '' :
     selectedTarget === 'shared' ? 'Familie (delt kalender)' :
     (members.find((m) => m.id === selectedTarget)?.name ?? selectedTarget);
+
 
   return (
     <div className="flex flex-col gap-4">
