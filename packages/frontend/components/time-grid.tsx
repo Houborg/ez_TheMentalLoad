@@ -10,7 +10,7 @@ const TOTAL_HEIGHT = (END_HOUR - START_HOUR) * HOUR_HEIGHT;
 const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
 
 function entryBelongsToMember(entry: Entry, memberId: string): boolean {
-  return entry.ownerMemberId === memberId || ((entry as Entry & { visibleMemberIds?: string[] }).visibleMemberIds?.includes(memberId) ?? false);
+  return entry.ownerMemberId === memberId || (entry.visibleMemberIds?.includes(memberId) ?? false);
 }
 
 function timeToY(iso: string): number {
