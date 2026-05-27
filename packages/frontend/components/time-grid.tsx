@@ -27,6 +27,7 @@ type Props = {
 export function TimeGrid({ members, memberColorById, entries }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const hasScrolled = useRef(false);
   const [hourHeight, setHourHeight] = useState(MIN_HOUR_HEIGHT);
   const [nowFrac, setNowFrac] = useState(() => calcNowFraction());
 
@@ -36,21 +37,22 @@ export function TimeGrid({ members, memberColorById, entries }: Props) {
     if (!el) return;
     const observer = new ResizeObserver(([entry]) => {
       const h = entry.contentRect.height;
-      setHourHeight(Math.max(MIN_HOUR_HEIGHT, h / NUM_HOURS));
+      setHourHeight(Math.max(MIN_HOUR_HEIGHT, Math.floor(h / NUM_HOURS)));
     });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
-  // Auto-scroll to center now-line on mount (after hourHeight is measured)
+  // Auto-scroll to center the now-line — only once after first real measurement
   useEffect(() => {
-    if (!scrollRef.current) return;
+    if (!scrollRef.current || hasScrolled.current || hourHeight === MIN_HOUR_HEIGHT) return;
     const totalHeight = hourHeight * NUM_HOURS;
     const y = nowFrac * totalHeight;
     scrollRef.current.scrollTop = Math.max(0, y - scrollRef.current.clientHeight / 2);
-  }, [hourHeight, nowFrac]);
+    hasScrolled.current = true;
+  }, [hourHeight]); // intentionally omit nowFrac — scroll once only
 
-  // Update now-line every minute
+  // Update now-line every minute (without triggering scroll)
   useEffect(() => {
     const id = setInterval(() => setNowFrac(calcNowFraction()), 60_000);
     return () => clearInterval(id);
@@ -59,6 +61,7 @@ export function TimeGrid({ members, memberColorById, entries }: Props) {
   const totalHeight = hourHeight * NUM_HOURS;
   const nowY = nowFrac * totalHeight;
   const inBounds = nowFrac >= 0 && nowFrac <= 1;
+  const hasAnyEvents = entries.some((e) => !e.allDay);
 
   return (
     <div ref={containerRef} className="flex flex-1 overflow-hidden">
@@ -88,6 +91,15 @@ export function TimeGrid({ members, memberColorById, entries }: Props) {
                 style={{ top: (h - START_HOUR) * hourHeight }}
               />
             ))}
+
+            {/* Empty state */}
+            {!hasAnyEvents && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] text-white/25">
+                  Ingen begivenheder i dag
+                </span>
+              </div>
+            )}
 
             {/* Now line */}
             {inBounds && (
