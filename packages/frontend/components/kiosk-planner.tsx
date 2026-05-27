@@ -29,7 +29,8 @@ const FOOD_DAY_LABELS: Record<string, string> = {
 };
 
 function todayDateKey(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function todayFoodPlanKey(): string {

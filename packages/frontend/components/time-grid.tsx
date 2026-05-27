@@ -23,6 +23,11 @@ function durationPx(startIso: string, endIso: string): number {
   return Math.max(20, (ms / 3_600_000) * HOUR_HEIGHT);
 }
 
+function calcNowY(): number {
+  const d = new Date();
+  return (d.getHours() - START_HOUR + d.getMinutes() / 60) * HOUR_HEIGHT;
+}
+
 type Props = {
   members: Member[];
   memberColorById: Record<string, string>;
@@ -31,12 +36,7 @@ type Props = {
 
 export function TimeGrid({ members, memberColorById, entries }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [nowY, setNowY] = useState(0);
-
-  function calcNowY() {
-    const d = new Date();
-    return (d.getHours() - START_HOUR + d.getMinutes() / 60) * HOUR_HEIGHT;
-  }
+  const [nowY, setNowY] = useState(() => calcNowY());
 
   // Auto-scroll to now on mount
   useEffect(() => {

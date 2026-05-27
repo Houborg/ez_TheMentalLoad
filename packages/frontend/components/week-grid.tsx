@@ -12,6 +12,10 @@ function isoToDateKey(iso: string): string {
   return iso.slice(0, 10); // YYYY-MM-DD
 }
 
+function toLocalDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 /** Returns the 7 days of the current week starting from Monday */
 function getWeekDays(): Date[] {
   const today = new Date();
@@ -36,12 +40,12 @@ type Props = {
 
 export function WeekGrid({ members, memberColorById, entries, weatherByDate }: Props) {
   const weekDays = getWeekDays();
-  const todayKey = isoToDateKey(new Date().toISOString());
+  const todayKey = toLocalDateKey(new Date());
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
       {weekDays.map((day, i) => {
-        const dateKey = isoToDateKey(day.toISOString());
+        const dateKey = toLocalDateKey(day);
         const isToday = dateKey === todayKey;
         const weather = weatherByDate[dateKey];
         const dayEntries = entries.filter((e) => isoToDateKey(e.startTime) === dateKey);

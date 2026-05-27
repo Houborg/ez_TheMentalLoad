@@ -745,7 +745,6 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
     }
 
     if (section === 'planner') {
-      setActiveNav('planner');
       return;
     }
 
@@ -1627,21 +1626,17 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
     );
   }
 
-  if (activeNav === 'planner') {
-    return (
-      <KioskPlanner
-        members={dashboard.members}
-        memberColorById={memberColorById}
-        onAdd={() => openCreateEntryComposer()}
-        onAI={() => handleNavClick('dashboard')}
-        onExit={() => handleNavClick('dashboard')}
-      />
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {isMobile && !mobileDesktopOverride ? (
+      {activeNav === 'planner' ? (
+        <KioskPlanner
+          members={dashboard.members}
+          memberColorById={memberColorById}
+          onAdd={() => openCreateEntryComposer()}
+          onAI={() => handleNavClick('dashboard')}
+          onExit={() => handleNavClick('dashboard')}
+        />
+      ) : isMobile && !mobileDesktopOverride ? (
         <MobileShell
           members={dashboard.members}
           calendars={dashboard.calendars}
@@ -2497,6 +2492,8 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
         </main>
         <BottomNav active={activeNav} onSelect={(s) => handleNavClick(s)} />
       </div>
+      </>
+      )}
 
       {showConfetti ? (
         <div className="pointer-events-none fixed inset-0 z-[120] overflow-hidden">
@@ -3616,8 +3613,6 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
           </div>
         </OverlayPanel>
       ) : null}
-      </>
-      )}
     </div>
   );
 }
