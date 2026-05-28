@@ -3,14 +3,13 @@
 import { useMemo } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Entry, Member } from '@mental-load/contracts';
+import type { Entry } from '@mental-load/contracts';
 
 const DAYS_DA = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
 
 type Props = {
   month: Date;
   entries: Entry[];
-  members: Member[];
   memberColorById: Record<string, string>;
   selectedDate: Date;
   onSelectDate: (date: Date) => void;
@@ -53,7 +52,7 @@ type RenderedEntry = {
   isMultiDay: boolean;
 };
 
-export function MonthCalendar({ month, entries, members: _members, memberColorById, selectedDate, onSelectDate, onPrevMonth, onNextMonth }: Props) {
+export function MonthCalendar({ month, entries, memberColorById, selectedDate, onSelectDate, onPrevMonth, onNextMonth }: Props) {
   // Build 6-week grid starting from Monday of the week containing 1st of month
   const gridStart = useMemo(() => {
     const firstOfMonth = new Date(month.getFullYear(), month.getMonth(), 1);
