@@ -118,9 +118,9 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
         ))}
       </div>
 
-      {/* Member avatar column headers — w-10 matches TimeGrid time-axis width */}
+      {/* Member avatar column headers — w-14 matches TimeGrid time-axis width */}
       <div className="flex overflow-hidden rounded-xl border border-border bg-card">
-        <div className="w-10 shrink-0" />
+        <div className="w-14 shrink-0" />
         {members.map((member) => {
           const color = memberColorById[member.id] ?? '#6d5efc';
           return (

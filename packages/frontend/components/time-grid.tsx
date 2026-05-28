@@ -4,15 +4,15 @@ import { useEffect, useRef, useState } from 'react';
 import type { Entry, Member } from '@mental-load/contracts';
 import { cn } from '@/lib/utils';
 
-const START_HOUR = 7;
-const END_HOUR = 23;
-const NUM_HOURS = END_HOUR - START_HOUR;
+const START_HOUR = 0;
+const END_HOUR = 24;
+const NUM_HOURS = END_HOUR - START_HOUR; // full 24 h
 const HOUR_HEIGHT = 64; // px per hour
-const TOTAL_HEIGHT = HOUR_HEIGHT * NUM_HOURS;
-const VISIBLE_HOURS = 7; // how many hours the container shows without scrolling
-const CONTAINER_HEIGHT = VISIBLE_HOURS * HOUR_HEIGHT; // 448px
+const TOTAL_HEIGHT = HOUR_HEIGHT * NUM_HOURS; // 1536px — full scroll range
+const VISIBLE_HOURS = 10; // how many hours the container shows without scrolling
+const CONTAINER_HEIGHT = VISIBLE_HOURS * HOUR_HEIGHT; // 640px
 
-const HOURS = Array.from({ length: NUM_HOURS + 1 }, (_, i) => START_HOUR + i);
+const HOURS = Array.from({ length: NUM_HOURS }, (_, i) => START_HOUR + i);
 
 function entryBelongsToMember(entry: Entry, memberId: string): boolean {
   return entry.ownerMemberId === memberId || (entry.visibleMemberIds?.includes(memberId) ?? false);
@@ -81,13 +81,13 @@ export function TimeGrid({ members, memberColorById, entries, aulaLessons = [], 
     >
       <div className="flex w-full" style={{ height: TOTAL_HEIGHT }}>
 
-        {/* Time axis — w-10 to match header gutter */}
-        <div className="relative w-10 shrink-0 border-r border-border/40">
+        {/* Time axis — w-14 wider so bold hour labels fit */}
+        <div className="relative w-14 shrink-0 border-r border-border/40">
           {HOURS.map((h) => (
             <div
               key={h}
-              className="absolute right-0 pr-2 text-[10px] font-medium text-muted-foreground/50 leading-none tabular-nums"
-              style={{ top: (h - START_HOUR) * HOUR_HEIGHT - 6 }}
+              className="absolute right-0 pr-2 text-xs font-bold text-foreground/60 leading-none tabular-nums"
+              style={{ top: h * HOUR_HEIGHT - 7 }}
             >
               {String(h).padStart(2, '0')}
             </div>
@@ -96,8 +96,8 @@ export function TimeGrid({ members, memberColorById, entries, aulaLessons = [], 
           {/* Current time label on axis */}
           {inBounds && (
             <div
-              className="absolute right-0 pr-1 text-[9px] font-bold text-red-500 leading-none tabular-nums z-30"
-              style={{ top: nowY - 5 }}
+              className="absolute right-0 pr-1 text-[10px] font-extrabold text-red-500 leading-none tabular-nums z-30"
+              style={{ top: nowY - 6 }}
             >
               {nowTime}
             </div>
@@ -147,9 +147,9 @@ export function TimeGrid({ members, memberColorById, entries, aulaLessons = [], 
                   if (!lesson.startTime || !lesson.endTime) return null;
                   const [sh = 0, sm = 0] = lesson.startTime.split(':').map(Number);
                   const [eh = 0, em = 0] = lesson.endTime.split(':').map(Number);
-                  const startH = sh + sm / 60 - START_HOUR;
-                  const endH = eh + em / 60 - START_HOUR;
-                  if (endH <= 0 || startH >= NUM_HOURS) return null;
+                  const startH = sh + sm / 60;
+                  const endH = eh + em / 60;
+                  if (endH <= 0 || startH >= 24) return null;
                   const top = Math.max(0, startH * HOUR_HEIGHT);
                   const height = Math.max(20, (endH - startH) * HOUR_HEIGHT);
                   return (
@@ -175,16 +175,17 @@ export function TimeGrid({ members, memberColorById, entries, aulaLessons = [], 
                 {memberEntries.map((entry) => {
                   const startD = new Date(entry.startTime);
                   const endD = new Date(entry.endTime);
-                  const startH = startD.getHours() + startD.getMinutes() / 60 - START_HOUR;
-                  const endH = endD.getHours() + endD.getMinutes() / 60 - START_HOUR;
-                  if (endH <= 0 || startH >= NUM_HOURS) return null;
-                  const top = Math.max(0, startH * HOUR_HEIGHT);
-                  const height = Math.max(24, Math.min((endH - startH) * HOUR_HEIGHT, TOTAL_HEIGHT - top));
+                  const startH = startD.getHours() + startD.getMinutes() / 60;
+                  const endH = endD.getHours() + endD.getMinutes() / 60;
+                  if (endH <= 0 || startH >= 24) return null;
+                  const top = startH * HOUR_HEIGHT;
+                  const height = Math.max(28, Math.min((endH - startH) * HOUR_HEIGHT, TOTAL_HEIGHT - top));
+                  const timeRange = `${formatTime(startD)} – ${formatTime(endD)}`;
                   return (
                     <button
                       key={entry.id}
                       type="button"
-                      title={entry.title}
+                      title={`${entry.title}\n${timeRange}`}
                       onClick={() => onClickEntry?.(entry)}
                       className="absolute inset-x-1 overflow-hidden rounded-lg px-2 py-1 text-left text-white shadow-md hover:brightness-110 transition-[filter] z-10"
                       style={{
@@ -194,8 +195,8 @@ export function TimeGrid({ members, memberColorById, entries, aulaLessons = [], 
                         boxShadow: `0 2px 6px ${color}44`,
                       }}
                     >
-                      <div className="truncate text-[10px] font-medium opacity-80">
-                        {formatTime(startD)}
+                      <div className="truncate text-[10px] font-semibold opacity-90 tabular-nums">
+                        {timeRange}
                       </div>
                       <div className="truncate text-[11px] font-bold leading-tight">{entry.title}</div>
                     </button>

@@ -1850,7 +1850,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
               </div>
             </div>
             ) : activeNav === 'idag' ? (
-              <div className="mx-auto max-w-[1200px]">
+              <div className="w-full">
                 <IDagView
                   members={dashboard.members}
                   entries={monthEntriesForView}
