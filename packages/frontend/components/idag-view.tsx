@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { Entry, Member, FoodPlanItem } from '@mental-load/contracts';
 import type { WeatherDailyPoint } from '@/lib/api';
@@ -36,9 +36,10 @@ type Props = {
   memberColorById: Record<string, string>;
   foodPlanItems: FoodPlanItem[];
   weatherByDate: Record<string, WeatherDailyPoint>;
+  onClickEntry?: (entry: Entry) => void;
 };
 
-export function IDagView({ members, entries, memberColorById, foodPlanItems, weatherByDate }: Props) {
+export function IDagView({ members, entries, memberColorById, foodPlanItems, weatherByDate, onClickEntry }: Props) {
   const [view, setView] = useState<'today' | 'week'>('today');
   const [selectedMeal, setSelectedMeal] = useState<FoodPlanItem | null>(null);
   const [aulaLessons, setAulaLessons] = useState<AulaLesson[]>([]);
@@ -48,6 +49,16 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
     .toLowerCase() as FoodPlanItem['day'];
 
   const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Filter to entries that occur today — TimeGrid uses time only, not date
+  const todayEntries = useMemo(() => {
+    return entries.filter((e) => {
+      const start = new Date(e.startTime).toISOString().slice(0, 10);
+      const end = new Date(e.endTime).toISOString().slice(0, 10);
+      // Include events that start today or span through today
+      return start <= todayStr && end >= todayStr;
+    });
+  }, [entries, todayStr]);
   // Mon–Fri are school days (day 1–5)
   const todayDow = new Date().getDay();
   const isSchoolDay = todayDow >= 1 && todayDow <= 5;
@@ -107,9 +118,9 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
         ))}
       </div>
 
-      {/* Member avatar column headers */}
+      {/* Member avatar column headers — w-10 matches TimeGrid time-axis width */}
       <div className="flex overflow-hidden rounded-xl border border-border bg-card">
-        <div className="w-8 shrink-0" />{/* gutter spacer to align with grid time labels */}
+        <div className="w-10 shrink-0" />
         {members.map((member) => {
           const color = memberColorById[member.id] ?? '#6d5efc';
           return (
@@ -136,9 +147,10 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
         {view === 'today' ? (
           <TimeGrid
             members={members}
-            entries={entries}
+            entries={todayEntries}
             memberColorById={memberColorById}
             aulaLessons={aulaLessons}
+            onClickEntry={onClickEntry}
           />
         ) : (
           <WeekGrid

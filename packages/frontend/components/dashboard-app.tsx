@@ -1857,6 +1857,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                   memberColorById={memberColorById}
                   foodPlanItems={foodPlanItems}
                   weatherByDate={dayWeatherByDate}
+                  onClickEntry={handleEditEntry}
                 />
               </div>
             ) : activeNav === 'planner' ? (
