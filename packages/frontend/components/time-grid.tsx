@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Entry, Member } from '@mental-load/contracts';
 import { cn } from '@/lib/utils';
 
-const START_HOUR = 6;
-const END_HOUR = 23;
+const START_HOUR = 7;
+const END_HOUR = 21;
 const NUM_HOURS = END_HOUR - START_HOUR;
-const HOURS = Array.from({ length: NUM_HOURS }, (_, i) => START_HOUR + i);
-const MIN_HOUR_HEIGHT = 40;
+const HOUR_HEIGHT = 64; // px per hour — fixed, no ResizeObserver
+const TOTAL_HEIGHT = HOUR_HEIGHT * NUM_HOURS;
+const HOURS = Array.from({ length: NUM_HOURS + 1 }, (_, i) => START_HOUR + i);
 
 function entryBelongsToMember(entry: Entry, memberId: string): boolean {
   return entry.ownerMemberId === memberId || (entry.visibleMemberIds?.includes(memberId) ?? false);
@@ -19,145 +20,159 @@ function calcNowFraction(): number {
   return (d.getHours() - START_HOUR + d.getMinutes() / 60) / NUM_HOURS;
 }
 
+export interface AulaLesson {
+  memberId: string;
+  title: string;
+  date: string;        // YYYY-MM-DD
+  startTime?: string;  // HH:MM
+  endTime?: string;    // HH:MM
+}
+
 type Props = {
   members: Member[];
   memberColorById: Record<string, string>;
   entries: Entry[];
+  aulaLessons?: AulaLesson[];
 };
 
-export function TimeGrid({ members, memberColorById, entries }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
+export function TimeGrid({ members, memberColorById, entries, aulaLessons = [] }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasScrolled = useRef(false);
-  const [hourHeight, setHourHeight] = useState(MIN_HOUR_HEIGHT);
   const [nowFrac, setNowFrac] = useState(() => calcNowFraction());
 
-  // Dynamically size rows to fill the container
-  useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(([entry]) => {
-      const h = entry.contentRect.height;
-      setHourHeight(Math.max(MIN_HOUR_HEIGHT, Math.floor(h / NUM_HOURS)));
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  // Auto-scroll to center the now-line — only once after first real measurement
+  // Auto-scroll so current time is ~2 hours from top
   useEffect(() => {
-    if (!scrollRef.current || hasScrolled.current || hourHeight === MIN_HOUR_HEIGHT) return;
-    const totalHeight = hourHeight * NUM_HOURS;
-    const y = nowFrac * totalHeight;
-    scrollRef.current.scrollTop = Math.max(0, y - scrollRef.current.clientHeight / 2);
+    if (!scrollRef.current || hasScrolled.current) return;
+    const y = Math.max(0, (nowFrac * TOTAL_HEIGHT) - HOUR_HEIGHT * 2);
+    scrollRef.current.scrollTop = y;
     hasScrolled.current = true;
-  }, [hourHeight]); // intentionally omit nowFrac — scroll once only
+  }, [nowFrac]);
 
-  // Update now-line every minute (without triggering scroll)
+  // Update now-line every minute
   useEffect(() => {
     const id = setInterval(() => setNowFrac(calcNowFraction()), 60_000);
     return () => clearInterval(id);
   }, []);
 
-  const totalHeight = hourHeight * NUM_HOURS;
-  const nowY = nowFrac * totalHeight;
+  const nowY = nowFrac * TOTAL_HEIGHT;
   const inBounds = nowFrac >= 0 && nowFrac <= 1;
-  const hasAnyEvents = entries.some((e) => !e.allDay);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayLessons = aulaLessons.filter((l) => l.date === todayStr);
 
   return (
-    <div ref={containerRef} className="flex flex-1 overflow-hidden">
-      <div ref={scrollRef} className="flex flex-1 overflow-y-auto">
-        <div className="flex flex-1" style={{ height: totalHeight, minHeight: totalHeight }}>
+    <div
+      ref={scrollRef}
+      className="overflow-y-auto"
+      style={{ height: 500 }}
+    >
+      <div className="flex" style={{ height: TOTAL_HEIGHT, minHeight: TOTAL_HEIGHT }}>
 
-          {/* Time axis */}
-          <div className="relative shrink-0 w-10 border-r border-border">
-            {HOURS.map((h) => (
-              <div
-                key={h}
-                className="absolute right-0 pr-2 text-[11px] font-medium text-muted-foreground/60 leading-none"
-                style={{ top: (h - START_HOUR) * hourHeight - 6 }}
-              >
-                {h}
-              </div>
-            ))}
-          </div>
+        {/* Time axis */}
+        <div className="relative shrink-0 w-10 border-r border-border/40">
+          {HOURS.map((h) => (
+            <div
+              key={h}
+              className="absolute right-0 pr-2 text-[10px] font-medium text-muted-foreground/50 leading-none"
+              style={{ top: (h - START_HOUR) * HOUR_HEIGHT - 6 }}
+            >
+              {h < 10 ? `0${h}` : h}
+            </div>
+          ))}
+        </div>
+
+        {/* Columns */}
+        <div className="relative flex flex-1 min-w-0">
+          {/* Hour grid lines */}
+          {HOURS.map((h) => (
+            <div
+              key={h}
+              className="pointer-events-none absolute inset-x-0 border-t border-border/30"
+              style={{ top: (h - START_HOUR) * HOUR_HEIGHT }}
+            />
+          ))}
+
+          {/* Now line */}
+          {inBounds && (
+            <div
+              className="pointer-events-none absolute inset-x-0 z-20 flex items-center"
+              style={{ top: nowY }}
+            >
+              <div className="ml-0 h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 shadow-md shadow-red-500/50" />
+              <div className="h-px flex-1 bg-red-500/70" />
+            </div>
+          )}
 
           {/* Member columns */}
-          <div className="relative flex flex-1">
-            {/* Hour grid lines */}
-            {HOURS.map((h) => (
-              <div
-                key={h}
-                className="pointer-events-none absolute inset-x-0 border-t border-border/40"
-                style={{ top: (h - START_HOUR) * hourHeight }}
-              />
-            ))}
+          {members.map((member, i) => {
+            const color = memberColorById[member.id] ?? '#6366f1';
+            const memberEntries = entries.filter((e) => !e.allDay && entryBelongsToMember(e, member.id));
+            const memberLessons = todayLessons.filter((l) => l.memberId === member.id);
 
-            {/* Empty state */}
-            {!hasAnyEvents && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <span className="rounded-full border border-border bg-muted/50 px-4 py-2 text-[11px] text-muted-foreground/60">
-                  Ingen begivenheder i dag
-                </span>
-              </div>
-            )}
-
-            {/* Now line */}
-            {inBounds && (
+            return (
               <div
-                className="pointer-events-none absolute inset-x-0 z-20 flex items-center"
-                style={{ top: nowY }}
+                key={member.id}
+                className={cn('relative min-w-0 flex-1 overflow-hidden', i > 0 && 'border-l border-border/30')}
+                style={{ background: `${color}08` }}
               >
-                <div className="ml-0 h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 shadow-md shadow-red-500/50" />
-                <div className="h-px flex-1 bg-red-500/70" />
-              </div>
-            )}
-
-            {/* Member columns */}
-            {members.map((member, i) => {
-              const color = memberColorById[member.id] ?? '#6366f1';
-              const memberEntries = entries.filter((e) => entryBelongsToMember(e, member.id));
-              return (
-                <div
-                  key={member.id}
-                  className={cn('relative flex-1', i > 0 && 'border-l border-border/30')}
-                  style={{
-                    background: `${color}0a`,
-                  }}
-                >
-                  {memberEntries.map((entry) => {
-                    const startD = new Date(entry.startTime);
-                    const topFrac = (startD.getHours() - START_HOUR + startD.getMinutes() / 60) / NUM_HOURS;
-                    const durH = (new Date(entry.endTime).getTime() - startD.getTime()) / 3_600_000;
-                    const heightFrac = Math.max(20 / totalHeight, durH / NUM_HOURS);
-                    const top = topFrac * totalHeight;
-                    const height = heightFrac * totalHeight;
-                    if (top + height < 0 || top > totalHeight) return null;
-                    return (
-                      <div
-                        key={entry.id}
-                        title={entry.title}
-                        className="absolute mx-1 overflow-hidden rounded-lg px-2 py-1 text-[11px] font-semibold text-white shadow-lg"
-                        style={{
-                          top,
-                          height,
-                          left: 0,
-                          right: 0,
-                          background: color + 'dd',
-                          boxShadow: `0 2px 8px ${color}44`,
-                        }}
-                      >
-                        <div className="truncate opacity-75 text-[10px]">
-                          {startD.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                        <div className="truncate font-bold leading-tight">{entry.title}</div>
+                {/* Aula school lessons — rendered as striped background blocks */}
+                {memberLessons.map((lesson, li) => {
+                  if (!lesson.startTime || !lesson.endTime) return null;
+                  const [sh, sm] = lesson.startTime.split(':').map(Number);
+                  const [eh, em] = lesson.endTime.split(':').map(Number);
+                  const topFrac = (sh - START_HOUR + (sm ?? 0) / 60) / NUM_HOURS;
+                  const durH = (eh + (em ?? 0) / 60) - (sh + (sm ?? 0) / 60);
+                  const top = Math.max(0, topFrac * TOTAL_HEIGHT);
+                  const height = Math.max(20, (durH / NUM_HOURS) * TOTAL_HEIGHT);
+                  return (
+                    <div
+                      key={`lesson-${li}`}
+                      className="absolute inset-x-0.5 overflow-hidden rounded px-1.5 py-0.5"
+                      style={{
+                        top,
+                        height,
+                        background: `${color}22`,
+                        borderLeft: `3px solid ${color}88`,
+                      }}
+                      title={`Skole: ${lesson.title}`}
+                    >
+                      <div className="text-[9px] font-bold text-muted-foreground truncate">
+                        📚 {lesson.title}
                       </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
+                    </div>
+                  );
+                })}
+
+                {/* Calendar entries */}
+                {memberEntries.map((entry) => {
+                  const startD = new Date(entry.startTime);
+                  const topFrac = (startD.getHours() - START_HOUR + startD.getMinutes() / 60) / NUM_HOURS;
+                  const durH = (new Date(entry.endTime).getTime() - startD.getTime()) / 3_600_000;
+                  const heightFrac = Math.max(22 / TOTAL_HEIGHT, durH / NUM_HOURS);
+                  const top = topFrac * TOTAL_HEIGHT;
+                  const height = heightFrac * TOTAL_HEIGHT;
+                  if (top + height < 0 || top > TOTAL_HEIGHT) return null;
+                  return (
+                    <div
+                      key={entry.id}
+                      title={entry.title}
+                      className="absolute inset-x-1 overflow-hidden rounded-lg px-2 py-1 text-[11px] font-semibold text-white shadow-md"
+                      style={{
+                        top,
+                        height,
+                        background: color + 'ee',
+                        boxShadow: `0 2px 6px ${color}44`,
+                      }}
+                    >
+                      <div className="truncate opacity-80 text-[10px] font-medium">
+                        {startD.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      <div className="truncate font-bold leading-tight">{entry.title}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

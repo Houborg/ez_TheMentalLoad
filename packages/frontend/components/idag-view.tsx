@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { Entry, Member, FoodPlanItem } from '@mental-load/contracts';
 import type { WeatherDailyPoint } from '@/lib/api';
-import { TimeGrid } from '@/components/time-grid';
+import { TimeGrid, type AulaLesson } from '@/components/time-grid';
 import { WeekGrid } from '@/components/week-grid';
 import { MealDetailSheet } from '@/components/meal-detail-sheet';
+import { aulaGetItems } from '@/lib/aula-api';
 
 const DAY_LABELS_SHORT: Record<string, string> = {
   monday: 'Man', tuesday: 'Tir', wednesday: 'Ons',
@@ -40,10 +41,49 @@ type Props = {
 export function IDagView({ members, entries, memberColorById, foodPlanItems, weatherByDate }: Props) {
   const [view, setView] = useState<'today' | 'week'>('today');
   const [selectedMeal, setSelectedMeal] = useState<FoodPlanItem | null>(null);
+  const [aulaLessons, setAulaLessons] = useState<AulaLesson[]>([]);
 
   const todayDay = new Date()
     .toLocaleDateString('en-US', { weekday: 'long' })
     .toLowerCase() as FoodPlanItem['day'];
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  // Mon–Fri are school days (day 1–5)
+  const todayDow = new Date().getDay();
+  const isSchoolDay = todayDow >= 1 && todayDow <= 5;
+
+  // Load Aula weekplan lessons for child members on school days
+  useEffect(() => {
+    if (!isSchoolDay) return;
+    const children = members.filter((m) => m.role === 'child');
+    if (children.length === 0) return;
+
+    Promise.all(
+      children.map(async (child) => {
+        try {
+          const { items } = await aulaGetItems({ type: 'weekplan_lesson', memberId: child.id, pageSize: 50 });
+          return items
+            .filter((item) => {
+              const raw = item.raw_json as Record<string, unknown> | undefined;
+              return raw?.date === todayStr;
+            })
+            .map((item) => {
+              const raw = item.raw_json as Record<string, unknown>;
+              return {
+                memberId: child.id,
+                title: String(raw.title ?? item.title ?? 'Lektion'),
+                date: String(raw.date ?? todayStr),
+                startTime: raw.startTime ? String(raw.startTime) : undefined,
+                endTime: raw.endTime ? String(raw.endTime) : undefined,
+              } as AulaLesson;
+            });
+        } catch {
+          return [];
+        }
+      }),
+    ).then((results) => setAulaLessons(results.flat()));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayStr, isSchoolDay, members.map(m => m.id).join(',')]);
 
   return (
     <div className="flex flex-col gap-4 p-3">
@@ -98,6 +138,7 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
             members={members}
             entries={entries}
             memberColorById={memberColorById}
+            aulaLessons={aulaLessons}
           />
         ) : (
           <WeekGrid
