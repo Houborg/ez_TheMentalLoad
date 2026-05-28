@@ -63,6 +63,8 @@ import { MobileAulaSettings } from './mobile/mobile-aula-settings';
 import { AulaDataViewer } from './aula-data-viewer';
 import { SlimHeader } from '@/components/slim-header';
 import { BottomNav, type NavSection } from '@/components/bottom-nav';
+import { MonthCalendar } from '@/components/month-calendar';
+import { WeatherStrip } from '@/components/weather-strip';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
 type RecurrenceFreq = 'none' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
@@ -1687,27 +1689,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                     The base of operations. Everything at a glance.
                   </p>
                 </div>
-                <div className="rounded-3xl border border-border/60 bg-card/60 px-4 py-3 shadow-lg shadow-black/10 backdrop-blur">
-                  <div className="mb-2 text-xs font-medium uppercase tracking-wider">7-Day Weather</div>
-                  <div className="mb-2 text-[11px] text-muted-foreground">
-                    {weatherForecast?.resolvedLocation ? `${weatherForecast.resolvedLocation.name}${weatherForecast.resolvedLocation.admin1 ? `, ${weatherForecast.resolvedLocation.admin1}` : ''}${weatherForecast.resolvedLocation.country ? `, ${weatherForecast.resolvedLocation.country}` : ''}` : 'Set Weather location in Settings'}
-                  </div>
-                  {weatherLoading ? (
-                    <div className="flex h-20 items-center justify-center text-muted-foreground">
-                      <LoaderCircle className="h-4 w-4 animate-spin" />
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      {weatherForecast?.daily.slice(0, 7).map((day) => (
-                        <div key={day.date} className="flex flex-col items-center rounded-xl bg-background/60 px-2 py-2 text-center text-[11px]">
-                          <div className="font-semibold">{new Date(day.date).toLocaleDateString(undefined, { weekday: 'short' })}</div>
-                          <div className="text-base">{day.icon}</div>
-                          <div className="text-muted-foreground">{Math.round(day.tempMax)}°{weatherForecast.unit}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                {weatherForecast && <WeatherStrip forecast={weatherForecast} />}
               </div>
 
               {errorText ? (
@@ -1825,213 +1807,58 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
 
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
                 <section id="planner-section" className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-                  <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <h2 className="text-2xl font-semibold tracking-tight">{MONTHS[currentMonth.getMonth()]} {currentMonth.getFullYear()}</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">Recurring entries are expanded from the backend occurrence feed.</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => setCurrentMonth(previousMonth(currentMonth))} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-background/50 hover:bg-accent/70" aria-label="Previous month">
-                        <ChevronLeft className="h-4 w-4" />
-                      </button>
-                      <button type="button" onClick={() => setCurrentMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))} className="rounded-xl border border-border/60 bg-background/50 px-3 py-2 text-sm hover:bg-accent/70">
-                        Today
-                      </button>
-                      <button type="button" onClick={() => setCurrentMonth(nextMonth(currentMonth))} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-background/50 hover:bg-accent/70" aria-label="Next month">
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
+                  <MonthCalendar
+                    month={currentMonth}
+                    entries={monthEntriesForView}
+                    memberColorById={memberColorById}
+                    selectedDate={selectedDate}
+                    onSelectDate={setSelectedDate}
+                    onPrevMonth={() => setCurrentMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                    onNextMonth={() => setCurrentMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                  />
 
-                  <div className="overflow-x-auto -mx-1 px-1"><div className="min-w-[420px]"><div className="grid grid-cols-7 gap-px overflow-hidden rounded-[24px] border border-border/60 bg-border/60">
-                    {DAYS.map((day) => (
-                      <div key={day} className="bg-card px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                        {day}
-                      </div>
-                    ))}
-                    {monthDays.map((day, index) => {
-                      const date = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
-                      const entries = date ? getEntriesForDate(monthEntriesForView, dashboard.members, date, '', '') : [];
-                      return (
-                        <div
-                          key={`${day ?? 'empty'}-${index}`}
-                          role={day ? 'button' : undefined}
-                          tabIndex={day ? 0 : -1}
-                          onClick={() => {
-                            if (date) {
-                              openCreateEntryComposer({ date });
-                            }
-                          }}
-                          onKeyDown={(event) => {
-                            if (!day) {
-                              return;
-                            }
-
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              openCreateEntryComposer({ date: date as Date });
-                            }
-                          }}
-                          className={cn(
-                            'min-h-[132px] bg-card px-3 py-3 text-left align-top transition hover:bg-accent/45',
-                            !day && 'bg-card/60',
-                            day && isSameCalendarDate(date, selectedDate) && 'bg-accent',
-                          )}
-                        >
-                          {day ? (
-                            <>
-                              <div className="mb-3 flex items-center justify-between">
-                                <div className={cn('flex h-8 w-8 items-center justify-center rounded-full text-sm', isToday(date) ? 'bg-primary text-primary-foreground' : 'text-foreground')}>
-                                  {day}
-                                </div>
-                                {entries.length ? <span className="text-[11px] text-muted-foreground">{entries.length}</span> : null}
-                              </div>
-                              <div className="space-y-1.5">
-                                {entries.slice(0, 3).map((entry) => {
-                                  const isBirthdayEntry = isVirtualBirthdayEntry(entry);
-                                  const birthdayInfo = isBirthdayEntry ? getBirthdayInfo(entry, birthdays) : null;
-                                  if (isBirthdayEntry) {
-                                    return (
-                                      <button
-                                        key={entry.id}
-                                        type="button"
-                                        onClick={(event) => { event.stopPropagation(); handleEditEntry(entry); }}
-                                        className="w-full bg-transparent px-0 py-0.5 text-left text-[10px] font-medium text-foreground hover:bg-transparent"
-                                      >
-                                        <span className="flex min-w-0 items-center gap-1.5">
-                                          <span aria-hidden="true" className="h-3.5 w-5 shrink-0 bg-contain bg-center bg-no-repeat" style={{ backgroundImage: 'url(/birthday-pill.png)' }} />
-                                          <span className="truncate">{birthdayInfo?.name ?? entry.title}</span>
-                                          {birthdayInfo ? <span className="shrink-0 text-[10px] text-muted-foreground">{birthdayInfo.age}yr</span> : null}
-                                        </span>
-                                      </button>
-                                    );
-                                  }
-                                  const pos = getEntryDayPosition(entry, date as Date);
-                                  const bg = pillBackground(entry, memberColorById);
-                                  const isMultiMember = (entry.visibleMemberIds?.length ?? 0) > 1;
-                                  const radius = pos === 'single' ? '0.75rem'
-                                    : pos === 'start' ? '0.75rem 0 0 0.75rem'
-                                    : pos === 'end'   ? '0 0.75rem 0.75rem 0'
-                                    : '0';
-                                  // Extend pill to cell edge for continuation segments
-                                  const mxClass = pos === 'single' ? '' : pos === 'start' ? '-mr-3' : pos === 'end' ? '-ml-3' : '-mx-3';
-                                  return (
-                                    <button
-                                      key={entry.id}
-                                      type="button"
-                                      onClick={(event) => { event.stopPropagation(); handleEditEntry(entry); }}
-                                      className={`flex w-full items-center py-1 text-left text-xs font-medium text-white ${mxClass}`}
-                                      style={{ background: bg, borderRadius: radius, paddingLeft: pos === 'end' || pos === 'middle' ? '6px' : '8px', paddingRight: pos === 'start' || pos === 'middle' ? '4px' : '8px' }}
-                                      title={entry.title}
-                                    >
-                                      {pos === 'middle' ? null : (
-                                        <span className="min-w-0 flex-1 truncate leading-none">
-                                          {pos === 'end' ? <span className="mr-1 opacity-60">‹</span> : null}
-                                          {entry.title}
-                                          {isMultiMember && pos === 'single' ? <span className="ml-1 opacity-70">·{(entry.visibleMemberIds?.length ?? 1)}</span> : null}
-                                        </span>
-                                      )}
-                                      {pos === 'start' ? <span className="ml-auto shrink-0 pl-1 opacity-60 text-[9px]">›</span> : null}
-                                    </button>
-                                  );
-                                })}
-                                {entries.length > 3 ? <div className="px-2 text-[11px] text-muted-foreground">+{entries.length - 3} more</div> : null}
-                              </div>
-                            </>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div></div></div>{/* end calendar scroll wrappers */}
-
-                  <div className="mt-6 rounded-[26px] border border-border/60 bg-background/30 p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-lg font-semibold">{formatSelectedDate(selectedDate)}</h3>
-                      <span className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Day agenda</span>
+                  <div className="mt-4 rounded-xl border border-border bg-card overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-border/50">
+                      <h3 className="text-xs font-bold text-foreground">
+                        {selectedDate.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'short' })}
+                      </h3>
                     </div>
-                    <div className="space-y-3">
-                      {selectedEntries.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">No matching entries for this day.</div>
-                      ) : selectedEntries.map((entry) => {
-                        const owner = dashboard.members.find((member) => member.id === entry.ownerMemberId);
+                    <div className="flex divide-x divide-border/30">
+                      {dashboard.members.map((member) => {
+                        const color = memberColorById[member.id] ?? '#6d5efc';
+                        const dayStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}`;
+                        const memberEntries = monthEntriesForView.filter((e) => {
+                          const eDate = new Date(e.startTime).toISOString().slice(0, 10);
+                          const isOwner = e.ownerMemberId === member.id;
+                          const isVisible = (e.visibleMemberIds ?? []).includes(member.id);
+                          return (isOwner || isVisible) && eDate === dayStr;
+                        });
                         return (
-                          <div
-                            key={entry.id}
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => handleEditEntry(entry)}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault();
-                                handleEditEntry(entry);
-                              }
-                            }}
-                            className="flex w-full items-start gap-3 rounded-2xl border border-border/60 bg-card/60 px-4 py-3 text-left"
-                          >
-                            <div className="mt-1 h-10 w-1 shrink-0 rounded-full" style={{ backgroundColor: isVirtualBirthdayEntry(entry) ? '#C60C30' : (memberColorById[entry.ownerMemberId] ?? '#6d5efc') }} />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="text-sm font-semibold">{(() => {
-                                    if (!isVirtualBirthdayEntry(entry)) return entry.title;
-                                    const bi = getBirthdayInfo(entry, birthdays);
-                                    return bi ? `${bi.name}, ${bi.age}` : entry.title;
-                                  })()}</div>
-                                  <div className="mt-1 text-xs text-muted-foreground">{isVirtualBirthdayEntry(entry) ? (() => { const bi = getBirthdayInfo(entry, birthdays); return bi ? `🎂 Turns ${bi.age} years old` : 'Birthday'; })() : `${owner?.name ?? 'Unknown member'} · ${entry.type} · ${formatTimeRange(entry)}`}</div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <div className="rounded-full border border-border/60 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{entry.status}</div>
-                                  {isVirtualBirthdayEntry(entry) ? (
-                                    <div className="rounded-full border border-border/60 px-2 py-1 text-[11px] text-muted-foreground">Birthday</div>
-                                  ) : (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          handleEditEntry(entry);
-                                        }}
-                                        className="rounded-lg border border-border/40 p-1.5 hover:bg-accent/60"
-                                        aria-label={`Edit ${entry.title}`}
-                                      >
-                                        <Edit2 className="h-4 w-4" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          void handleDeleteEntry(getEntryMutationId(entry));
-                                        }}
-                                        disabled={deletingEntryId === getEntryMutationId(entry)}
-                                        className="rounded-lg border border-border/40 p-1.5 hover:bg-destructive/10 disabled:opacity-60"
-                                        aria-label={`Delete ${entry.title}`}
-                                      >
-                                        {deletingEntryId === getEntryMutationId(entry) ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
+                          <div key={member.id} className="flex-1 min-w-0">
+                            <div className="flex flex-col items-center gap-1 px-1 py-2 bg-muted/20 border-b border-border/30">
+                              <div
+                                className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                                style={{ background: color }}
+                              >
+                                {member.avatar ?? member.name.slice(0, 1).toUpperCase()}
                               </div>
-                              {entry.location ? <div className="mt-2 text-xs text-muted-foreground">{entry.location}</div> : null}
-                              {entry.checklist.length > 0 ? (
-                                <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                                  {entry.checklist.map((item) => (
-                                    <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-0.5 hover:bg-accent/40">
-                                      <input
-                                        type="checkbox"
-                                        checked={item.isCompleted}
-                                        onClick={(event) => event.stopPropagation()}
-                                        onChange={(event) => {
-                                          event.stopPropagation();
-                                          void handleToggleChecklistItem(entry, item.id);
-                                        }}
-                                        className="h-3.5 w-3.5 rounded"
-                                      />
-                                      <span className={cn('text-xs', item.isCompleted && 'line-through text-muted-foreground')}>{item.text}</span>
-                                    </label>
-                                  ))}
-                                </div>
-                              ) : null}
+                              <span className="text-[8px] font-bold text-muted-foreground truncate max-w-[40px]">{member.name.split(' ')[0]}</span>
+                            </div>
+                            <div className="flex flex-col gap-1 p-1.5 min-h-[40px]">
+                              {memberEntries.length === 0 ? (
+                                <span className="text-[9px] text-muted-foreground/40 text-center py-2">—</span>
+                              ) : memberEntries.slice(0, 3).map((e) => (
+                                <button
+                                  key={e.id}
+                                  type="button"
+                                  onClick={() => handleEditEntry(e)}
+                                  className="block w-full truncate rounded-full px-1.5 py-[2px] text-[9px] font-bold text-white text-left"
+                                  style={{ background: color }}
+                                  title={e.title}
+                                >
+                                  {e.title}
+                                </button>
+                              ))}
                             </div>
                           </div>
                         );
@@ -2085,49 +1912,6 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                     </div>
                   </section>
 
-                  <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h2 className="text-lg font-semibold">Assistant</h2>
-                        <p className="mt-1 text-sm text-muted-foreground">Parse natural language into a backend draft and confirm it.</p>
-                      </div>
-                      <div className={cn('inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs', assistantReady ? 'bg-primary/12 text-primary' : 'bg-accent text-muted-foreground')}>
-                        <Sparkles className="h-4 w-4" />
-                        {assistantReady ? 'Assistant ready' : 'Fallback mode'}
-                      </div>
-                    </div>
-                    <label className="mt-4 block text-sm font-medium" htmlFor="assistant-message">Assistant message</label>
-                    <textarea
-                      id="assistant-message"
-                      aria-label="Assistant message"
-                      value={assistantMessage}
-                      onChange={(event) => setAssistantMessage(event.target.value)}
-                      placeholder="Example: make an event tomorrow at 10:00 in Saga calendar: Birthday at ELLA"
-                      className="mt-2 min-h-[110px] w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60"
-                    />
-                    <div className="mt-4 flex flex-wrap items-center gap-3">
-                      <button type="button" onClick={() => void handleAssistantParse()} disabled={assistantBusy} className="rounded-2xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 disabled:opacity-60">
-                        {assistantBusy ? 'Parsing...' : 'Parse with assistant'}
-                      </button>
-                      <button type="button" onClick={() => void handleAssistantSuggestion()} disabled={assistantSuggestionBusy} className="rounded-2xl border border-border/60 bg-background/60 px-4 py-2.5 text-sm font-medium hover:bg-accent/60 disabled:opacity-60">
-                        {assistantSuggestionBusy ? 'Thinking...' : 'Ask AI suggestion'}
-                      </button>
-                      {assistantDraft && assistantMissingFields.length === 0 ? (
-                        <button type="button" onClick={() => void handleAssistantConfirm()} disabled={assistantBusy} className="rounded-2xl border border-border/60 bg-background/60 px-4 py-2.5 text-sm font-medium hover:bg-accent/60 disabled:opacity-60">
-                          Confirm assistant draft
-                        </button>
-                      ) : null}
-                    </div>
-                    {assistantResponse ? <div className="mt-4 rounded-2xl border border-border/60 bg-background/40 px-4 py-3 text-sm">{assistantResponse}</div> : null}
-                    {assistantDraft ? (
-                      <div className="mt-4 rounded-2xl border border-border/60 bg-background/40 px-4 py-3 text-sm text-muted-foreground">
-                        <div className="font-medium text-foreground">Draft: {assistantDraft.title}</div>
-                        <div className="mt-1">Type: {assistantDraft.type}</div>
-                        <div>When: {assistantDraft.startTime ? formatStamp(assistantDraft.startTime) : 'Missing date/time'}</div>
-                        {assistantMissingFields.length > 0 ? <div className="mt-2 text-destructive">Missing: {assistantMissingFields.join(', ')}</div> : null}
-                      </div>
-                    ) : null}
-                  </section>
                 </aside>
               </div>
             </div>
