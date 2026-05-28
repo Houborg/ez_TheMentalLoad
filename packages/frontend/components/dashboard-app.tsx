@@ -1655,19 +1655,18 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
           <section className="flex-1 overflow-auto px-4 py-6 md:px-6">
             {activeNav === 'dashboard' ? (
             <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
-              <div id="hero-section" className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/50 px-3 py-1 text-xs uppercase tracking-[0.22em] text-muted-foreground">
-                    <Sparkles className="h-3.5 w-3.5 text-primary" />
-                    Version 1.0.0
-                  </div>
-                  <h1 className="text-3xl font-bold tracking-tight">Family operations dashboard</h1>
-                  <p className="mt-1 max-w-3xl text-sm text-muted-foreground md:text-base">
-                    The base of operations. Everything at a glance.
-                  </p>
+              <div id="hero-section">
+                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/50 px-3 py-1 text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  Version 1.0.0
                 </div>
-                {weatherForecast && <WeatherStrip forecast={weatherForecast} />}
+                <h1 className="text-3xl font-bold tracking-tight">Family operations dashboard</h1>
+                <p className="mt-1 max-w-3xl text-sm text-muted-foreground md:text-base">
+                  The base of operations. Everything at a glance.
+                </p>
               </div>
+
+              {weatherForecast && <WeatherStrip forecast={weatherForecast} />}
 
               {errorText ? (
                 <div className="rounded-3xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">
