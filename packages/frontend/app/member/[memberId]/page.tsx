@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import type { AulaPresence, Entry, ListTodayMemberTimelineResponse, Member, TimelineTaskInstance } from '@mental-load/contracts';
 import { AgendaView } from '@/components/agenda-view';
-import { AppSidebar } from '@/components/app-sidebar';
 import { EntryDetailsPopup } from '@/components/entry-details-popup';
 import { TodayTimelineBoard } from '@/components/today-timeline-board';
 import { MemberSchoolSchedule } from '@/components/aula/member-school-schedule';
@@ -76,8 +75,6 @@ export default function MemberPage() {
   const params = useParams<{ memberId: string }>();
   const memberId = params.memberId;
 
-  const [members, setMembers] = useState<Member[]>([]);
-  const [familyPresence, setFamilyPresence] = useState<Record<string, AulaPresence>>({});
   const [member, setMember] = useState<Member | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,8 +115,6 @@ export default function MemberPage() {
 
         if (!active) return;
 
-        setMembers(snapshot.members);
-        setFamilyPresence(snapshot.presence ?? {});
         setMember(selectedMember);
         setEntries(upcoming.filter((entry) => {
           if (entry.ownerMemberId === selectedMember.id) return true;
@@ -294,9 +289,7 @@ export default function MemberPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="flex min-h-screen">
-        <AppSidebar activeSection="family" members={members} activeMemberId={member.id} presenceByMemberId={familyPresence} />
-        <main className="flex min-h-screen flex-1 flex-col px-4 py-6 md:px-8">
+      <main className="flex min-h-screen flex-1 flex-col px-4 py-6 md:px-8">
           <div className="mx-auto flex w-full max-w-none flex-col gap-5">
 
             {/* Header */}
@@ -450,8 +443,7 @@ export default function MemberPage() {
               />
             </section>
           </div>
-        </main>
-      </div>
+      </main>
 
       {selectedEntry ? (
         <EntryDetailsPopup
