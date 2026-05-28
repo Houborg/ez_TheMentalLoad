@@ -148,7 +148,7 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
           <div
             key={weekStartStr}
             className="relative grid grid-cols-7 border-b border-border/30 last:border-b-0"
-            style={{ minHeight: `${Math.max(72, 22 + spanning.length * 18 + 20)}px` }}
+            style={{ minHeight: `${22 + spanning.length * 18 + 36}px` }}
           >
             {week.map((day) => {
               const dayStr = toLocalDateStr(day);
@@ -163,11 +163,12 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
                   key={dayStr}
                   onClick={() => onSelectDate(day)}
                   className={cn(
-                    'border-r border-border/20 last:border-r-0 cursor-pointer px-0.5 pt-1 pb-8',
+                    'border-r border-border/20 last:border-r-0 cursor-pointer px-0.5 pt-1 pb-1',
                     !isCurrentMonth && 'bg-muted/20',
                     isSelected && !isToday && 'bg-primary/5',
                   )}
                 >
+                  {/* Day number row */}
                   <div className="flex items-center justify-between px-1 mb-0.5">
                     <span className={cn(
                       'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold',
@@ -183,6 +184,9 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
                       <span className="text-[8px] text-muted-foreground/50 font-medium">+{overflow} mere</span>
                     )}
                   </div>
+                  {/* Spacer — pushes single-day pills below the spanning event lanes */}
+                  <div aria-hidden="true" style={{ height: `${spanning.length * 18}px` }} />
+                  {/* Single-day pills */}
                   <div className="flex flex-col gap-[2px] px-0.5">
                     {singles.map((r) => (
                       <button
