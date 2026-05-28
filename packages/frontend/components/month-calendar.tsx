@@ -180,7 +180,7 @@ export function MonthCalendar({ month, entries, members: _members, memberColorBy
                       {day.getDate()}
                     </span>
                     {overflow > 0 && (
-                      <span className="text-[8px] text-muted-foreground/50 font-medium">+{overflow}</span>
+                      <span className="text-[8px] text-muted-foreground/50 font-medium">+{overflow} mere</span>
                     )}
                   </div>
                   <div className="flex flex-col gap-[2px] px-0.5">
