@@ -1790,6 +1790,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                     memberColorById={memberColorById}
                     selectedDate={selectedDate}
                     onSelectDate={setSelectedDate}
+                    onClickEntry={handleEditEntry}
                     onPrevMonth={() => setCurrentMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
                     onNextMonth={() => setCurrentMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
                   />

@@ -13,6 +13,7 @@ type Props = {
   memberColorById: Record<string, string>;
   selectedDate: Date;
   onSelectDate: (date: Date) => void;
+  onClickEntry?: (entry: Entry) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
 };
@@ -52,7 +53,7 @@ type RenderedEntry = {
   isMultiDay: boolean;
 };
 
-export function MonthCalendar({ month, entries, memberColorById, selectedDate, onSelectDate, onPrevMonth, onNextMonth }: Props) {
+export function MonthCalendar({ month, entries, memberColorById, selectedDate, onSelectDate, onClickEntry, onPrevMonth, onNextMonth }: Props) {
   // Build 6-week grid starting from Monday of the week containing 1st of month
   const gridStart = useMemo(() => {
     const firstOfMonth = new Date(month.getFullYear(), month.getMonth(), 1);
@@ -147,7 +148,7 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
           <div
             key={weekStartStr}
             className="relative grid grid-cols-7 border-b border-border/30 last:border-b-0"
-            style={{ minHeight: '72px' }}
+            style={{ minHeight: `${Math.max(72, 22 + spanning.length * 18 + 20)}px` }}
           >
             {week.map((day) => {
               const dayStr = toLocalDateStr(day);
@@ -184,14 +185,16 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
                   </div>
                   <div className="flex flex-col gap-[2px] px-0.5">
                     {singles.map((r) => (
-                      <span
+                      <button
                         key={r.entry.id}
-                        className="block truncate rounded-full px-1.5 py-[1px] text-[9px] font-bold text-white leading-tight"
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onClickEntry?.(r.entry); }}
+                        className="block w-full truncate rounded-full px-1.5 py-[1px] text-[9px] font-bold text-white leading-tight text-left hover:brightness-110 transition-[filter]"
                         style={{ background: memberGradient(r.colors) }}
                         title={r.entry.title}
                       >
                         {r.entry.title}
-                      </span>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -213,9 +216,11 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
               const laneTop = 22 + si * 18; // px from top of row
 
               return (
-                <div
+                <button
                   key={`${r.entry.id}-${wi}`}
-                  className="absolute flex items-center overflow-hidden text-[9px] font-bold text-white leading-none cursor-pointer"
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onClickEntry?.(r.entry); }}
+                  className="absolute flex items-center overflow-hidden text-[9px] font-bold text-white leading-none hover:brightness-110 transition-[filter]"
                   style={{
                     top: `${laneTop}px`,
                     height: '16px',
@@ -232,11 +237,12 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
                     paddingLeft: isFirstDay ? '8px' : '4px',
                     paddingRight: isLastDay ? '8px' : '0',
                     opacity: isFirstDay ? 1 : 0.85,
+                    cursor: 'pointer',
                   }}
                   title={r.entry.title}
                 >
                   {isFirstDay ? r.entry.title : ''}
-                </div>
+                </button>
               );
             })}
           </div>
