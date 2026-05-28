@@ -1,10 +1,10 @@
 import type { SyncConnectRequest, SyncConnectResponse, SyncRunRequest, SyncRunResponse, SyncProvider } from '@mental-load/contracts';
 import { EntryService } from '../domains/entries/entry-service';
-import { SettingsService } from '../settings/settings-service';
+import { ISettingsService } from '../settings/settings-service';
 
 export class SyncService {
   constructor(
-    private readonly settingsService: SettingsService,
+    private readonly settingsService: ISettingsService,
     private readonly entryService: EntryService,
   ) {}
 

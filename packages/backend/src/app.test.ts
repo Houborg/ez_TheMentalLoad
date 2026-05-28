@@ -955,21 +955,24 @@ test('timeline confirmation rejects unknown task ids deterministically', async (
   await app.close();
 });
 
-test('GET /api/v1/sync/connections returns 401 without session', async () => {
+test('GET /api/v1/sync/connections returns empty list in in-memory mode', async () => {
   const app = await createTestApp();
   const response = await app.inject({ method: 'GET', url: '/api/v1/sync/connections' });
-  assert.equal(response.statusCode, 401);
+  // In-memory mode has no auth, so the endpoint is accessible and returns an empty list
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), []);
   await app.close();
 });
 
-test('POST /api/v1/sync/connections/verify returns 401 without session', async () => {
+test('POST /api/v1/sync/connections/verify returns 400 with bad credentials in in-memory mode', async () => {
   const app = await createTestApp();
   const response = await app.inject({
     method: 'POST',
     url: '/api/v1/sync/connections/verify',
     payload: { provider: 'apple', appleId: 'test@icloud.com', appPassword: 'xxxx' },
   });
-  assert.equal(response.statusCode, 401);
+  // In-memory mode has no auth; the verify stub always returns false → 400
+  assert.equal(response.statusCode, 400);
   await app.close();
 });
 

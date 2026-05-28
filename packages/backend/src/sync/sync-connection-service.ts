@@ -18,6 +18,62 @@ export interface CreateConnectionInput {
   targetMemberId?: string;
 }
 
+/** Minimal in-memory sync connection service for dev/test environments without Postgres. */
+export class InMemorySyncConnectionService {
+  private connections: SyncConnection[] = [];
+
+  async listConnections(): Promise<SyncConnection[]> { return this.connections.map(c => this.toPublic(c)); }
+  async getConnection(id: string): Promise<SyncConnection | undefined> { return this.connections.find(c => c.id === id); }
+
+  async createConnection(input: CreateConnectionInput): Promise<SyncConnection> {
+    const existing = this.connections.find(c => c.provider === input.provider);
+    if (existing) throw new Error(`A ${input.provider} connection already exists`);
+    const conn: SyncConnection = {
+      id: uuid(),
+      provider: input.provider,
+      isConnected: false,
+      importEnabled: input.importEnabled,
+      exportEnabled: input.exportEnabled,
+      syncIntervalMinutes: input.syncIntervalMinutes ?? 15,
+      createdAt: new Date().toISOString(),
+    };
+    this.connections.push(conn);
+    return this.toPublic(conn);
+  }
+
+  async verifyConnection(_id: string): Promise<{ ok: boolean; message: string }> {
+    return { ok: false, message: 'Sync requires database' };
+  }
+
+  async verify(_config: unknown): Promise<boolean> {
+    return false;
+  }
+
+  async listRemoteCalendars(_config: unknown): Promise<{ name: string; path: string }[]> {
+    return [];
+  }
+
+  async updateConnection(id: string, patch: Partial<SyncConnection>): Promise<SyncConnection> {
+    const idx = this.connections.findIndex(c => c.id === id);
+    if (idx < 0) throw new Error('Connection not found');
+    this.connections[idx] = { ...this.connections[idx]!, ...patch };
+    return this.toPublic(this.connections[idx]!);
+  }
+
+  async deleteConnection(id: string): Promise<void> {
+    this.connections = this.connections.filter(c => c.id !== id);
+  }
+
+  async runSync(_id: string, _entryRepository: unknown): Promise<{ importedCount: number; exportedCount: number; lastSyncAt: string }> {
+    return { importedCount: 0, exportedCount: 0, lastSyncAt: new Date().toISOString() };
+  }
+
+  private toPublic(c: SyncConnection): SyncConnection {
+    const { ...pub } = c;
+    return pub;
+  }
+}
+
 export class SyncConnectionService {
   constructor(
     private readonly pool: Pool,

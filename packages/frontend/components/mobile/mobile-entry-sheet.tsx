@@ -59,7 +59,6 @@ export function MobileEntrySheet({
     if (!open) return;
     setDraft(buildInitialDraft());
     setError(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, entry?.id, mode]);
 
   async function handleSave() {

@@ -48,7 +48,56 @@ export interface SyncConnectionResult {
   message: string;
 }
 
-export class SettingsService {
+/** File/in-memory settings service used when no Postgres pool is available (dev/test). */
+export interface ISettingsService {
+  getSettings(): Promise<AppSettings>;
+  updateSettings(patch: UpdateSettingsRequest): Promise<AppSettings>;
+  connectSyncProvider(provider: SyncProvider, configJson: Record<string, unknown>): Promise<SyncConnectionResult>;
+  markSyncRun(provider: SyncProvider, importedCount: number, configJson?: Record<string, unknown>): Promise<AppSettings>;
+}
+
+export class InMemorySettingsService implements ISettingsService {
+  private settings: AppSettings = normalizeSettings(mergeWithDefaults({}));
+
+  async getSettings(): Promise<AppSettings> {
+    return this.settings;
+  }
+
+  async updateSettings(patch: UpdateSettingsRequest): Promise<AppSettings> {
+    const merged = mergeSettings(this.settings, patch);
+    const next = normalizeSettings(merged);
+    if (next.sync.provider !== 'none' && !next.sync.isConnected) {
+      throw new Error('Connect the selected sync provider before saving settings.');
+    }
+    this.settings = next;
+    return next;
+  }
+
+  async connectSyncProvider(provider: SyncProvider, configJson: Record<string, unknown>): Promise<SyncConnectionResult> {
+    const validation = validateSyncProvider(provider, configJson, this.settings);
+    if (validation.ok) {
+      this.settings = normalizeSettings({
+        ...this.settings,
+        sync: { ...this.settings.sync, provider, configJson: { ...this.settings.sync.configJson, ...configJson }, isConnected: true },
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    return validation;
+  }
+
+  async markSyncRun(provider: SyncProvider, importedCount: number, configJson?: Record<string, unknown>): Promise<AppSettings> {
+    const lastSyncAt = new Date().toISOString();
+    this.settings = normalizeSettings({
+      ...this.settings,
+      sync: { ...this.settings.sync, provider, isConnected: true, lastSyncAt, configJson: { ...this.settings.sync.configJson, ...configJson, lastImportCount: importedCount } },
+      mail: { ...this.settings.mail, lastSyncAt },
+      updatedAt: lastSyncAt,
+    });
+    return this.settings;
+  }
+}
+
+export class SettingsService implements ISettingsService {
   constructor(
     private readonly pool: Pool,
     private readonly familyId: string,

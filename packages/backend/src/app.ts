@@ -32,7 +32,6 @@ import type {
   VerifySyncConnectionRequest,
   ListRemoteCalendarsRequest,
 } from '@mental-load/contracts';
-import { SyncConnectionService } from './sync/sync-connection-service';
 import { AppleCalDavAdapter } from './sync/apple-caldav-adapter';
 import { AssistantService } from './domains/assistant/assistant-service';
 import { DomainEventBus } from './events/domain-event-bus';
@@ -44,11 +43,12 @@ import type { CalendarRepository } from './repositories/calendar-repository';
 import type { EntryRepository } from './repositories/entry-repository';
 import type { FoodPlanRepository } from './repositories/food-plan-repository';
 import { DailyTimelineService, TimelineTaskConfirmationError } from './domains/timeline/daily-timeline-service';
-import { SettingsService } from './settings/settings-service';
+import { InMemorySettingsService, ISettingsService, SettingsService } from './settings/settings-service';
 import { SyncService } from './sync/sync-service';
 import { registerAuthRoutes } from './auth/auth-routes';
 import { verifyToken } from './auth/auth-service';
 import { registerAulaRoutes } from './aula/aula-routes';
+import { InMemorySyncConnectionService, SyncConnectionService } from './sync/sync-connection-service';
 
 const DEFAULT_FAMILY_ID = '00000000-0000-4000-8000-000000000001';
 const MEMBER_COLORS = ['#6366f1', '#f59e0b', '#ec4899', '#14b8a6', '#f97316', '#8b5cf6', '#06b6d4', '#84cc16'];
@@ -136,9 +136,20 @@ export async function buildApp() {
   if (infrastructure.pool) await registerAulaRoutes(app, infrastructure.pool, eventBus);
 
   // JWT preHandler — verifies session and attaches scoped services to request
+  // When running without a database (in-memory / test mode), skip auth and use the default family.
   const PUBLIC_PATHS = ['/api/auth/', '/api/v1/health', '/ws'];
   app.addHook('preHandler', async (request, reply) => {
     if (PUBLIC_PATHS.some(p => request.url.startsWith(p))) return;
+
+    // In-memory mode: no auth required — attach default family services directly
+    if (!infrastructure.pool) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (request as any).svc = getRequestServices(DEFAULT_FAMILY_ID);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (request as any).familyId = DEFAULT_FAMILY_ID;
+      return;
+    }
+
     const token = request.cookies['ml_session'];
     if (!token) {
       reply.code(401);
@@ -148,15 +159,13 @@ export async function buildApp() {
       const payload = verifyToken(token);
 
       // Check email verification
-      if (infrastructure.pool) {
-        const result = await infrastructure.pool.query<{ email_verified: boolean }>(
-          'select email_verified from users where id = $1',
-          [payload.userId],
-        );
-        if (!result.rows[0]?.email_verified) {
-          reply.code(403);
-          return reply.send({ code: 'EMAIL_VERIFICATION_REQUIRED' });
-        }
+      const result = await infrastructure.pool.query<{ email_verified: boolean }>(
+        'select email_verified from users where id = $1',
+        [payload.userId],
+      );
+      if (!result.rows[0]?.email_verified) {
+        reply.code(403);
+        return reply.send({ code: 'EMAIL_VERIFICATION_REQUIRED' });
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -179,7 +188,7 @@ export async function buildApp() {
     const repo = makeScopedBundle(infrastructure, familyId);
     const settingsService = infrastructure.pool
       ? new SettingsService(infrastructure.pool, familyId)
-      : (() => { throw new Error('SettingsService requires postgres'); })();
+      : new InMemorySettingsService();
     const entryService = new EntryService(repo.entryRepository, eventBus, reminderScheduler, familyId);
     const dailyTimelineService = new DailyTimelineService(dailyTimelineRepository, {
       listOccurrences: (from, to) => entryService.listOccurrences(from, to),
@@ -201,7 +210,7 @@ export async function buildApp() {
     const syncService = new SyncService(settingsService, entryService);
     const syncConnectionService = infrastructure.pool
       ? new SyncConnectionService(infrastructure.pool, familyId, new AppleCalDavAdapter())
-      : (() => { throw new Error('SyncConnectionService requires postgres'); })();
+      : new InMemorySyncConnectionService();
     const assistantService = new AssistantService(
       () => repo.memberRepository.list(),
       () => repo.calendarRepository.list(),
@@ -924,7 +933,7 @@ export async function buildApp() {
     }
   }
 
-  async function sendInviteEmailsForEntry(entry: Entry, scopedMemberRepository: MemberRepository, settingsService: SettingsService): Promise<void> {
+  async function sendInviteEmailsForEntry(entry: Entry, scopedMemberRepository: MemberRepository, settingsService: ISettingsService): Promise<void> {
     if (entry.type !== 'event') {
       return;
     }
@@ -976,7 +985,7 @@ export async function buildApp() {
     date: string;
     task: { title: string; confirmedAt?: string };
     completedByMemberId?: string;
-  }, scopedMemberRepository: MemberRepository, settingsService: SettingsService): Promise<void> {
+  }, scopedMemberRepository: MemberRepository, settingsService: ISettingsService): Promise<void> {
     const [members, settings] = await Promise.all([
       scopedMemberRepository.list(),
       settingsService.getSettings(),
