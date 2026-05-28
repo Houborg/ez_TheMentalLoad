@@ -148,7 +148,6 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
           <div
             key={weekStartStr}
             className="relative grid grid-cols-7 border-b border-border/30 last:border-b-0"
-            style={{ minHeight: `${Math.max(90, 22 + spanning.length * 18 + 40)}px` }}
           >
             {week.map((day) => {
               const dayStr = toLocalDateStr(day);
@@ -163,7 +162,7 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
                   key={dayStr}
                   onClick={() => onSelectDate(day)}
                   className={cn(
-                    'border-r border-border/20 last:border-r-0 cursor-pointer px-0.5 pt-1 pb-1',
+                    'aspect-square border-r border-border/20 last:border-r-0 cursor-pointer px-0.5 pt-1 pb-1 overflow-hidden',
                     !isCurrentMonth && 'bg-muted/20',
                     isSelected && !isToday && 'bg-primary/5',
                   )}
