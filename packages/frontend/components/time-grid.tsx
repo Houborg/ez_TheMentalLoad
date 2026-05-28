@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Entry, Member } from '@mental-load/contracts';
+import { cn } from '@/lib/utils';
 
 const START_HOUR = 6;
 const END_HOUR = 23;
@@ -69,11 +70,11 @@ export function TimeGrid({ members, memberColorById, entries }: Props) {
         <div className="flex flex-1" style={{ height: totalHeight, minHeight: totalHeight }}>
 
           {/* Time axis */}
-          <div className="relative shrink-0 w-10 border-r border-white/10">
+          <div className="relative shrink-0 w-10 border-r border-border">
             {HOURS.map((h) => (
               <div
                 key={h}
-                className="absolute right-0 pr-2 text-[11px] font-medium text-white/30 leading-none"
+                className="absolute right-0 pr-2 text-[11px] font-medium text-muted-foreground/60 leading-none"
                 style={{ top: (h - START_HOUR) * hourHeight - 6 }}
               >
                 {h}
@@ -87,7 +88,7 @@ export function TimeGrid({ members, memberColorById, entries }: Props) {
             {HOURS.map((h) => (
               <div
                 key={h}
-                className="pointer-events-none absolute inset-x-0 border-t border-white/8"
+                className="pointer-events-none absolute inset-x-0 border-t border-border/40"
                 style={{ top: (h - START_HOUR) * hourHeight }}
               />
             ))}
@@ -95,7 +96,7 @@ export function TimeGrid({ members, memberColorById, entries }: Props) {
             {/* Empty state */}
             {!hasAnyEvents && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] text-white/25">
+                <span className="rounded-full border border-border bg-muted/50 px-4 py-2 text-[11px] text-muted-foreground/60">
                   Ingen begivenheder i dag
                 </span>
               </div>
@@ -119,9 +120,8 @@ export function TimeGrid({ members, memberColorById, entries }: Props) {
               return (
                 <div
                   key={member.id}
-                  className="relative flex-1"
+                  className={cn('relative flex-1', i > 0 && 'border-l border-border/30')}
                   style={{
-                    borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.08)' : undefined,
                     background: `${color}0a`,
                   }}
                 >

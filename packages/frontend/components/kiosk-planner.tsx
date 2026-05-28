@@ -124,14 +124,14 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#0f0f1a]">
+      <div className="flex h-screen items-center justify-center bg-background">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen flex-col bg-[#0f0f1a] text-white">
+    <div className="flex h-screen flex-col bg-background text-foreground">
       <KioskTopBar
         view={kioskView}
         onViewChange={setKioskView}
@@ -143,7 +143,7 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
 
       {/* Member avatar row — only shown in today view (week grid has its own column layout) */}
       {kioskView === 'today' && (
-        <div className="flex shrink-0 items-center border-b border-white/10 bg-white/3 py-2">
+        <div className="flex shrink-0 items-center border-b border-border bg-muted/30 py-2">
           {/* w-10 matches the time-axis column width inside TimeGrid */}
           <div className="w-10 shrink-0" />
           <div
@@ -160,7 +160,7 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
                   >
                     {member.avatar ?? member.name[0].toUpperCase()}
                   </div>
-                  <span className="text-[12px] font-semibold text-white/80">{member.name}</span>
+                  <span className="text-[12px] font-semibold text-foreground/80">{member.name}</span>
                 </div>
               );
             })}
@@ -178,29 +178,29 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
           />
 
           {/* Bottom split: meal + tasks — fixed height so TimeGrid isn't starved */}
-          <div className="grid shrink-0 grid-cols-2 border-t border-white/10" style={{ height: '26vh', minHeight: '120px' }}>
+          <div className="grid shrink-0 grid-cols-2 border-t border-border" style={{ height: '26vh', minHeight: '120px' }}>
             {/* Today's meal */}
-            <div className="flex flex-col overflow-y-auto border-r border-white/10 px-4 py-3">
-              <div className="mb-2 text-[9px] font-bold uppercase tracking-widest text-white/30">
+            <div className="flex flex-col overflow-y-auto border-r border-border px-4 py-3">
+              <div className="mb-2 text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60">
                 🍽 Aftensmad i dag
               </div>
               {todayMeal ? (
                 <>
-                  <div className="text-sm font-bold text-white/90">{todayMeal.dishName}</div>
+                  <div className="text-sm font-bold text-foreground/90">{todayMeal.dishName}</div>
                   {todayMeal.groceryList.length > 0 && (
-                    <div className="mt-1 text-[11px] leading-relaxed text-white/40">
+                    <div className="mt-1 text-[11px] leading-relaxed text-muted-foreground/70">
                       {todayMeal.groceryList.join(' · ')}
                     </div>
                   )}
                 </>
               ) : (
-                <div className="text-sm text-white/20">Intet planlagt</div>
+                <div className="text-sm text-muted-foreground/50">Intet planlagt</div>
               )}
             </div>
 
             {/* Today's tasks */}
             <div className="flex flex-col overflow-y-auto px-4 py-3">
-              <div className="mb-2 text-[9px] font-bold uppercase tracking-widest text-white/30">
+              <div className="mb-2 text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60">
                 ✅ Opgaver i dag
               </div>
               <div className="space-y-2">
@@ -218,15 +218,15 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
                         >
                           {member.name[0].toUpperCase()}
                         </div>
-                        <span className="text-[11px] font-semibold text-white/60">{member.name}</span>
+                        <span className="text-[11px] font-semibold text-muted-foreground">{member.name}</span>
                         {tasks.length > 0 && (
-                          <span className="ml-auto text-[10px] tabular-nums text-white/30">
+                          <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/60">
                             {done}/{tasks.length}
                           </span>
                         )}
                       </div>
                       {tasks.length === 0 ? (
-                        <div className="pl-5.5 text-[10px] text-white/20">Ingen opgaver</div>
+                        <div className="pl-5.5 text-[10px] text-muted-foreground/50">Ingen opgaver</div>
                       ) : (
                         <div className="space-y-0.5 pl-5.5">
                           {tasks.slice(0, 3).map((task) => (
@@ -234,7 +234,7 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
                               key={task.id}
                               className={cn(
                                 'flex items-center gap-1 text-[10px]',
-                                task.status === 'completed' ? 'text-white/20 line-through' : 'text-white/55',
+                                task.status === 'completed' ? 'text-muted-foreground/40 line-through' : 'text-foreground/70',
                               )}
                             >
                               <span>{task.status === 'completed' ? '✓' : '·'}</span>
@@ -242,7 +242,7 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
                             </div>
                           ))}
                           {tasks.length > 3 && (
-                            <div className="text-[10px] text-white/20">+{tasks.length - 3} mere</div>
+                            <div className="text-[10px] text-muted-foreground/50">+{tasks.length - 3} mere</div>
                           )}
                         </div>
                       )}
@@ -264,7 +264,7 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
 
       {/* Food plan week strip — only render when there's at least one meal planned */}
       {foodPlan.length > 0 && (
-        <div className="shrink-0 border-t border-white/10 px-4 py-2">
+        <div className="shrink-0 border-t border-border px-4 py-2">
           <div className="grid grid-cols-7 gap-1">
             {FOOD_PLAN_DAYS.map((day) => {
               const item = foodPlan.find((fp) => fp.day.toLowerCase() === day);
@@ -277,19 +277,19 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
                     isToday
                       ? 'border border-primary/50 bg-primary/20'
                       : item
-                        ? 'bg-white/6'
-                        : 'border border-dashed border-white/8',
+                        ? 'bg-muted/30'
+                        : 'border border-dashed border-border',
                   )}
                 >
                   <div className={cn(
                     'text-[9px] font-bold uppercase tracking-wide',
-                    isToday ? 'text-primary' : 'text-white/30',
+                    isToday ? 'text-primary' : 'text-muted-foreground/60',
                   )}>
                     {FOOD_DAY_LABELS[day]}
                   </div>
                   <div className={cn(
                     'mt-0.5 truncate text-[10px] font-semibold leading-tight',
-                    isToday ? 'text-white' : item ? 'text-white/60' : 'text-white/15',
+                    isToday ? 'text-foreground' : item ? 'text-foreground/70' : 'text-muted-foreground/40',
                   )}>
                     {item?.dishName ?? '—'}
                   </div>
