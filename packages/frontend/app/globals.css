@@ -19,7 +19,7 @@
   /* Secondary / muted surfaces */
   --secondary:            oklch(0.94 0.003 95);
   --secondary-foreground: oklch(0.13 0.02 260);
-  --muted:                oklch(0.94 0.003 95);
+  --muted:                oklch(0.91 0.003 95);
   --accent:               oklch(0.92 0.008 255);  /* --primary-light */
   --accent-foreground:    oklch(0.65 0.16 255);
 
