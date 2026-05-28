@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -16,7 +16,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import type { AppSettings, AssistantDraft, AulaPresence, DailyTimelineTemplateTask, Entry, Member, Calendar, ListTodayMemberTimelineResponse, MemberRole, MemberTimelineSettings, TimelineTaskInstance } from '@mental-load/contracts';
+import type { AppSettings, AssistantDraft, AulaPresence, DailyTimelineTemplateTask, Entry, FoodPlanItem, Member, Calendar, ListTodayMemberTimelineResponse, MemberRole, MemberTimelineSettings, TimelineTaskInstance } from '@mental-load/contracts';
 import {
   askAssistant,
   confirmAssistant,
@@ -49,6 +49,8 @@ import {
   updateMemberTimelineTemplate,
   deleteMemberTimelineTemplate,
   deleteMemberTimelineTask,
+  loadFoodPlan,
+  type WeatherDailyPoint,
   type WeatherForecastResponse,
 } from '@/lib/api';
 import { TodayTimelineBoard } from '@/components/today-timeline-board';
@@ -65,6 +67,9 @@ import { SlimHeader } from '@/components/slim-header';
 import { BottomNav, type NavSection } from '@/components/bottom-nav';
 import { MonthCalendar } from '@/components/month-calendar';
 import { WeatherStrip } from '@/components/weather-strip';
+import { IDagView } from '@/components/idag-view';
+import { PlannerView } from '@/components/planner-view';
+import { FamilieView } from '@/components/familie-view';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
 type RecurrenceFreq = 'none' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
@@ -198,6 +203,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
   const [settingsMessage, setSettingsMessage] = useState('');
   const [weatherForecast, setWeatherForecast] = useState<WeatherForecastResponse | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
+  const [foodPlanItems, setFoodPlanItems] = useState<FoodPlanItem[]>([]);
   const [pendingInvitations, setPendingInvitations] = useState<Array<{ entry: Entry; invitee: { email: string; status: 'pending' | 'accepted' | 'declined' } }>>([]);
   const [respondingToInvitation, setRespondingToInvitation] = useState<{ entryId: string; email: string } | null>(null);
   const [celebrationTaskId, setCelebrationTaskId] = useState<string | undefined>();
@@ -229,7 +235,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
 
   const navSectionFromQuery = useMemo<NavSection>(() => {
     const value = searchParams.get('section');
-    if (value === 'dashboard' || value === 'planner' || value === 'timeline' || value === 'family' || value === 'settings') {
+    if (value === 'dashboard' || value === 'idag' || value === 'planner' || value === 'family' || value === 'settings') {
       return value;
     }
     return 'dashboard';
@@ -247,7 +253,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
   }, [navSectionFromQuery]);
 
   useEffect(() => {
-    if (activeNav !== 'timeline' || dashboard.members.length === 0) {
+    if (activeNav !== 'family' || dashboard.members.length === 0) {
       return;
     }
 
@@ -266,13 +272,14 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
     async function loadAll() {
       try {
         setErrorText('');
-        const [dashboardSnapshot, monthEntries, upcoming, health, assistantStatus, settingsSnapshot] = await Promise.all([
+        const [dashboardSnapshot, monthEntries, upcoming, health, assistantStatus, settingsSnapshot, foodPlan] = await Promise.all([
           loadDashboardSnapshot(),
           loadMonthOccurrences(currentMonth),
           loadUpcomingOccurrences(30),
           loadHealth(),
           loadAssistantStatus(),
           loadSettings(),
+          loadFoodPlan().catch(() => ({ items: [] as FoodPlanItem[] })),
         ]);
 
         const timelinePairs = await Promise.all(
@@ -310,6 +317,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
         setAssistantStatusText(assistantStatus.message);
         setTimelineSettingsByMemberId(Object.fromEntries(timelinePairs));
         setSettings(settingsSnapshot);
+        setFoodPlanItems(foodPlan.items);
         setDraft((currentDraft) => hydrateDraft(currentDraft, dashboardSnapshot.members, dashboardSnapshot.calendars));
 
         // Load pending invitations for the first member (in a real auth system, this would be the current user)
@@ -502,15 +510,11 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
 
   const dayWeatherByDate = useMemo(() => {
     if (!weatherForecast) {
-      return {} as Record<string, { temp: number; unitLabel: string; icon: string }>;
+      return {} as Record<string, WeatherDailyPoint>;
     }
 
-    return weatherForecast.daily.reduce<Record<string, { temp: number; unitLabel: string; icon: string }>>((accumulator, item) => {
-      accumulator[item.date] = {
-        temp: Math.round(item.tempMax),
-        unitLabel: weatherForecast.unit,
-        icon: item.icon,
-      };
+    return weatherForecast.daily.reduce<Record<string, WeatherDailyPoint>>((accumulator, item) => {
+      accumulator[item.date] = item;
       return accumulator;
     }, {});
   }, [weatherForecast]);
@@ -584,7 +588,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
   }
 
   async function refreshTimelinesIfVisible() {
-    if (activeNav !== 'timeline' || dashboard.members.length === 0) {
+    if (activeNav !== 'family' || dashboard.members.length === 0) {
       return;
     }
 
@@ -600,7 +604,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
     }
 
     if (!draft.calendarId) {
-      setErrorText('No calendar available. Create a member first — each member gets their own calendar.');
+      setErrorText('No calendar available. Create a member first â€” each member gets their own calendar.');
       return;
     }
 
@@ -736,30 +740,13 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
 
   function handleNavClick(section: NavSection) {
     setActiveNav(section);
-
-    if (section === 'dashboard' || section === 'timeline' || section === 'family' || section === 'settings') {
-      router.replace(`/?section=${section}`);
-    }
-
     if (section === 'settings') {
       setSettingsOpen(true);
+      router.replace(`/?section=${section}`);
       return;
     }
-
-    if (section === 'planner') {
-      return;
-    }
-
-    if (section === 'family') {
-      return;
-    }
-
-    if (section === 'timeline') {
-      return;
-    }
-
-    const targetId = section === 'dashboard' ? 'hero-section' : `${section}-section`;
-    document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setSettingsOpen(false);
+    router.replace(`/?section=${section}`);
   }
 
   async function handleDeleteEntry(entryId: string) {
@@ -1174,7 +1161,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
 
     const calendarId = getMemberCalendarId(memberId);
     if (!calendarId) {
-      setErrorText('No calendar found for this member. Create a member first — each member gets their own calendar.');
+      setErrorText('No calendar found for this member. Create a member first â€” each member gets their own calendar.');
       return;
     }
 
@@ -1630,15 +1617,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {activeNav === 'planner' ? (
-        <KioskPlanner
-          members={dashboard.members}
-          memberColorById={memberColorById}
-          onAdd={() => openCreateEntryComposer()}
-          onAI={() => handleNavClick('dashboard')}
-          onExit={() => handleNavClick('dashboard')}
-        />
-      ) : isMobile && !mobileDesktopOverride ? (
+      {isMobile && !mobileDesktopOverride ? (
         <MobileShell
           members={dashboard.members}
           calendars={dashboard.calendars}
@@ -1662,7 +1641,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
             onClick={() => setMobileDesktopOverride(false)}
             className="text-sm text-primary font-medium"
           >
-            ← Mobil
+            â† Mobil
           </button>
         </div>
       )}
@@ -1676,7 +1655,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
           />
 
           <section className="flex-1 overflow-auto px-4 py-6 md:px-6">
-            {activeNav !== 'family' && activeNav !== 'timeline' ? (
+            {activeNav === 'dashboard' ? (
             <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
               <div id="hero-section" className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
@@ -1778,7 +1757,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                               {new Date(entry.startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                               {!entry.allDay ? ` at ${new Date(entry.startTime).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : ' (all day)'}
                             </div>
-                            {entry.location ? <div className="mt-1 text-sm text-muted-foreground">📍 {entry.location}</div> : null}
+                            {entry.location ? <div className="mt-1 text-sm text-muted-foreground">ðŸ“ {entry.location}</div> : null}
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -1846,7 +1825,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                             </div>
                             <div className="flex flex-col gap-1 p-1.5 min-h-[40px]">
                               {memberEntries.length === 0 ? (
-                                <span className="text-[9px] text-muted-foreground/40 text-center py-2">—</span>
+                                <span className="text-[9px] text-muted-foreground/40 text-center py-2">â€”</span>
                               ) : memberEntries.slice(0, 3).map((e) => (
                                 <button
                                   key={e.id}
@@ -1903,7 +1882,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                                 <div className="flex items-center gap-1 mt-0.5">
                                   <div className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: color }} />
                                   <span className="text-[9px] text-muted-foreground truncate">
-                                    {member?.name ?? 'Ukendt'} · {startDate.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+                                    {member?.name ?? 'Ukendt'} Â· {startDate.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
                                   </span>
                                 </div>
                               </div>
@@ -1922,363 +1901,38 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                 </aside>
               </div>
             </div>
-            ) : (
-            <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
-              {errorText ? (
-                <div className="rounded-3xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">{errorText}</div>
-              ) : null}
-              {activeNav !== 'timeline' ? (
-              <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-                <div className="mb-6 flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-2xl font-semibold tracking-tight">Family Members</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Add and edit family members synced with the backend.</p>
-                  </div>
-                  {editingMemberId ? (
-                    <button type="button" onClick={() => { setEditingMemberId(null); setMemberDraft({ name: '', role: 'parent', email: '', avatar: '', color: '' }); }} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">
-                      Cancel edit
-                    </button>
-                  ) : null}
-                </div>
-                <div className="mb-6 grid gap-3 rounded-2xl border border-border/60 bg-background/30 p-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5">
-                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Name</span>
-                    <input value={memberDraft.name} onChange={(event) => setMemberDraft((current) => ({ ...current, name: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60" placeholder="Member name" />
-                  </label>
-                  <label className="grid gap-1.5">
-                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Email</span>
-                    <input type="email" value={memberDraft.email} onChange={(event) => setMemberDraft((current) => ({ ...current, email: event.target.value }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60" placeholder="name@example.com" />
-                  </label>
-                  <label className="grid gap-1.5">
-                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Role</span>
-                    <select value={memberDraft.role} onChange={(event) => setMemberDraft((current) => ({ ...current, role: event.target.value as MemberRole }))} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm outline-none focus:border-primary/60">
-                      <option value="parent">Parent</option>
-                      <option value="child">Child</option>
-                    </select>
-                  </label>
-                  <div className="grid gap-1.5">
-                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Farve</span>
-                    <div className="flex flex-wrap gap-2">
-                      {MEMBER_COLOR_SWATCHES.map((hex) => (
-                        <button
-                          key={hex}
-                          type="button"
-                          onClick={() => setMemberDraft((current) => ({ ...current, color: current.color === hex ? '' : hex }))}
-                          className="h-7 w-7 rounded-full border-2 transition-transform hover:scale-110"
-                          style={{ backgroundColor: hex, borderColor: memberDraft.color === hex ? '#000' : 'transparent', outline: memberDraft.color === hex ? `2px solid ${hex}` : 'none', outlineOffset: '2px' }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="grid gap-1.5">
-                    <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Avatar (emoji)</span>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input value={memberDraft.avatar} onChange={(event) => setMemberDraft((current) => ({ ...current, avatar: event.target.value }))} className="w-16 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-center text-sm outline-none focus:border-primary/60" placeholder="👤" maxLength={4} />
-                      {['👩','👨','👧','👦','👵','👴','🧑','👶','🧒','🧑‍💼','👩‍💼','👨‍💼','🧑‍🎓','👩‍🎓','👨‍🎓','🐶','🐱','🦊','🐼','🦁'].map((emoji) => (
-                        <button key={emoji} type="button" onClick={() => setMemberDraft((current) => ({ ...current, avatar: emoji }))} className={cn('rounded-lg border px-2 py-1 text-base transition', memberDraft.avatar === emoji ? 'border-primary bg-primary/10' : 'border-border/60 hover:bg-accent/60')}>{emoji}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex items-end sm:col-span-2">
-                    <button type="button" onClick={() => void handleSaveMember()} className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20">
-                      {editingMemberId ? 'Update member' : 'Add member'}
-                    </button>
-                  </div>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {dashboard.members.map((member) => (
-                    <div key={member.id} className="rounded-2xl border border-border/60 bg-card/55 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveMemberId(member.id);
-                            router.push(`/member/${encodeURIComponent(member.id)}`);
-                          }}
-                          className="flex min-w-0 items-center gap-3 rounded-xl text-left hover:bg-accent/40"
-                          aria-label={`Open ${member.name}`}
-                        >
-                          <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-full', member.avatar ? 'text-2xl' : 'text-primary-foreground')} style={member.avatar ? undefined : { backgroundColor: memberColorById[member.id] ?? '#6d5efc' }}>
-                            {member.avatar ? member.avatar : <Users className="h-5 w-5" />}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold">{member.name}</div>
-                            <div className="text-xs capitalize text-muted-foreground">{member.role}</div>
-                            {member.email ? <div className="truncate text-xs text-muted-foreground">{member.email}</div> : null}
-                          </div>
-                        </button>
-                        <button type="button" onClick={() => startEditMember(member)} className="rounded-lg border border-border/50 p-2 hover:bg-accent/60" aria-label={`Edit ${member.name}`}>
-                          <Edit2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {settingsMessage ? <div className="mt-4 rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm">{settingsMessage}</div> : null}
-              </section>
-              ) : null}
-
-              {activeNav === 'timeline' ? (
-              <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-                <div className="mb-5 flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-2xl font-semibold tracking-tight">Daily Timeline</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">View today&apos;s generated timeline for each member and manage member tasks directly from this page.</p>
-                  </div>
-                </div>
-                <div className="mb-4">
-                  <TodayTimelineBoard
-                    members={dashboard.members}
-                    timelinesByMemberId={todayTimelinesByMemberId}
-                    celebrationTaskId={celebrationTaskId}
-                    onConfirmTask={handleConfirmTodayTimelineTask}
-                    onDeleteTask={handleDeleteTodayTimelineTask}
-                    onSelectTask={(_memberId, task) => handleOpenTimelineTask(task)}
-                  />
-                </div>
-                <div className="space-y-3">
-                  {dashboard.members.map((member) => {
-                    const isExpanded = expandedTemplatesMemberId === member.id;
-                    const timelineEnabled = timelineSettingsByMemberId[member.id]?.enabled ?? false;
-                    const todayTimeline = todayTimelinesByMemberId[member.id];
-                    const isLoadingTodayTimeline = loadingTodayTimelineMemberId === member.id;
-                    const todayTasks = (todayTimeline?.timeline.tasks ?? []).filter((task) => task.status !== 'skipped');
-                    const taskDraft = getTimelineTaskDraft(member.id);
-                    return (
-                      <div key={member.id} className="rounded-2xl border border-border/60 bg-card/55">
-                        <button
-                          type="button"
-                          onClick={() => void handleExpandTemplates(member.id)}
-                          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-accent/40 rounded-2xl"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', member.avatar ? 'text-xl' : 'text-primary-foreground')} style={member.avatar ? undefined : { backgroundColor: memberColorById[member.id] ?? '#6d5efc' }}>
-                              {member.avatar ? member.avatar : <Users className="h-4 w-4" />}
-                            </div>
-                            <div>
-                              <div className="text-sm font-semibold">{member.name}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {timelineEnabled
-                                  ? `${todayTimeline ? todayTasks.length : '...'} tasks today`
-                                  : 'Timeline disabled'}
-                              </div>
-                            </div>
-                          </div>
-                          <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform', isExpanded && 'rotate-90')} />
-                        </button>
-                        {isExpanded && (
-                          <div className="border-t border-border/60 px-4 pb-4 pt-3 space-y-3">
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Today&apos;s generated timeline</span>
-                                <button
-                                  type="button"
-                                  onClick={() => void loadTodayTimelineForMember(member.id)}
-                                  className="rounded-lg border border-border/60 px-3 py-1.5 text-xs hover:bg-accent/60"
-                                >
-                                  Refresh today
-                                </button>
-                              </div>
-                              {!timelineEnabled ? (
-                                <div className="rounded-xl border border-dashed border-border/70 px-4 py-4 text-sm text-muted-foreground">
-                                  Timeline is disabled for this member.
-                                </div>
-                              ) : isLoadingTodayTimeline || !todayTimeline ? (
-                                <div className="rounded-xl border border-dashed border-border/70 px-4 py-4 text-sm text-muted-foreground">
-                                  Loading today&apos;s timeline...
-                                </div>
-                              ) : todayTasks.length === 0 ? (
-                                <div className="rounded-xl border border-dashed border-border/70 px-4 py-4 text-sm text-muted-foreground">
-                                  No tasks generated for this member today.
-                                </div>
-                              ) : (
-                                <div className="space-y-2">
-                                  {todayTasks.map((task) => {
-                                    const linkedTaskEntry = task.source === 'entry_task'
-                                      ? dashboard.entries.find((entry) => entry.id === task.linkedEntryId)
-                                      : undefined;
-                                    return (
-                                    <div key={task.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-background/40 px-3 py-2">
-                                      <span className="w-6 shrink-0 text-center text-xs text-muted-foreground">{task.position}</span>
-                                      <div className="flex-1">
-                                        <div className={cn(
-                                          'text-sm',
-                                          task.status === 'completed' && 'text-muted-foreground line-through',
-                                        )}>
-                                          {task.title}
-                                        </div>
-                                        {task.isMilestone || task.rewardText ? (
-                                          <div className="mt-1 text-xs text-amber-600 dark:text-amber-300">
-                                            Success milestone{task.rewardText ? ` - ${task.rewardText}` : ''}
-                                          </div>
-                                        ) : null}
-                                      </div>
-                                      {task.dueAt ? (
-                                        <span className="text-xs text-muted-foreground">
-                                          {new Date(task.dueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
-                                      ) : null}
-                                      <span className={cn(
-                                        'rounded-full px-2 py-1 text-[10px] font-medium uppercase tracking-[0.08em]',
-                                        task.status === 'completed' && 'bg-emerald-500/20 text-emerald-700',
-                                        task.status === 'waiting_confirmation' && 'bg-amber-500/20 text-amber-700',
-                                        task.status === 'pending' && 'bg-blue-500/20 text-blue-700',
-                                        task.status === 'skipped' && 'bg-muted text-muted-foreground',
-                                      )}>
-                                        {task.status.replace('_', ' ')}
-                                      </span>
-                                      {linkedTaskEntry ? (
-                                        <button
-                                          type="button"
-                                          aria-label={`Edit ${task.title}`}
-                                          onClick={() => handleStartEditTimelineTask(linkedTaskEntry)}
-                                          className="rounded-lg border border-border/60 p-1.5 text-muted-foreground hover:bg-accent/60"
-                                        >
-                                          <Edit2 className="h-3.5 w-3.5" />
-                                        </button>
-                                      ) : null}
-                                      {task.status !== 'completed' && task.status !== 'skipped' ? (
-                                        <button
-                                          type="button"
-                                          aria-label={`Delete ${task.title}`}
-                                          onClick={() => void handleDeleteTodayTimelineTask(member.id, task.id)}
-                                          className="rounded-lg border border-border/60 p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                        </button>
-                                      ) : null}
-                                    </div>
-                                  )})}
-                                </div>
-                              )}
-                            </div>
-                            <div className="space-y-2 border-t border-border/40 pt-3">
-                              <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Add task</div>
-
-                              {editingTimelineTaskId ? (
-                                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-background/40 px-3 py-2">
-                                  <input
-                                    value={editingTimelineTaskDraft.title}
-                                    onChange={(event) => setEditingTimelineTaskDraft((current) => ({ ...current, title: event.target.value }))}
-                                    className="min-w-[180px] flex-1 rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-sm outline-none focus:border-primary/60"
-                                    placeholder="Task name"
-                                  />
-                                  <label className="inline-flex items-center gap-1 rounded-lg border border-border/60 px-2 py-1 text-xs">
-                                    <input
-                                      type="checkbox"
-                                      checked={editingTimelineTaskDraft.recurring}
-                                      onChange={(event) => setEditingTimelineTaskDraft((current) => ({ ...current, recurring: event.target.checked }))}
-                                    />
-                                    Recurring
-                                  </label>
-                                  <input
-                                    type="time"
-                                    value={editingTimelineTaskDraft.time}
-                                    onChange={(event) => setEditingTimelineTaskDraft((current) => ({ ...current, time: event.target.value }))}
-                                    className="rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
-                                  />
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    value={editingTimelineTaskDraft.position}
-                                    onChange={(event) => setEditingTimelineTaskDraft((current) => ({ ...current, position: event.target.value }))}
-                                    className="w-20 rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
-                                    placeholder="Pos"
-                                  />
-                                  <input
-                                    value={editingTimelineTaskDraft.treat}
-                                    onChange={(event) => setEditingTimelineTaskDraft((current) => ({ ...current, treat: event.target.value }))}
-                                    className="min-w-[140px] flex-1 rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-xs outline-none focus:border-primary/60"
-                                    placeholder="Treat on complete"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const taskToEdit = todayTasks.find((task) => task.source === 'entry_task' && task.linkedEntryId === editingTimelineTaskId);
-                                      if (taskToEdit) {
-                                        void handleSaveTimelineTask(member.id, editingTimelineTaskId);
-                                      }
-                                    }}
-                                    className="rounded-lg bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
-                                  >
-                                    Save
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCancelEditTimelineTask()}
-                                    className="rounded-lg border border-border/40 px-2 py-1 text-xs hover:bg-accent/60"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              ) : null}
-
-                              <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_120px_90px_minmax(0,1fr)_auto] md:items-end">
-                                <label className="grid gap-1">
-                                  <span className="text-xs text-muted-foreground">Task name</span>
-                                  <input
-                                    value={taskDraft.title}
-                                    onChange={(event) => setTimelineTaskDraft(member.id, { title: event.target.value })}
-                                    placeholder="Task name"
-                                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
-                                  />
-                                </label>
-                                <label className="grid gap-1">
-                                  <span className="text-xs text-muted-foreground">Time</span>
-                                  <input
-                                    type="time"
-                                    step={60}
-                                    value={taskDraft.time}
-                                    onChange={(event) => setTimelineTaskDraft(member.id, { time: event.target.value })}
-                                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
-                                  />
-                                </label>
-                                <label className="grid gap-1">
-                                  <span className="text-xs text-muted-foreground">Pos</span>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    value={taskDraft.position}
-                                    onChange={(event) => setTimelineTaskDraft(member.id, { position: event.target.value })}
-                                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
-                                  />
-                                </label>
-                                <div className="grid gap-2">
-                                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <input
-                                      type="checkbox"
-                                      checked={taskDraft.recurring}
-                                      onChange={(event) => setTimelineTaskDraft(member.id, { recurring: event.target.checked })}
-                                      className="h-4 w-4 rounded border-border/60"
-                                    />
-                                    Recurring daily
-                                  </label>
-                                  <input
-                                    value={taskDraft.treat}
-                                    onChange={(event) => setTimelineTaskDraft(member.id, { treat: event.target.value })}
-                                    placeholder="Treat on complete"
-                                    className="rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-sm outline-none focus:border-primary/60"
-                                  />
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleAddTimelineTask(member.id)}
-                                  className="rounded-xl bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20"
-                                >
-                                  Add task
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-              ) : null}
-            </div>
-            )}
+            ) : activeNav === 'idag' ? (
+              <div className="mx-auto max-w-[1200px]">
+                <IDagView
+                  members={dashboard.members}
+                  entries={monthEntriesForView}
+                  memberColorById={memberColorById}
+                  foodPlanItems={foodPlanItems}
+                  weatherByDate={dayWeatherByDate}
+                />
+              </div>
+            ) : activeNav === 'planner' ? (
+              <div className="mx-auto max-w-[800px]">
+                <PlannerView
+                  members={dashboard.members}
+                  entries={upcomingEntriesForView}
+                  foodPlanItems={foodPlanItems}
+                  onCreateEntry={() => openCreateEntryComposer()}
+                />
+              </div>
+            ) : activeNav === 'family' ? (
+              <div className="mx-auto max-w-[900px]">
+                <FamilieView
+                  members={dashboard.members}
+                  memberColorById={memberColorById}
+                  presenceByMemberId={dashboard.presence}
+                  entries={monthEntriesForView}
+                  timelinesByMemberId={todayTimelinesByMemberId as Record<string, { timeline: import('@mental-load/contracts').TodayMemberTimeline }>}
+                  onAddMember={() => { setSettingsOpen(true); setSettingsTab('members'); }}
+                  onNavigateToMember={(id) => { setActiveMemberId(id); router.push(`/member/${encodeURIComponent(id)}`); }}
+                />
+              </div>
+            ) : null}
           </section>
         </main>
         <BottomNav active={activeNav} onSelect={(s) => handleNavClick(s)} />
@@ -2432,7 +2086,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                     >
                       <option value="">Forever</option>
                       {[2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 26, 52].map((n) => (
-                        <option key={n} value={String(n)}>×{n} times</option>
+                        <option key={n} value={String(n)}>Ã—{n} times</option>
                       ))}
                     </select>
                   ) : null}
@@ -2666,11 +2320,11 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
             <div className="w-full max-w-md rounded-3xl border border-border/60 bg-card p-6 shadow-2xl">
               <div className="mb-5 flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl" style={{ backgroundImage: 'url(/birthday-pill.png)', backgroundSize: '200% 100%', backgroundPosition: 'center' }}>🎂</div>
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl" style={{ backgroundImage: 'url(/birthday-pill.png)', backgroundSize: '200% 100%', backgroundPosition: 'center' }}>ðŸŽ‚</div>
                   <div>
                     <h2 className="text-xl font-bold">{bi?.name ?? birthdayDetailEntry.title}</h2>
                     <p className="mt-0.5 text-sm text-muted-foreground">
-                      {bi ? `Turns ${bi.age} years old` : 'Birthday'} · {birthdayDate}
+                      {bi ? `Turns ${bi.age} years old` : 'Birthday'} Â· {birthdayDate}
                     </p>
                   </div>
                 </div>
@@ -2692,14 +2346,14 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                 />
               </label>
               <div className="mt-3 flex items-center gap-3 rounded-2xl border border-border/60 bg-background/40 px-4 py-3">
-                <span className="text-sm text-muted-foreground">🔗 Ønskeskyen integration</span>
+                <span className="text-sm text-muted-foreground">ðŸ”— Ã˜nskeskyen integration</span>
                 <a
                   href="https://onskeskyen.dk/da"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="ml-auto rounded-lg border border-border/60 px-3 py-1.5 text-xs text-primary hover:bg-accent/60"
                 >
-                  Open Ønskeskyen ↗
+                  Open Ã˜nskeskyen â†—
                 </a>
               </div>
               <div className="mt-4 flex justify-end gap-2">
@@ -2798,7 +2452,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                     <option value="en">English</option>
                     <option value="da">Dansk</option>
                   </select>
-                  <p className="text-xs text-muted-foreground">Full translation coming soon — saves your preference now.</p>
+                  <p className="text-xs text-muted-foreground">Full translation coming soon â€” saves your preference now.</p>
                 </label>
               </>
             ) : null}
@@ -2838,8 +2492,8 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                   <div className="grid gap-1.5">
                     <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Avatar (emoji)</span>
                     <div className="flex flex-wrap items-center gap-2">
-                      <input value={memberDraft.avatar} onChange={(event) => setMemberDraft((current) => ({ ...current, avatar: event.target.value }))} className="w-16 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-center text-sm outline-none focus:border-primary/60" placeholder="👤" maxLength={4} />
-                      {['👩','👨','👧','👦','👵','👴','🧑','👶','🧒','🧑‍💼','👩‍💼','👨‍💼','🧑‍🎓','👩‍🎓','👨‍🎓','🐶','🐱','🦊','🐼','🦁'].map((emoji) => (
+                      <input value={memberDraft.avatar} onChange={(event) => setMemberDraft((current) => ({ ...current, avatar: event.target.value }))} className="w-16 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-center text-sm outline-none focus:border-primary/60" placeholder="ðŸ‘¤" maxLength={4} />
+                      {['ðŸ‘©','ðŸ‘¨','ðŸ‘§','ðŸ‘¦','ðŸ‘µ','ðŸ‘´','ðŸ§‘','ðŸ‘¶','ðŸ§’','ðŸ§‘â€ðŸ’¼','ðŸ‘©â€ðŸ’¼','ðŸ‘¨â€ðŸ’¼','ðŸ§‘â€ðŸŽ“','ðŸ‘©â€ðŸŽ“','ðŸ‘¨â€ðŸŽ“','ðŸ¶','ðŸ±','ðŸ¦Š','ðŸ¼','ðŸ¦'].map((emoji) => (
                         <button key={emoji} type="button" onClick={() => setMemberDraft((current) => ({ ...current, avatar: emoji }))} className={cn('rounded-lg border px-2 py-1 text-base transition', memberDraft.avatar === emoji ? 'border-primary bg-primary/10' : 'border-border/60 hover:bg-accent/60')}>{emoji}</button>
                       ))}
                     </div>
@@ -2865,7 +2519,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                           </div>
                           <div>
                             <div className="text-sm font-semibold">{member.name}</div>
-                            <div className="text-xs text-muted-foreground capitalize">{member.role}{member.email ? ` · ${member.email}` : ''}</div>
+                            <div className="text-xs text-muted-foreground capitalize">{member.role}{member.email ? ` Â· ${member.email}` : ''}</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -3218,7 +2872,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                       <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/30 px-4 py-3">
                         <div>
                           <div className="text-sm font-semibold">{item.name}</div>
-                          <div className="text-xs text-muted-foreground">{item.date} · notify {item.notifyDaysBefore} days before</div>
+                          <div className="text-xs text-muted-foreground">{item.date} Â· notify {item.notifyDaysBefore} days before</div>
                         </div>
                         <div className="flex gap-2">
                           <button type="button" onClick={() => handleEditBirthday(item.id)} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">Edit</button>
@@ -3275,11 +2929,11 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                           ...current,
                           assistant: { ...current.assistant, customInstructions: e.target.value },
                         } : current)}
-                        placeholder="Eks: Kald altid børnene ved navn. Brug humor. Nævn altid hvem der har ansvaret."
+                        placeholder="Eks: Kald altid bÃ¸rnene ved navn. Brug humor. NÃ¦vn altid hvem der har ansvaret."
                         className="w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60 resize-none"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Tilføjes til AI-assistentens systemprompt. Giv assistenten personlighed eller husregler.
+                        TilfÃ¸jes til AI-assistentens systemprompt. Giv assistenten personlighed eller husregler.
                       </p>
                     </div>
                   </div>
@@ -3291,7 +2945,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
               <div className="space-y-3">
                 <div>
                   <h3 className="text-base font-semibold">Danske helligdage</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">Hent officielle danske helligdage og tilføj dem til en kalender.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Hent officielle danske helligdage og tilfÃ¸j dem til en kalender.</p>
                 </div>
                 <SettingsHolidays calendars={dashboard.calendars} />
               </div>
@@ -3316,21 +2970,21 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                           v{serverVersion.version}
                           <span className="ml-1 text-muted-foreground/60">({serverVersion.commit?.slice(0, 7)})</span>
                           {serverVersion.version === process.env.NEXT_PUBLIC_APP_VERSION
-                            ? <span className="ml-2 text-emerald-500 text-xs">✓ in sync</span>
-                            : <span className="ml-2 text-amber-500 text-xs">⚠ mismatch</span>}
+                            ? <span className="ml-2 text-emerald-500 text-xs">âœ“ in sync</span>
+                            : <span className="ml-2 text-amber-500 text-xs">âš  mismatch</span>}
                         </span>
                       : <button type="button" onClick={() => void fetchServerVersion()} className="text-primary hover:underline text-left">Check server</button>}
                     <span className="text-muted-foreground">Latest on GitHub</span>
                     {remoteVersion === 'loading'
-                      ? <span className="text-muted-foreground/60 text-xs">Checking…</span>
+                      ? <span className="text-muted-foreground/60 text-xs">Checkingâ€¦</span>
                       : remoteVersion === 'unavailable'
                         ? <button type="button" onClick={() => void fetchRemoteVersion()} className="text-primary hover:underline text-left text-xs">Check for updates</button>
                         : <span className="tabular-nums font-mono">
                             <span className="text-muted-foreground/60">({remoteVersion?.shortSha})</span>
                             {remoteVersion?.sha.startsWith(process.env.NEXT_PUBLIC_APP_COMMIT ?? '__never__')
                               || process.env.NEXT_PUBLIC_APP_COMMIT?.startsWith(remoteVersion?.shortSha ?? '')
-                              ? <span className="ml-2 text-emerald-500 text-xs">✓ up to date</span>
-                              : <span className="ml-2 text-amber-500 text-xs">⚠ update available</span>}
+                              ? <span className="ml-2 text-emerald-500 text-xs">âœ“ up to date</span>
+                              : <span className="ml-2 text-amber-500 text-xs">âš  update available</span>}
                             <span className="ml-2 text-muted-foreground/60 text-xs truncate max-w-[160px] inline-block align-bottom" title={remoteVersion?.message}>{remoteVersion?.message?.split('\n')[0]}</span>
                           </span>}
                   </div>
@@ -3344,7 +2998,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                 <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm text-muted-foreground">
                   Force a production update from the current GitHub repository.
                   {!process.env.NEXT_PUBLIC_APP_COMMIT || process.env.NEXT_PUBLIC_APP_COMMIT === 'local'
-                    ? <span className="block mt-1 text-amber-500/80 text-xs">Running in dev mode — only git pull will run (no Docker rebuild).</span>
+                    ? <span className="block mt-1 text-amber-500/80 text-xs">Running in dev mode â€” only git pull will run (no Docker rebuild).</span>
                     : null}
                 </div>
                 <button
