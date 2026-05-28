@@ -88,7 +88,7 @@ export function MobileMemberView({ member, onBack, onSelectEntry }: Props) {
   const [presence, setPresence] = useState<AulaPresence | null>(null);
 
   const isChild = member.role === 'child';
-  const { visible, toggle } = useSectionVisibility(isChild ? CHILD_DEFAULTS : PARENT_DEFAULTS);
+  const { visible, toggle } = useSectionVisibility(isChild ? CHILD_DEFAULTS : PARENT_DEFAULTS, member.id);
 
   useEffect(() => {
     let active = true;

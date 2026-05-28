@@ -41,25 +41,29 @@ export function MemberSectionToggle({ sections, visible, onToggle }: Props) {
   );
 }
 
-const STORAGE_KEY = 'member-section-visibility';
+function storageKey(memberId: string) {
+  return `member-section-visibility:${memberId}`;
+}
 
-export function useSectionVisibility(defaults: Record<SectionKey, boolean>) {
+export function useSectionVisibility(defaults: Record<SectionKey, boolean>, memberId: string) {
+  const key = storageKey(memberId);
+
   const [visible, setVisible] = useState<Record<SectionKey, boolean>>(() => {
     if (typeof window === 'undefined') return defaults;
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(key);
       if (stored) return { ...defaults, ...JSON.parse(stored) };
     } catch { /* ignore */ }
     return defaults;
   });
 
-  const toggle = useCallback((key: SectionKey) => {
+  const toggle = useCallback((sectionKey: SectionKey) => {
     setVisible(prev => {
-      const next = { ...prev, [key]: !prev[key] };
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      const next = { ...prev, [sectionKey]: !prev[sectionKey] };
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* ignore */ }
       return next;
     });
-  }, []);
+  }, [key]);
 
   return { visible, toggle };
 }

@@ -85,7 +85,7 @@ export default function MemberPage() {
   const [presence, setPresence] = useState<AulaPresence | null>(null);
 
   const isChild = member?.role === 'child';
-  const { visible, toggle } = useSectionVisibility(isChild ? CHILD_DEFAULTS : PARENT_DEFAULTS);
+  const { visible, toggle } = useSectionVisibility(isChild ? CHILD_DEFAULTS : PARENT_DEFAULTS, memberId ?? 'unknown');
 
   useEffect(() => {
     if (!memberId) return;
