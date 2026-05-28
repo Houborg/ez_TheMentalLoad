@@ -22,7 +22,7 @@ export function WeatherStrip({ forecast }: Props) {
             <div
               key={day.date}
               className={cn(
-                'flex flex-1 flex-col items-center gap-1.5 px-2 py-3',
+                'flex flex-1 flex-col items-center gap-1 px-1.5 py-3',
                 isToday && 'bg-primary/10',
               )}
             >
@@ -30,10 +30,10 @@ export function WeatherStrip({ forecast }: Props) {
                 {DAYS_DA[dowIndex]}
               </span>
               <span className="text-2xl leading-none">{day.icon}</span>
-              <span className={cn('text-xs font-bold', isToday ? 'text-primary' : 'text-foreground')}>
+              <span className={cn('text-[13px] font-bold', isToday ? 'text-primary' : 'text-foreground')}>
                 {Math.round(day.tempMax)}°
               </span>
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-[11px] text-muted-foreground">
                 {Math.round(day.tempMin)}°
               </span>
             </div>
