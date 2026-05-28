@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -53,13 +53,11 @@ import {
   type WeatherDailyPoint,
   type WeatherForecastResponse,
 } from '@/lib/api';
-import { TodayTimelineBoard } from '@/components/today-timeline-board';
 import { useMobile } from '@/lib/use-mobile';
 import { MobileShell } from '@/components/mobile/mobile-shell';
 import { cn } from '@/lib/utils';
 import { deduplicateRecurringTasks, WEEKDAY_OPTIONS } from '@/lib/entry-utils';
 import { SettingsHolidays } from '@/components/settings-holidays';
-import { KioskPlanner } from '@/components/kiosk-planner';
 import { SyncSettings } from './sync/sync-settings';
 import { MobileAulaSettings } from './mobile/mobile-aula-settings';
 import { AulaDataViewer } from './aula-data-viewer';
@@ -1882,7 +1880,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                                 <div className="flex items-center gap-1 mt-0.5">
                                   <div className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: color }} />
                                   <span className="text-[9px] text-muted-foreground truncate">
-                                    {member?.name ?? 'Ukendt'} Â· {startDate.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+                                    {member?.name ?? 'Ukendt'} · {startDate.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
                                   </span>
                                 </div>
                               </div>
@@ -1925,7 +1923,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                 <FamilieView
                   members={dashboard.members}
                   memberColorById={memberColorById}
-                  presenceByMemberId={dashboard.presence}
+                  presenceByMemberId={dashboard.presence ?? {}}
                   entries={monthEntriesForView}
                   timelinesByMemberId={todayTimelinesByMemberId as Record<string, { timeline: import('@mental-load/contracts').TodayMemberTimeline }>}
                   onAddMember={() => { setSettingsOpen(true); setSettingsTab('members'); }}
@@ -2324,7 +2322,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                   <div>
                     <h2 className="text-xl font-bold">{bi?.name ?? birthdayDetailEntry.title}</h2>
                     <p className="mt-0.5 text-sm text-muted-foreground">
-                      {bi ? `Turns ${bi.age} years old` : 'Birthday'} Â· {birthdayDate}
+                      {bi ? `Turns ${bi.age} years old` : 'Birthday'} · {birthdayDate}
                     </p>
                   </div>
                 </div>
@@ -2519,7 +2517,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                           </div>
                           <div>
                             <div className="text-sm font-semibold">{member.name}</div>
-                            <div className="text-xs text-muted-foreground capitalize">{member.role}{member.email ? ` Â· ${member.email}` : ''}</div>
+                            <div className="text-xs text-muted-foreground capitalize">{member.role}{member.email ? ` · ${member.email}` : ''}</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2872,7 +2870,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                       <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/30 px-4 py-3">
                         <div>
                           <div className="text-sm font-semibold">{item.name}</div>
-                          <div className="text-xs text-muted-foreground">{item.date} Â· notify {item.notifyDaysBefore} days before</div>
+                          <div className="text-xs text-muted-foreground">{item.date} · notify {item.notifyDaysBefore} days before</div>
                         </div>
                         <div className="flex gap-2">
                           <button type="button" onClick={() => handleEditBirthday(item.id)} className="rounded-xl border border-border/60 px-3 py-2 text-sm hover:bg-accent/60">Edit</button>
@@ -2929,11 +2927,11 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                           ...current,
                           assistant: { ...current.assistant, customInstructions: e.target.value },
                         } : current)}
-                        placeholder="Eks: Kald altid bÃ¸rnene ved navn. Brug humor. NÃ¦vn altid hvem der har ansvaret."
+                        placeholder="Eks: Kald altid børnene ved navn. Brug humor. Nævn altid hvem der har ansvaret."
                         className="w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60 resize-none"
                       />
                       <p className="text-xs text-muted-foreground">
-                        TilfÃ¸jes til AI-assistentens systemprompt. Giv assistenten personlighed eller husregler.
+                        Tilføjes til AI-assistentens systemprompt. Giv assistenten personlighed eller husregler.
                       </p>
                     </div>
                   </div>
@@ -2945,7 +2943,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
               <div className="space-y-3">
                 <div>
                   <h3 className="text-base font-semibold">Danske helligdage</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">Hent officielle danske helligdage og tilfÃ¸j dem til en kalender.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Hent officielle danske helligdage og tilføj dem til en kalender.</p>
                 </div>
                 <SettingsHolidays calendars={dashboard.calendars} />
               </div>
@@ -2970,21 +2968,21 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                           v{serverVersion.version}
                           <span className="ml-1 text-muted-foreground/60">({serverVersion.commit?.slice(0, 7)})</span>
                           {serverVersion.version === process.env.NEXT_PUBLIC_APP_VERSION
-                            ? <span className="ml-2 text-emerald-500 text-xs">âœ“ in sync</span>
-                            : <span className="ml-2 text-amber-500 text-xs">âš  mismatch</span>}
+                            ? <span className="ml-2 text-emerald-500 text-xs">✓ in sync</span>
+                            : <span className="ml-2 text-amber-500 text-xs">⚠ mismatch</span>}
                         </span>
                       : <button type="button" onClick={() => void fetchServerVersion()} className="text-primary hover:underline text-left">Check server</button>}
                     <span className="text-muted-foreground">Latest on GitHub</span>
                     {remoteVersion === 'loading'
-                      ? <span className="text-muted-foreground/60 text-xs">Checkingâ€¦</span>
+                      ? <span className="text-muted-foreground/60 text-xs">Checking…</span>
                       : remoteVersion === 'unavailable'
                         ? <button type="button" onClick={() => void fetchRemoteVersion()} className="text-primary hover:underline text-left text-xs">Check for updates</button>
                         : <span className="tabular-nums font-mono">
                             <span className="text-muted-foreground/60">({remoteVersion?.shortSha})</span>
                             {remoteVersion?.sha.startsWith(process.env.NEXT_PUBLIC_APP_COMMIT ?? '__never__')
                               || process.env.NEXT_PUBLIC_APP_COMMIT?.startsWith(remoteVersion?.shortSha ?? '')
-                              ? <span className="ml-2 text-emerald-500 text-xs">âœ“ up to date</span>
-                              : <span className="ml-2 text-amber-500 text-xs">âš  update available</span>}
+                              ? <span className="ml-2 text-emerald-500 text-xs">✓ up to date</span>
+                              : <span className="ml-2 text-amber-500 text-xs">⚠ update available</span>}
                             <span className="ml-2 text-muted-foreground/60 text-xs truncate max-w-[160px] inline-block align-bottom" title={remoteVersion?.message}>{remoteVersion?.message?.split('\n')[0]}</span>
                           </span>}
                   </div>
