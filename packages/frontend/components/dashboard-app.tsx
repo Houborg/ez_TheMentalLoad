@@ -472,6 +472,19 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
     return { done, pending: total - done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 };
   }, [dashboard.entries]);
 
+  // Load meter: events + tasks from now → end of current month, normalized 0–100
+  const loadScore = useMemo(() => {
+    const now = new Date();
+    const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59);
+    const remaining = monthEntriesForView.filter((e) => {
+      const start = new Date(e.startTime);
+      return start >= now && start <= endOfMonth;
+    });
+    const events = remaining.filter((e) => e.type === 'event').length;
+    const tasks = remaining.filter((e) => e.type === 'task').length;
+    return Math.min(100, Math.round((events + tasks * 0.5) / 20 * 100));
+  }, [monthEntriesForView, currentMonth]);
+
   const memberTaskProgress = useMemo(() => {
     return dashboard.members
       .map((member) => {
@@ -602,7 +615,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
     }
 
     if (!draft.calendarId) {
-      setErrorText('No calendar available. Create a member first â€” each member gets their own calendar.');
+      setErrorText('No calendar available. Create a member first â€" each member gets their own calendar.');
       return;
     }
 
@@ -1159,7 +1172,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
 
     const calendarId = getMemberCalendarId(memberId);
     if (!calendarId) {
-      setErrorText('No calendar found for this member. Create a member first â€” each member gets their own calendar.');
+      setErrorText('No calendar found for this member. Create a member first â€" each member gets their own calendar.');
       return;
     }
 
@@ -1647,6 +1660,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
         <main className="flex flex-1 flex-col">
           <SlimHeader
             weatherForecast={weatherForecast}
+            loadScore={loadScore}
             onAdd={() => openCreateEntryComposer()}
             onAI={() => handleNavClick('dashboard')}
             onLogout={() => void handleLogout()}
@@ -1654,87 +1668,15 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
 
           <section className="flex-1 overflow-auto px-4 py-6 md:px-6">
             {activeNav === 'dashboard' ? (
-            <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
-              <div id="hero-section">
-                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/50 px-3 py-1 text-xs uppercase tracking-[0.22em] text-muted-foreground">
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  Version 1.0.0
-                </div>
-                <h1 className="text-3xl font-bold tracking-tight">Family operations dashboard</h1>
-                <p className="mt-1 max-w-3xl text-sm text-muted-foreground md:text-base">
-                  The base of operations. Everything at a glance.
-                </p>
-              </div>
+            <div className="mx-auto flex max-w-[1600px] flex-col gap-4">
 
               {weatherForecast && <WeatherStrip forecast={weatherForecast} />}
 
               {errorText ? (
-                <div className="rounded-3xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">
+                <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">
                   {errorText}
                 </div>
               ) : null}
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {statCards.map((stat) => (
-                  <div key={stat.label} className="panel-surface rounded-[28px] border border-border/60 p-5 shadow-xl shadow-black/10">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{stat.label}</div>
-                        <div className="mt-3 text-3xl font-semibold tracking-tight">{stat.value}</div>
-                        <div className="mt-1 text-sm text-muted-foreground">{stat.subtext}</div>
-                      </div>
-                      <div className={cn('rounded-2xl p-3', stat.color)}>
-                        <stat.icon className="h-5 w-5" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {/* Task progress card */}
-                <div className="panel-surface rounded-[28px] border border-border/60 p-5 shadow-xl shadow-black/10">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Task progress</div>
-                      <div className="mt-3 text-3xl font-semibold tracking-tight">{taskProgress.done}<span className="text-lg text-muted-foreground">/{taskProgress.total}</span></div>
-                      <div className="mt-1 text-sm text-muted-foreground">{taskProgress.pending} not finished</div>
-                      <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-chart-5 transition-all duration-500"
-                          style={{ width: `${taskProgress.pct}%` }}
-                        />
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">{taskProgress.pct}% complete</div>
-                    </div>
-                    <div className="rounded-2xl p-3 text-chart-5 bg-chart-5/12">
-                      <CheckCircle2 className="h-5 w-5" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold">Task tracking by member</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Assigned tasks and completion per member.</p>
-                  </div>
-                </div>
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                  {memberTaskProgress.map(({ member, done, total, pct }) => (
-                    <div key={member.id} className="flex-shrink-0 rounded-2xl border border-border/60 bg-background/30 px-3 py-2.5 min-w-[120px]">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-primary-foreground" style={{ backgroundColor: memberColorById[member.id] ?? '#6d5efc' }}>
-                          {member.avatar ? <span className="text-xs">{member.avatar}</span> : member.name[0]}
-                        </div>
-                        <div className="text-xs font-semibold truncate">{member.name}</div>
-                      </div>
-                      <div className="text-xs text-muted-foreground mb-1.5">{done}/{total}</div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full bg-chart-2 transition-all duration-500" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
 
               {pendingInvitations.length > 0 ? (
                 <section className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
@@ -1754,7 +1696,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                               {new Date(entry.startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                               {!entry.allDay ? ` at ${new Date(entry.startTime).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : ' (all day)'}
                             </div>
-                            {entry.location ? <div className="mt-1 text-sm text-muted-foreground">ðŸ“ {entry.location}</div> : null}
+                            {entry.location ? <div className="mt-1 text-sm text-muted-foreground">ðŸ" {entry.location}</div> : null}
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -1781,8 +1723,9 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                 </section>
               ) : null}
 
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
-                <section id="planner-section" className="panel-surface rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
+              {/* Calendar + Upcoming — same height via grid align-items:stretch */}
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] xl:items-stretch">
+                <div className="rounded-xl border border-border bg-card overflow-hidden">
                   <MonthCalendar
                     month={currentMonth}
                     entries={monthEntriesForView}
@@ -1793,110 +1736,117 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                     onPrevMonth={() => setCurrentMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
                     onNextMonth={() => setCurrentMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
                   />
+                </div>
 
-                  <div className="mt-4 rounded-xl border border-border bg-card overflow-hidden">
-                    <div className="px-4 py-2.5 border-b border-border/50">
-                      <h3 className="text-xs font-bold text-foreground">
-                        {selectedDate.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'short' })}
-                      </h3>
-                    </div>
-                    <div className="flex divide-x divide-border/30">
-                      {dashboard.members.map((member) => {
-                        const color = memberColorById[member.id] ?? '#6d5efc';
-                        const dayStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}`;
-                        const memberEntries = monthEntriesForView.filter((e) => {
-                          const eDate = new Date(e.startTime).toISOString().slice(0, 10);
-                          const isOwner = e.ownerMemberId === member.id;
-                          const isVisible = (e.visibleMemberIds ?? []).includes(member.id);
-                          return (isOwner || isVisible) && eDate === dayStr;
-                        });
-                        return (
-                          <div key={member.id} className="flex-1 min-w-0">
-                            <div className="flex flex-col items-center gap-1 px-1 py-2 bg-muted/20 border-b border-border/30">
-                              <div
-                                className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                                style={{ background: color }}
-                              >
-                                {member.avatar ?? member.name.slice(0, 1).toUpperCase()}
-                              </div>
-                              <span className="text-[8px] font-bold text-muted-foreground truncate max-w-[40px]">{member.name.split(' ')[0]}</span>
-                            </div>
-                            <div className="flex flex-col gap-1 p-1.5 min-h-[40px]">
-                              {memberEntries.length === 0 ? (
-                                <span className="text-[9px] text-muted-foreground/40 text-center py-2">â€”</span>
-                              ) : memberEntries.slice(0, 3).map((e) => (
-                                <button
-                                  key={e.id}
-                                  type="button"
-                                  onClick={() => handleEditEntry(e)}
-                                  className="block w-full truncate rounded-full px-1.5 py-[2px] text-[9px] font-bold text-white text-left"
-                                  style={{ background: color }}
-                                  title={e.title}
-                                >
-                                  {e.title}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                {/* Upcoming events — stretches to fill calendar height */}
+                <aside className="flex flex-col rounded-xl border border-border bg-card overflow-hidden">
+                  <div className="px-4 py-3 border-b border-border/50 font-bold text-sm text-foreground flex items-center justify-between shrink-0">
+                    <span>📅 Kommende begivenheder</span>
+                    <span className="text-[10px] font-medium text-muted-foreground">{filteredUpcoming.length}</span>
                   </div>
-                </section>
-
-                <aside className="flex min-h-[600px] flex-col gap-6">
-                  <section className="panel-surface flex min-h-[320px] flex-col rounded-[30px] border border-border/60 p-5 shadow-2xl shadow-black/10">
-                    <div className="mb-4 flex items-center justify-between">
-                      <div>
-                        <h2 className="text-lg font-semibold">Upcoming events</h2>
-                        <p className="mt-1 text-sm text-muted-foreground">Next 30 days, including recurring occurrences.</p>
-                      </div>
-                      <div className="rounded-full border border-border/60 px-2 py-1 text-xs text-muted-foreground">{filteredUpcoming.length} items</div>
-                    </div>
-                    <div className="overflow-auto lg:overflow-visible rounded-xl border border-border/60 divide-y divide-border/30">
-                      {filteredUpcoming.slice(0, 8).map((entry) => {
-                        const color = memberColorById[entry.ownerMemberId] ?? '#6d5efc';
-                        const member = dashboard.members.find((m) => m.id === entry.ownerMemberId);
-                        const startDate = new Date(entry.startTime);
-                        return (
-                          <div
-                            key={entry.id}
-                            className="flex items-stretch border-b border-border/30 last:border-b-0 cursor-pointer hover:bg-muted/30 transition-colors"
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => handleEditEntry(entry)}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleEditEntry(entry); } }}
-                          >
-                            <div className="w-1 shrink-0 rounded-l" style={{ background: color }} />
-                            <div className="flex items-center gap-2.5 px-3 py-2 flex-1 min-w-0">
-                              <div className="text-center w-7 shrink-0">
-                                <div className="text-sm font-black leading-none">{startDate.getDate()}</div>
-                                <div className="text-[8px] font-bold text-muted-foreground uppercase">
-                                  {startDate.toLocaleDateString('da-DK', { weekday: 'short' })}
-                                </div>
+                  <div className="flex-1 overflow-y-auto divide-y divide-border/30">
+                    {filteredUpcoming.slice(0, 20).map((entry) => {
+                      const color = memberColorById[entry.ownerMemberId] ?? '#6d5efc';
+                      const member = dashboard.members.find((m) => m.id === entry.ownerMemberId);
+                      const startDate = new Date(entry.startTime);
+                      return (
+                        <div
+                          key={entry.id}
+                          className="flex items-stretch cursor-pointer hover:bg-muted/30 transition-colors"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => handleEditEntry(entry)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleEditEntry(entry); } }}
+                        >
+                          <div className="w-1 shrink-0" style={{ background: color }} />
+                          <div className="flex items-center gap-2.5 px-3 py-2 flex-1 min-w-0">
+                            <div className="text-center w-7 shrink-0">
+                              <div className="text-sm font-black leading-none">{startDate.getDate()}</div>
+                              <div className="text-[8px] font-bold text-muted-foreground uppercase">
+                                {startDate.toLocaleDateString('da-DK', { weekday: 'short' })}
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="truncate text-[11px] font-bold">{entry.title}</div>
-                                <div className="flex items-center gap-1 mt-0.5">
-                                  <div className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: color }} />
-                                  <span className="text-[9px] text-muted-foreground truncate">
-                                    {member?.name ?? 'Ukendt'} · {startDate.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
-                                  </span>
-                                </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="truncate text-[11px] font-bold">{entry.title}</div>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <div className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: color }} />
+                                <span className="text-[9px] text-muted-foreground truncate">
+                                  {member?.name ?? 'Ukendt'} · {startDate.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
                               </div>
                             </div>
                           </div>
-                        );
-                      })}
-                      {filteredUpcoming.length === 0 && (
-                        <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-center text-muted-foreground">
-                          Ingen kommende begivenheder.
                         </div>
-                      )}
-                    </div>
-                  </section>
-
+                      );
+                    })}
+                    {filteredUpcoming.length === 0 && (
+                      <div className="px-4 py-8 text-sm text-center text-muted-foreground">
+                        Ingen kommende begivenheder.
+                      </div>
+                    )}
+                  </div>
                 </aside>
+              </div>
+
+              {/* Food plan strip */}
+              {foodPlanItems.length > 0 && (
+                <div className="rounded-xl border border-border bg-card overflow-hidden">
+                  <div className="flex divide-x divide-border/50">
+                    {(['monday','tuesday','wednesday','thursday','friday','saturday','sunday'] as const).map((day) => {
+                      const item = foodPlanItems.find((f) => f.day === day);
+                      const todayDay = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+                      const isToday = day === todayDay;
+                      const DAY_DA: Record<string, string> = { monday:'Man',tuesday:'Tir',wednesday:'Ons',thursday:'Tor',friday:'Fre',saturday:'Lør',sunday:'Søn' };
+                      const FOOD_EMOJI: Record<string, string> = { pasta:'🍝',pizza:'🍕',burger:'🍔',kylling:'🍗',laks:'🐟',fisk:'🐟',suppe:'🍲',salat:'🥗',tacos:'🌮',grillret:'🥩',ris:'🍚',kartofler:'🥔',spaghetti:'🍝',bøf:'🥩' };
+                      const emoji = item ? (Object.entries(FOOD_EMOJI).find(([k]) => item.dishName.toLowerCase().includes(k))?.[1] ?? '🍽') : '—';
+                      return (
+                        <div
+                          key={day}
+                          className={cn('flex flex-1 flex-col items-center gap-1 px-1 py-3', isToday && 'bg-primary/10')}
+                        >
+                          <span className={cn('text-[10px] font-bold uppercase tracking-wide', isToday ? 'text-primary' : 'text-muted-foreground')}>
+                            {DAY_DA[day]}{isToday ? ' ●' : ''}
+                          </span>
+                          <span className="text-2xl leading-none">{emoji}</span>
+                          <span className={cn('text-[10px] font-bold truncate max-w-[60px] text-center', isToday ? 'text-primary' : 'text-foreground')}>
+                            {item?.dishName.split(' ')[0] ?? ''}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Member task progress — full width, clickable → member page */}
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                <div className="flex divide-x divide-border/50">
+                  {memberTaskProgress.map(({ member, done, total, pct }) => {
+                    const color = memberColorById[member.id] ?? '#6d5efc';
+                    return (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => { setActiveMemberId(member.id); router.push(`/member/${encodeURIComponent(member.id)}`); }}
+                        className="flex flex-1 flex-col items-center gap-2 px-2 py-3 hover:bg-muted/30 transition-colors"
+                      >
+                        <div
+                          className="h-9 w-9 rounded-full flex items-center justify-center text-sm font-black text-white shadow-md shrink-0"
+                          style={{ background: color }}
+                        >
+                          {member.avatar ?? member.name.slice(0, 1).toUpperCase()}
+                        </div>
+                        <span className="text-[10px] font-bold text-muted-foreground">{member.name.split(' ')[0]}</span>
+                        <div className="w-full px-2">
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-muted-foreground">{done}/{total}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
             ) : activeNav === 'idag' ? (
@@ -2344,7 +2294,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                 />
               </label>
               <div className="mt-3 flex items-center gap-3 rounded-2xl border border-border/60 bg-background/40 px-4 py-3">
-                <span className="text-sm text-muted-foreground">ðŸ”— Ã˜nskeskyen integration</span>
+                <span className="text-sm text-muted-foreground">ðŸ"— Ã˜nskeskyen integration</span>
                 <a
                   href="https://onskeskyen.dk/da"
                   target="_blank"
@@ -2450,7 +2400,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                     <option value="en">English</option>
                     <option value="da">Dansk</option>
                   </select>
-                  <p className="text-xs text-muted-foreground">Full translation coming soon â€” saves your preference now.</p>
+                  <p className="text-xs text-muted-foreground">Full translation coming soon â€" saves your preference now.</p>
                 </label>
               </>
             ) : null}
@@ -2490,8 +2440,8 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                   <div className="grid gap-1.5">
                     <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Avatar (emoji)</span>
                     <div className="flex flex-wrap items-center gap-2">
-                      <input value={memberDraft.avatar} onChange={(event) => setMemberDraft((current) => ({ ...current, avatar: event.target.value }))} className="w-16 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-center text-sm outline-none focus:border-primary/60" placeholder="ðŸ‘¤" maxLength={4} />
-                      {['ðŸ‘©','ðŸ‘¨','ðŸ‘§','ðŸ‘¦','ðŸ‘µ','ðŸ‘´','ðŸ§‘','ðŸ‘¶','ðŸ§’','ðŸ§‘â€ðŸ’¼','ðŸ‘©â€ðŸ’¼','ðŸ‘¨â€ðŸ’¼','ðŸ§‘â€ðŸŽ“','ðŸ‘©â€ðŸŽ“','ðŸ‘¨â€ðŸŽ“','ðŸ¶','ðŸ±','ðŸ¦Š','ðŸ¼','ðŸ¦'].map((emoji) => (
+                      <input value={memberDraft.avatar} onChange={(event) => setMemberDraft((current) => ({ ...current, avatar: event.target.value }))} className='w-16 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-center text-sm outline-none focus:border-primary/60' placeholder='👤' maxLength={4} />
+                      {['👩','👨','👧','👦','👵','👴','🧑','👶','🐶','🐱','🦊','🐼','🦁','⭐'].map((emoji) => (
                         <button key={emoji} type="button" onClick={() => setMemberDraft((current) => ({ ...current, avatar: emoji }))} className={cn('rounded-lg border px-2 py-1 text-base transition', memberDraft.avatar === emoji ? 'border-primary bg-primary/10' : 'border-border/60 hover:bg-accent/60')}>{emoji}</button>
                       ))}
                     </div>
@@ -2996,7 +2946,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                 <div className="rounded-2xl border border-border/60 bg-background/30 px-4 py-3 text-sm text-muted-foreground">
                   Force a production update from the current GitHub repository.
                   {!process.env.NEXT_PUBLIC_APP_COMMIT || process.env.NEXT_PUBLIC_APP_COMMIT === 'local'
-                    ? <span className="block mt-1 text-amber-500/80 text-xs">Running in dev mode â€” only git pull will run (no Docker rebuild).</span>
+                    ? <span className="block mt-1 text-amber-500/80 text-xs">Running in dev mode â€" only git pull will run (no Docker rebuild).</span>
                     : null}
                 </div>
                 <button

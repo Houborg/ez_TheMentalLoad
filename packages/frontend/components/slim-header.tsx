@@ -2,16 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { LogOut, Plus, Sparkles } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { WeatherForecastResponse } from '@/lib/api';
 
 type Props = {
   weatherForecast: WeatherForecastResponse | null;
+  loadScore?: number;
   onAdd: () => void;
   onAI: () => void;
   onLogout?: () => void;
 };
 
-export function SlimHeader({ weatherForecast, onAdd, onAI, onLogout }: Props) {
+export function SlimHeader({ weatherForecast, loadScore, onAdd, onAI, onLogout }: Props) {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -30,6 +32,26 @@ export function SlimHeader({ weatherForecast, onAdd, onAI, onLogout }: Props) {
         <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground">
           <span>{weatherForecast.current.icon}</span>
           <span>{Math.round(weatherForecast.current.temperature)}°{weatherForecast.unit}</span>
+        </div>
+      )}
+      {loadScore !== undefined && (
+        <div
+          className={cn(
+            'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold',
+            loadScore <= 30
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : loadScore <= 60
+                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                : 'border-orange-200 bg-orange-50 text-orange-700',
+          )}
+          title={`Familiebelastning ${loadScore}/100 (events + opgaver til månedsslut)`}
+        >
+          <span className={cn(
+            'h-2 w-2 rounded-full',
+            loadScore <= 30 ? 'bg-green-500' : loadScore <= 60 ? 'bg-amber-500' : 'bg-orange-500',
+          )} />
+          <span className="hidden sm:inline text-muted-foreground font-medium">Belastning</span>
+          <span>{loadScore}</span>
         </div>
       )}
       <div className="flex-1" />

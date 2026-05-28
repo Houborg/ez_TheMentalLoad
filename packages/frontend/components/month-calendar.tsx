@@ -148,7 +148,7 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
           <div
             key={weekStartStr}
             className="relative grid grid-cols-7 border-b border-border/30 last:border-b-0"
-            style={{ minHeight: `${22 + spanning.length * 18 + 36}px` }}
+            style={{ minHeight: `${Math.max(90, 22 + spanning.length * 18 + 40)}px` }}
           >
             {week.map((day) => {
               const dayStr = toLocalDateStr(day);
@@ -193,8 +193,8 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
                         key={r.entry.id}
                         type="button"
                         onClick={(e) => { e.stopPropagation(); onClickEntry?.(r.entry); }}
-                        className="block w-full truncate rounded-full px-1.5 py-[1px] text-[9px] font-bold text-white leading-tight text-left hover:brightness-110 transition-[filter]"
-                        style={{ background: memberGradient(r.colors) }}
+                        className="block w-full truncate rounded-[3px] px-1.5 text-[9px] font-bold text-white text-left hover:brightness-110 transition-[filter] flex items-center"
+                        style={{ height: '15px', background: memberGradient(r.colors) }}
                         title={r.entry.title}
                       >
                         {r.entry.title}
@@ -227,7 +227,7 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
                   className="absolute flex items-center overflow-hidden text-[9px] font-bold text-white leading-none hover:brightness-110 transition-[filter]"
                   style={{
                     top: `${laneTop}px`,
-                    height: '16px',
+                    height: '15px',
                     left: `calc(${colStart} / 7 * 100%)`,
                     width: `calc(${spanCols} / 7 * 100%)`,
                     background: memberGradient(r.colors),
