@@ -5,7 +5,7 @@ import json
 import os
 import tempfile
 import time
-from datetime import date
+from datetime import date, timezone, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -772,26 +772,49 @@ async def fetch_data(req: FetchDataRequest) -> dict:
         except Exception as e:
             print(f"[fetch-data] could not load profile for inst ids, using child_ids: {e}", flush=True)
 
-        # Calendar events — pass all institution profile ids to avoid 403
-        # that occurred when using only child_ids.
+        # Calendar events — direct API call bypassing library method.
+        # Root cause of previous 403: strftime('%z') gives "+0200" but Aula
+        # requires "+02:00" (colon separator). Also the dates must be in
+        # Copenhagen local time, not UTC.
         if req.child_ids and start_dt and end_dt:
             try:
-                events = await client.get_calendar_events(
-                    institution_profile_ids=all_inst_ids,
-                    start=start_dt,
-                    end=end_dt,
+                cph_tz = timezone(timedelta(hours=2))  # Europe/Copenhagen DST offset
+
+                def _fmt_aula_dt(dt, end_of_day: bool = False) -> str:
+                    """Format datetime as Aula expects: 'YYYY-MM-DD HH:MM:SS.0000+02:00'"""
+                    d = dt.astimezone(cph_tz)
+                    time_part = "23:59:59.9990" if end_of_day else "00:00:00.0000"
+                    tz_str = d.strftime("%z")  # "+0200"
+                    tz_colon = f"{tz_str[:3]}:{tz_str[3:]}"  # "+02:00"
+                    return f"{d.strftime('%Y-%m-%d')} {time_part}{tz_colon}"
+
+                payload = {
+                    "instProfileIds": all_inst_ids,
+                    "resourceIds": [],
+                    "start": _fmt_aula_dt(start_dt, end_of_day=False),
+                    "end": _fmt_aula_dt(end_dt, end_of_day=True),
+                }
+                resp = await client._request_with_version_retry(
+                    "post",
+                    f"{client.api_url}?method=calendar.getEventsByProfileIdsAndResourceIds",
+                    json=payload,
                 )
-                for ev in events or []:
+                resp.raise_for_status()
+                raw_events = resp.json().get("data", []) or []
+                for ev in raw_events:
+                    belongs = (ev.get("belongsToProfiles") or [])
                     result["calendar_events"].append({
-                        "id": str(getattr(ev, 'id', '')),
-                        "title": getattr(ev, 'title', '') or '',
-                        "startTime": _iso_or_none(getattr(ev, 'start_datetime', None)) or '',
-                        "endTime": _iso_or_none(getattr(ev, 'end_datetime', None)) or '',
-                        "allDay": False,
-                        "location": getattr(ev, 'location', None),
-                        "childId": getattr(ev, 'belongs_to', None) or all_inst_ids[0] if all_inst_ids else 0,
+                        "id": str(ev.get("id", "")),
+                        "title": ev.get("title") or "",
+                        "startTime": ev.get("startDateTime") or "",
+                        "endTime": ev.get("endDateTime") or "",
+                        "allDay": bool(ev.get("allDay", False)),
+                        "location": ev.get("location"),
+                        "childId": belongs[0] if belongs else (all_inst_ids[0] if all_inst_ids else 0),
+                        "lessonStatus": (ev.get("lesson") or {}).get("lessonStatus"),
+                        "type": ev.get("type", "lesson"),
                     })
-                print(f"[fetch-data] calendar events: {len(result['calendar_events'])} events", flush=True)
+                print(f"[fetch-data] calendar events (direct): {len(result['calendar_events'])} events", flush=True)
             except Exception as e:
                 print(f"[fetch-data] calendar events failed: {type(e).__name__}: {e}", flush=True)
 

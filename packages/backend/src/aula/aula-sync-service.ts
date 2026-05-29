@@ -139,16 +139,35 @@ export class AulaSyncService {
         presence: SidecarPresence[];
       };
 
-      // Calendar events → entries
+      // Calendar events → entries + aula_items (calendar_lesson)
+      // The sidecar now calls calendar.getEventsByProfileIdsAndResourceIds directly
+      // with the correct +02:00 timezone format, bypassing the library's broken %z.
       if (conn.syncOptions.calendarEvents) {
         for (const event of data.calendar_events) {
-          const externalUid = `aula-${event.id}`;
-          const exists = await this.findByExternalUid(externalUid);
-          if (exists) continue;
+          const mapping = conn.childMappings.find(m => m.aulaChildId === event.childId);
+          if (!mapping) continue;
 
+          // Store as aula_item (calendar_lesson) so IDagView can show school schedule
+          // Use upsert so re-syncs update existing rows without duplicates
+          const aulaId = `cal-${event.id}`;
+          const eventDate = event.startTime ? event.startTime.slice(0, 10) : null;
+          await this.upsertAulaItem({
+            aulaId,
+            type: 'calendar_lesson',
+            title: event.title || '',
+            body: '',
+            memberId: mapping.mentalLoadMemberId,
+            publishedAt: eventDate ?? undefined,
+            rawJson: event,
+            mode: 'upsert',
+          });
+          itemsCreated++;
+
+          // Also import as a MentalLoad entry if requested
           if (conn.syncOptions.importToCalendar) {
-            const mapping = conn.childMappings.find(m => m.aulaChildId === event.childId);
-            if (mapping) {
+            const externalUid = `aula-${event.id}`;
+            const exists = await this.findByExternalUid(externalUid);
+            if (!exists) {
               await this.createEntry(event, externalUid, mapping.mentalLoadMemberId, mapping.calendarId);
               entriesCreated++;
             }

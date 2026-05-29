@@ -63,7 +63,9 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
   const todayDow = new Date().getDay();
   const isSchoolDay = todayDow >= 1 && todayDow <= 5;
 
-  // Load Aula weekplan lessons for child members on school days
+  // Load Aula school lessons for child members on school days.
+  // Tries calendar_lesson first (real timed lessons from Aula calendar API),
+  // falls back to weekplan_lesson (text-only overview with no times).
   useEffect(() => {
     if (!isSchoolDay) return;
     const children = members.filter((m) => m.role === 'child');
@@ -72,8 +74,38 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
     Promise.all(
       children.map(async (child) => {
         try {
-          const { items } = await aulaGetItems({ type: 'weekplan_lesson', memberId: child.id, pageSize: 50 });
-          return items
+          // Prefer calendar_lesson — these have real start/end times (UTC ISO)
+          const { items } = await aulaGetItems({ type: 'calendar_lesson', memberId: child.id, pageSize: 100 });
+          const todayLessons = items.filter((item) => {
+            const raw = item.raw_json as Record<string, unknown> | undefined;
+            const startTime = String(raw?.startTime ?? '');
+            return startTime.startsWith(todayStr);
+          });
+
+          if (todayLessons.length > 0) {
+            return todayLessons.map((item) => {
+              const raw = item.raw_json as Record<string, unknown>;
+              const startISO = String(raw.startTime ?? '');
+              const endISO = String(raw.endTime ?? '');
+              // Convert UTC ISO to HH:MM in Copenhagen time (UTC+2 in summer)
+              const toHHMM = (iso: string) => {
+                if (!iso) return undefined;
+                const d = new Date(iso);
+                return d.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Copenhagen' });
+              };
+              return {
+                memberId: child.id,
+                title: String(raw.title ?? item.title ?? 'Lektion'),
+                date: todayStr,
+                startTime: toHHMM(startISO),
+                endTime: toHHMM(endISO),
+              } as AulaLesson;
+            });
+          }
+
+          // Fallback: weekplan_lesson (no times, filtered by raw_json.date)
+          const { items: wpItems } = await aulaGetItems({ type: 'weekplan_lesson', memberId: child.id, pageSize: 50 });
+          return wpItems
             .filter((item) => {
               const raw = item.raw_json as Record<string, unknown> | undefined;
               return raw?.date === todayStr;
