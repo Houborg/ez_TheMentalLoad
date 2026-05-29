@@ -124,7 +124,25 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
           return [];
         }
       }),
-    ).then((results) => setAulaLessons(results.flat()));
+    ).then((allResults) => {
+      const flat = allResults.flat();
+
+      // If no real timed lessons found for a child, add a generic "I skole" block
+      // (08:00–14:30 school hours) so the time grid shows they're at school.
+      const childrenWithLessons = new Set(flat.map((l) => l.memberId));
+      const children = members.filter((m) => m.role === 'child');
+      const fallbacks: AulaLesson[] = children
+        .filter((c) => !childrenWithLessons.has(c.id))
+        .map((c) => ({
+          memberId: c.id,
+          title: 'I skole',
+          date: todayStr,
+          startTime: '08:00',
+          endTime: '14:30',
+        }));
+
+      setAulaLessons([...flat, ...fallbacks]);
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayStr, isSchoolDay, members.map(m => m.id).join(',')]);
 
