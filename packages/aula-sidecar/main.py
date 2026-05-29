@@ -860,10 +860,16 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     "start": _fmt_aula_dt(start_dt, end_of_day=False),
                     "end": _fmt_aula_dt(end_dt, end_of_day=True),
                 }
-                print(f"[fetch-data] calendar payload: {payload}", flush=True)
+                # Try with access_token in URL — bypasses PHP session requirement.
+                # init() clears it from the client, but we still have it in token_data.
+                access_token = req.token_data.get("tokens", {}).get("access_token", "")
+                cal_url = f"{client.api_url}?method=calendar.getEventsByProfileIdsAndResourceIds"
+                if access_token:
+                    cal_url += f"&access_token={access_token}"
+                print(f"[fetch-data] calendar attempt (token={'yes' if access_token else 'no'})", flush=True)
                 resp = await client._request_with_version_retry(
                     "post",
-                    f"{client.api_url}?method=calendar.getEventsByProfileIdsAndResourceIds",
+                    cal_url,
                     json=payload,
                 )
                 resp.raise_for_status()
