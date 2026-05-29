@@ -867,31 +867,35 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     if pw_cookies:
                         await ctx.add_cookies(pw_cookies)
 
-                    # Intercept the getProfilesByLogin request — this is what the Angular
-                    # app fires to authenticate the PHP session. We wait for it to complete
-                    # before making our calendar call, ensuring the session is ready.
-                    profile_login_done: list[bool] = [False]
+                    # Wait for the calendar endpoint itself to be hit by Angular —
+                    # this means the full calendar context is loaded and ready.
+                    # We track multiple signals: profile login AND calendar event type fetch.
+                    profile_done: list[bool] = [False]
+                    calendar_context_done: list[bool] = [False]
 
                     async def on_response(response):
-                        if "getProfilesByLogin" in response.url or "getProfileContext" in response.url:
-                            profile_login_done[0] = True
+                        url = response.url
+                        if "getProfilesByLogin" in url or "getProfileContext" in url:
+                            profile_done[0] = True
+                        if "getEventTypes" in url or "CalendarFeed" in url or "getBirthdayEvents" in url:
+                            calendar_context_done[0] = True
 
                     page = await ctx.new_page()
                     page.on("response", on_response)
 
-                    # Navigate to the Aula portal — this establishes the authenticated
-                    # PHP session (PHPSESSID) just like a real browser does.
-                    print(f"[calendar-pw] navigating to portal", flush=True)
-                    await page.goto("https://www.aula.dk/portal/", wait_until="domcontentloaded", timeout=30000)
+                    # Navigate directly to the calendar page — this initialises the full
+                    # calendar context in Angular (profile + calendar feed + event types).
+                    print(f"[calendar-pw] navigating to calendar page", flush=True)
+                    await page.goto("https://www.aula.dk/portal/#/kalender", wait_until="domcontentloaded", timeout=30000)
 
-                    # Wait for Angular's auth API calls to complete (max 10s)
-                    for _ in range(20):
-                        if profile_login_done[0]:
+                    # Wait for calendar context to be ready (max 15s)
+                    for _ in range(30):
+                        if profile_done[0] and calendar_context_done[0]:
                             break
                         await page.wait_for_timeout(500)
-                    print(f"[calendar-pw] auth ready={profile_login_done[0]}", flush=True)
+                    print(f"[calendar-pw] ready: profile={profile_done[0]} calendar_ctx={calendar_context_done[0]}", flush=True)
 
-                    # Extra wait for session to be fully established
+                    # Extra wait for any trailing session setup
                     await page.wait_for_timeout(2000)
 
                     # Playwright can read HttpOnly cookies — document.cookie cannot.
