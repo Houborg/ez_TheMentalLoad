@@ -33,6 +33,7 @@ export interface AulaLesson {
   date: string;        // YYYY-MM-DD
   startTime?: string;  // HH:MM
   endTime?: string;    // HH:MM
+  confirmed?: boolean;
 }
 
 type Props = {
@@ -167,6 +168,12 @@ export function TimeGrid({ members, memberColorById, entries, aulaLessons = [], 
                       <div className="text-[9px] font-semibold text-muted-foreground truncate">
                         📚 {lesson.title}
                       </div>
+                      {lesson.confirmed && (
+                        <span
+                          className="absolute right-1 top-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] text-white"
+                          style={{ background: color }}
+                        >✓</span>
+                      )}
                     </div>
                   );
                 })}

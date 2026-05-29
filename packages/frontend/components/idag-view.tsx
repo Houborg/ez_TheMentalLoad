@@ -93,6 +93,7 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
                 date: todayStr,
                 startTime: e.startTime,
                 endTime: e.endTime,
+                confirmed: e.confirmed,
               } as AulaLesson)),
             };
           }
@@ -113,7 +114,7 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
                   if (!iso) return undefined;
                   return new Date(iso).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Copenhagen' });
                 };
-                return { memberId: child.id, title: String(raw.title ?? item.title ?? 'Lektion'), date: todayStr, startTime: toHHMM(String(raw.startTime ?? '')), endTime: toHHMM(String(raw.endTime ?? '')) } as AulaLesson;
+                return { memberId: child.id, title: String(raw.title ?? item.title ?? 'Lektion'), date: todayStr, startTime: toHHMM(String(raw.startTime ?? '')), endTime: toHHMM(String(raw.endTime ?? '')), confirmed: (item as { confirmed?: boolean }).confirmed } as AulaLesson;
               }),
             };
           }
@@ -126,7 +127,7 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
               childId: child.id, noSchedule: false,
               lessons: wpToday.map(item => {
                 const raw = item.raw_json as Record<string, unknown>;
-                return { memberId: child.id, title: String(raw.title ?? item.title ?? 'Lektion'), date: String(raw.date ?? todayStr), startTime: raw.startTime ? String(raw.startTime) : undefined, endTime: raw.endTime ? String(raw.endTime) : undefined } as AulaLesson;
+                return { memberId: child.id, title: String(raw.title ?? item.title ?? 'Lektion'), date: String(raw.date ?? todayStr), startTime: raw.startTime ? String(raw.startTime) : undefined, endTime: raw.endTime ? String(raw.endTime) : undefined, confirmed: (item as { confirmed?: boolean }).confirmed } as AulaLesson;
               }),
             };
           }
@@ -139,7 +140,7 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
           if (manualToday.length > 0) {
             return {
               childId: child.id, noSchedule: false,
-              lessons: manualToday.map(e => ({ memberId: child.id, title: e.title, date: todayStr, startTime: e.startTime, endTime: e.endTime } as AulaLesson)),
+              lessons: manualToday.map(e => ({ memberId: child.id, title: e.title, date: todayStr, startTime: e.startTime, endTime: e.endTime, confirmed: e.confirmed } as AulaLesson)),
             };
           }
 
@@ -154,7 +155,6 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
       const flat = results.flatMap(r => r.lessons);
       setAulaLessons(flat);
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayStr, isSchoolDay, members.map(m => m.id + (m.useAulaSchedule ?? true)).join(',')]);
 
   return (
