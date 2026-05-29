@@ -899,11 +899,20 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     print(f"[calendar-pw] calling calendar API", flush=True)
                     cal_result = await page.evaluate("""
                         async (payload) => {
+                            // Read csrfp-token from cookies — required on all Aula POST requests
+                            const csrfToken = document.cookie
+                                .split('; ')
+                                .find(c => c.startsWith('Csrfp-Token='))
+                                ?.split('=')[1] || '';
+
                             const r = await fetch(
                                 '/api/v23/?method=calendar.getEventsByProfileIdsAndResourceIds',
                                 {
                                     method: 'POST',
-                                    headers: {'content-type': 'application/json'},
+                                    headers: {
+                                        'content-type': 'application/json',
+                                        'csrfp-token': csrfToken,
+                                    },
                                     credentials: 'include',
                                     body: JSON.stringify(payload),
                                 }
@@ -912,14 +921,14 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                             let data;
                             try { data = JSON.parse(text); }
                             catch(e) { data = { _raw: text.slice(0, 300) }; }
-                            return { status: r.status, data };
+                            return { status: r.status, data, csrfUsed: csrfToken ? 'yes' : 'no' };
                         }
                     """, payload)
 
                     await browser.close()
 
                 status = cal_result.get("status", 0)
-                print(f"[calendar-pw] response status={status}", flush=True)
+                print(f"[calendar-pw] response status={status} csrf={cal_result.get('csrfUsed','?')}", flush=True)
 
                 if status == 200:
                     raw_events = (cal_result.get("data") or {}).get("data", []) or []
