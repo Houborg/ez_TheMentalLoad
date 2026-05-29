@@ -822,11 +822,28 @@ async def fetch_data(req: FetchDataRequest) -> dict:
             print(f"[fetch-data] could not load profile for inst ids, using child_ids: {e}", flush=True)
 
         # Calendar events — direct API call bypassing library method.
-        # Root cause of previous 403: strftime('%z') gives "+0200" but Aula
-        # requires "+02:00" (colon separator). Also the dates must be in
-        # Copenhagen local time, not UTC.
         if req.child_ids and start_dt and end_dt:
             try:
+                # Warm up the PHP session for calendar access by calling the same
+                # endpoints the browser's Angular app calls before getEventsByProfileIds.
+                # These appear in the browser's network log just before the calendar call
+                # and likely activate the guardian calendar context in the PHP session.
+                for warmup_method in [
+                    f"profiles.getProfileMasterData&instProfileId={all_inst_ids[0]}" if all_inst_ids else None,
+                    "CalendarFeed.getPolicyAnswer",
+                    "CalendarFeed.getFeedConfigurations",
+                    f"calendar.getEventTypes&filterInstitutionCodes={','.join(str(i) for i in all_inst_ids)}" if all_inst_ids else None,
+                ]:
+                    if warmup_method is None:
+                        continue
+                    try:
+                        await client._request_with_version_retry(
+                            "get",
+                            f"{client.api_url}?method={warmup_method}",
+                        )
+                    except Exception:
+                        pass  # warmup failures are non-fatal
+
                 cph_tz = timezone(timedelta(hours=2))  # Europe/Copenhagen DST offset
 
                 def _fmt_aula_dt(dt, end_of_day: bool = False) -> str:
