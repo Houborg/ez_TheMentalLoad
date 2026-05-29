@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, UserPlus } from 'lucide-react';
+import { ChevronDown, UserPlus, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AulaPresence, Entry, Member, TodayMemberTimeline } from '@mental-load/contracts';
+import { ScheduleEditor } from '@/components/schedule-editor';
 
 // ── Presence helpers ──────────────────────────────────────────────────────────
 
@@ -94,6 +95,8 @@ type Props = {
   timelinesByMemberId: Record<string, { timeline: TodayMemberTimeline }>;
   onAddMember: () => void;
   onNavigateToMember: (memberId: string) => void;
+  aulaConnected: boolean;
+  onMemberUpdated: (m: Member) => void;
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -106,8 +109,12 @@ export function FamilieView({
   timelinesByMemberId,
   onAddMember,
   onNavigateToMember,
+  aulaConnected,
+  onMemberUpdated,
 }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [scheduleEditorMemberId, setScheduleEditorMemberId] = useState<string | null>(null);
+  const scheduleEditorMember = members.find(m => m.id === scheduleEditorMemberId) ?? null;
 
   return (
     <div className="flex flex-col gap-3 p-3">
@@ -186,12 +193,24 @@ export function FamilieView({
                     </span>
                   </div>
                 )}
-                <ChevronDown
-                  className={cn(
-                    'h-4 w-4 text-muted-foreground transition-transform',
-                    isExpanded && 'rotate-180',
+                <div className="flex items-center gap-1.5">
+                  {member.role === 'child' && (
+                    <button
+                      type="button"
+                      aria-label={`Rediger ugeskema for ${member.name}`}
+                      onClick={(e) => { e.stopPropagation(); setScheduleEditorMemberId(member.id); }}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60 hover:bg-muted"
+                    >
+                      <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                    </button>
                   )}
-                />
+                  <ChevronDown
+                    className={cn(
+                      'h-4 w-4 text-muted-foreground transition-transform',
+                      isExpanded && 'rotate-180',
+                    )}
+                  />
+                </div>
               </div>
             </button>
 
@@ -295,6 +314,15 @@ export function FamilieView({
         <UserPlus className="h-4 w-4" />
         Tilføj familiemedlem
       </button>
+
+      {scheduleEditorMember && (
+        <ScheduleEditor
+          member={scheduleEditorMember}
+          aulaConnected={aulaConnected}
+          onClose={() => setScheduleEditorMemberId(null)}
+          onMemberUpdated={(updated) => { onMemberUpdated(updated); setScheduleEditorMemberId(null); }}
+        />
+      )}
     </div>
   );
 }

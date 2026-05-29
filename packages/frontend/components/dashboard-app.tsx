@@ -1879,6 +1879,13 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                   timelinesByMemberId={todayTimelinesByMemberId as Record<string, { timeline: import('@mental-load/contracts').TodayMemberTimeline }>}
                   onAddMember={() => { setSettingsOpen(true); setSettingsTab('members'); }}
                   onNavigateToMember={(id) => { setActiveMemberId(id); router.push(`/member/${encodeURIComponent(id)}`); }}
+                  aulaConnected={Object.keys(dashboard.presence ?? {}).length > 0}
+                  onMemberUpdated={(updated) => {
+                    setDashboard(prev => ({
+                      ...prev,
+                      members: prev.members.map(m => m.id === updated.id ? updated : m),
+                    }));
+                  }}
                 />
               </div>
             ) : null}
