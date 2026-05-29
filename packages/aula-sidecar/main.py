@@ -742,6 +742,21 @@ async def fetch_data(req: FetchDataRequest) -> dict:
     try:
         from datetime import datetime, timezone
         client = await create_client(req.token_data)
+
+        # Visit the Aula portal page to establish a PHP session (PHPSESSID cookie).
+        # The calendar endpoint requires PHPSESSID — it's set when the browser visits
+        # the portal, but the API-based auth flow doesn't visit it automatically.
+        try:
+            portal_resp = await client._client.request(
+                "get", "https://www.aula.dk/portal/",
+                headers={"Accept": "text/html,application/xhtml+xml,*/*"},
+                params=None, json=None,
+            )
+            phpsessid = getattr(client._client, "get_cookie", lambda x: None)("PHPSESSID")
+            print(f"[fetch-data] portal visit status={portal_resp.status_code} PHPSESSID={'set' if phpsessid else 'missing'}", flush=True)
+        except Exception as e:
+            print(f"[fetch-data] portal visit failed (non-fatal): {e}", flush=True)
+
         result: dict[str, Any] = {
             "calendar_events": [],
             "weekplan_lessons": [],
