@@ -293,10 +293,10 @@ export async function buildApp() {
       if (request.body.importEnabled) {
         const calendars = await calendarRepository.list();
         if (request.body.isSharedCalendar) {
-          // Shared family calendar: owner is '' (falsy)
+          // Shared family calendar: no specific member owner
           const familyCal = calendars.find((c) => !c.ownerMemberId);
           targetCalendarId = familyCal?.id ?? calendars[0]?.id;
-          targetMemberId = '';
+          targetMemberId = undefined;
         } else if (request.body.targetMemberId) {
           // Specific member calendar
           const memberCal = calendars.find((c) => c.ownerMemberId === request.body.targetMemberId);
@@ -370,7 +370,7 @@ export async function buildApp() {
         const [calendars, members] = await Promise.all([calendarRepository.list(), memberRepository.list()]);
         await syncConnectionService.updateConnection(id, {
           targetCalendarId: existing.targetCalendarId ?? calendars[0]?.id,
-          targetMemberId: existing.targetMemberId ?? (existing.isSharedCalendar ? '' : members[0]?.id),
+          targetMemberId: existing.targetMemberId ?? (existing.isSharedCalendar ? undefined : members[0]?.id),
         });
       }
       const result = await syncConnectionService.runSync(id, entryRepository);
