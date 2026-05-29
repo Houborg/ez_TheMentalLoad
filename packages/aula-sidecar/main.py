@@ -867,14 +867,32 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     if pw_cookies:
                         await ctx.add_cookies(pw_cookies)
 
+                    # Intercept the getProfilesByLogin request — this is what the Angular
+                    # app fires to authenticate the PHP session. We wait for it to complete
+                    # before making our calendar call, ensuring the session is ready.
+                    profile_login_done: list[bool] = [False]
+
+                    async def on_response(response):
+                        if "getProfilesByLogin" in response.url or "getProfileContext" in response.url:
+                            profile_login_done[0] = True
+
                     page = await ctx.new_page()
+                    page.on("response", on_response)
 
                     # Navigate to the Aula portal — this establishes the authenticated
                     # PHP session (PHPSESSID) just like a real browser does.
                     print(f"[calendar-pw] navigating to portal", flush=True)
                     await page.goto("https://www.aula.dk/portal/", wait_until="domcontentloaded", timeout=30000)
-                    # Brief wait for Angular to initialise and fire its auth API calls
-                    await page.wait_for_timeout(3000)
+
+                    # Wait for Angular's auth API calls to complete (max 10s)
+                    for _ in range(20):
+                        if profile_login_done[0]:
+                            break
+                        await page.wait_for_timeout(500)
+                    print(f"[calendar-pw] auth ready={profile_login_done[0]}", flush=True)
+
+                    # Extra wait for session to be fully established
+                    await page.wait_for_timeout(2000)
 
                     # Make the calendar API call FROM WITHIN the browser page —
                     # all cookies (including the newly set PHPSESSID) are sent automatically.
@@ -890,7 +908,11 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                                     body: JSON.stringify(payload),
                                 }
                             );
-                            return { status: r.status, data: await r.json() };
+                            const text = await r.text();
+                            let data;
+                            try { data = JSON.parse(text); }
+                            catch(e) { data = { _raw: text.slice(0, 300) }; }
+                            return { status: r.status, data };
                         }
                     """, payload)
 
