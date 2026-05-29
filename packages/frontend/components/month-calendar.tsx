@@ -23,16 +23,22 @@ function toLocalDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** Build a CSS gradient or solid colour from 1–4 member colours */
-function memberGradient(colors: string[]): string {
-  if (colors.length === 1) return colors[0];
-  const pct = 100 / colors.length;
-  const stops = colors.flatMap((c, i) => {
-    const start = i * pct;
-    const end = (i + 1) * pct;
-    return i === 0 ? [`${c} ${end}%`] : [`${c} ${start}%`, `${c} ${end}%`];
-  });
-  return `linear-gradient(90deg, ${stops.join(', ')})`;
+/** Hex colour → rgba string for translucent tinted pill backgrounds */
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/** Darkened version of a member colour for legible text on a tinted bg */
+function pillTextColor(hex: string): string {
+  const h = hex.replace('#', '');
+  const r = Math.round(parseInt(h.slice(0, 2), 16) * 0.52);
+  const g = Math.round(parseInt(h.slice(2, 4), 16) * 0.52);
+  const b = Math.round(parseInt(h.slice(4, 6), 16) * 0.52);
+  return `rgb(${r},${g},${b})`;
 }
 
 /** Returns the Monday of the week containing d */
@@ -184,7 +190,7 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
                     )}
                   </div>
                   {/* Spacer — pushes single-day pills below the spanning event lanes */}
-                  <div aria-hidden="true" style={{ height: `${spanning.length * 18}px` }} />
+                  <div aria-hidden="true" style={{ height: `${spanning.length * 20}px` }} />
                   {/* Single-day pills */}
                   <div className="flex flex-col gap-[2px] px-0.5">
                     {singles.map((r) => (
@@ -192,8 +198,13 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
                         key={r.entry.id}
                         type="button"
                         onClick={(e) => { e.stopPropagation(); onClickEntry?.(r.entry); }}
-                        className="block w-full truncate rounded-[3px] px-1.5 text-[9px] font-bold text-white text-left hover:brightness-110 transition-[filter] flex items-center"
-                        style={{ height: '15px', background: memberGradient(r.colors) }}
+                        className="block w-full truncate rounded-[20px] px-1.5 text-[10px] font-semibold text-left hover:opacity-75 transition-opacity flex items-center"
+                        style={{
+                          height: '18px',
+                          background: hexToRgba(r.colors[0], 0.14),
+                          borderLeft: `3px solid ${r.colors[0]}`,
+                          color: pillTextColor(r.colors[0]),
+                        }}
                         title={r.entry.title}
                       >
                         {r.entry.title}
@@ -216,20 +227,21 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
               const isFirstDay = r.startDateStr >= weekStartStr;
               const isLastDay = r.endDateStr <= weekEndStr;
               const spanCols = colEnd - colStart + 1;
-              const laneTop = 22 + si * 18; // px from top of row
 
+              const laneTopSpan = 22 + si * 20;
               return (
                 <button
                   key={`${r.entry.id}-${wi}`}
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onClickEntry?.(r.entry); }}
-                  className="absolute flex items-center overflow-hidden text-[9px] font-bold text-white leading-none hover:brightness-110 transition-[filter]"
+                  className="absolute flex items-center overflow-hidden text-[10px] font-semibold leading-none hover:opacity-75 transition-opacity"
                   style={{
-                    top: `${laneTop}px`,
-                    height: '15px',
+                    top: `${laneTopSpan}px`,
+                    height: '18px',
                     left: `calc(${colStart} / 7 * 100%)`,
                     width: `calc(${spanCols} / 7 * 100%)`,
-                    background: memberGradient(r.colors),
+                    background: hexToRgba(r.colors[0], isFirstDay ? 0.14 : 0.08),
+                    borderLeft: isFirstDay ? `3px solid ${r.colors[0]}` : 'none',
                     borderRadius: isFirstDay && isLastDay
                       ? '20px'
                       : isFirstDay
@@ -239,7 +251,7 @@ export function MonthCalendar({ month, entries, memberColorById, selectedDate, o
                           : '0',
                     paddingLeft: isFirstDay ? '8px' : '4px',
                     paddingRight: isLastDay ? '8px' : '0',
-                    opacity: isFirstDay ? 1 : 0.85,
+                    color: pillTextColor(r.colors[0]),
                     cursor: 'pointer',
                   }}
                   title={r.entry.title}
