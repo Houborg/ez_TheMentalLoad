@@ -1032,3 +1032,102 @@ test('timeline includes checklist tasks from member events', async () => {
 
   await app.close();
 });
+
+test('member schedule: create, list, delete', async () => {
+  const app = await createTestApp();
+  const memberId = DEMO_MEMBER_IDS.saga;
+
+  // Create an entry
+  const createRes = await app.inject({
+    method: 'POST',
+    url: `/api/v1/members/${memberId}/schedule`,
+    payload: { dayOfWeek: 1, title: 'Matematik', startTime: '08:00', endTime: '09:00' },
+  });
+  assert.strictEqual(createRes.statusCode, 201);
+  const entry = createRes.json();
+  assert.strictEqual(entry.title, 'Matematik');
+  assert.strictEqual(entry.dayOfWeek, 1);
+  assert.ok(entry.id);
+
+  // List — should have 1 entry
+  const listRes = await app.inject({
+    method: 'GET',
+    url: `/api/v1/members/${memberId}/schedule`,
+  });
+  assert.strictEqual(listRes.statusCode, 200);
+  const entries = listRes.json();
+  assert.strictEqual(entries.length, 1);
+  assert.strictEqual(entries[0].title, 'Matematik');
+
+  // Delete
+  const delRes = await app.inject({
+    method: 'DELETE',
+    url: `/api/v1/members/${memberId}/schedule/${entry.id}`,
+  });
+  assert.strictEqual(delRes.statusCode, 204);
+
+  // List — should be empty
+  const listRes2 = await app.inject({
+    method: 'GET',
+    url: `/api/v1/members/${memberId}/schedule`,
+  });
+  assert.strictEqual(listRes2.json().length, 0);
+
+  await app.close();
+});
+
+test('member schedule: confirm and unconfirm entry', async () => {
+  const app = await createTestApp();
+  const memberId = DEMO_MEMBER_IDS.saga;
+
+  const createRes = await app.inject({
+    method: 'POST',
+    url: `/api/v1/members/${memberId}/schedule`,
+    payload: { dayOfWeek: 3, title: 'Naturfag', startTime: '10:30', endTime: '11:30' },
+  });
+  const { id } = createRes.json();
+
+  // Confirm
+  const confirmRes = await app.inject({
+    method: 'POST',
+    url: `/api/v1/members/${memberId}/schedule/${id}/confirm`,
+  });
+  assert.strictEqual(confirmRes.statusCode, 204);
+
+  // List — confirmed should be true
+  const listRes = await app.inject({
+    method: 'GET',
+    url: `/api/v1/members/${memberId}/schedule`,
+  });
+  const entries = listRes.json();
+  assert.strictEqual(entries[0].confirmed, true);
+
+  // Unconfirm
+  const unconfirmRes = await app.inject({
+    method: 'DELETE',
+    url: `/api/v1/members/${memberId}/schedule/${id}/confirm`,
+  });
+  assert.strictEqual(unconfirmRes.statusCode, 204);
+
+  // List — confirmed should be false
+  const listRes2 = await app.inject({
+    method: 'GET',
+    url: `/api/v1/members/${memberId}/schedule`,
+  });
+  assert.strictEqual(listRes2.json()[0].confirmed, false);
+
+  await app.close();
+});
+
+test('member schedule: delete returns 404 for missing entry', async () => {
+  const app = await createTestApp();
+  const memberId = DEMO_MEMBER_IDS.saga;
+
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/api/v1/members/${memberId}/schedule/00000000-0000-4000-8000-000000000000`,
+  });
+  assert.strictEqual(res.statusCode, 404);
+
+  await app.close();
+});
