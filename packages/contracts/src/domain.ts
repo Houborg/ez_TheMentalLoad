@@ -15,6 +15,7 @@ export interface Member {
   email?: string;
   avatar?: string;
   color?: string;
+  useAulaSchedule?: boolean;
   createdAt: string;
 }
 
@@ -64,6 +65,7 @@ export interface Entry {
   parentEntryId?: string;
   assignedToMemberId?: string;
   externalUid?: string;
+  aulaItemId?: string;
   /** Additional members who can see this event on their calendar/member page, beyond the ownerMemberId */
   visibleMemberIds?: string[];
   createdAt: string;
@@ -277,4 +279,15 @@ export interface AulaWeekplanLesson {
   description?: string;  // HTML
   source: 'meebook' | 'easyiq' | 'ugeplan';
   seq: number;
+}
+
+export interface MemberScheduleEntry {
+  id: string;
+  memberId: string;
+  dayOfWeek: 1 | 2 | 3 | 4 | 5;  // 1=Mon
+  title: string;
+  startTime: string;  // "HH:MM"
+  endTime: string;    // "HH:MM"
+  confirmed?: boolean;
+  createdAt: string;
 }
