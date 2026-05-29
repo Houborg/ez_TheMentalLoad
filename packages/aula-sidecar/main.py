@@ -881,6 +881,10 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     "post",
                     cal_url,
                     json=payload,
+                    headers={
+                        "origin": "https://www.aula.dk",
+                        "referer": "https://www.aula.dk/portal/",
+                    },
                 )
                 client._access_token = None  # clear again after the call
                 resp.raise_for_status()
