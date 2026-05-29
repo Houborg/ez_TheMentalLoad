@@ -175,7 +175,29 @@ Add three typed fetch wrappers:
 
 ---
 
-## 9. Out of Scope
+## 9. Aula Entry Isolation (explicit constraint)
+
+Neither `calendar_lesson` nor `weekplan_lesson` Aula items ever appear in the main family calendar (dashboard calendar view or calendar tab) automatically. The sync service's `importToCalendar` flag stays `false` permanently.
+
+### Per-entry opt-in: "Tilføj til familiekalender"
+
+When a user taps an Aula lesson block in the I dag view, the entry detail popup shows a toggle at the bottom:
+
+```
+☐  Tilføj til familiekalender
+```
+
+Ticking it creates a real `Entry` (type `event`) in the member's primary calendar — same as if the user had created it manually. The Aula item itself is unchanged; the calendar entry is independent. If the user unticks it, the calendar entry is deleted.
+
+**State persistence:** the toggle reflects whether a calendar `Entry` with `aulaItemId = <aula_item.id>` already exists, so it shows as ticked if the user has already imported it.
+
+**Data model addition:** add `aula_item_id UUID REFERENCES aula_items(id)` (nullable) to the `entries` table so imported entries can be traced back to their Aula source. Migration `021_entries_aula_item_id.sql`.
+
+**Scope:** applies to both `calendar_lesson` and `weekplan_lesson` type Aula items. Does not apply to manual schedule entries (those are not Aula items and have no calendar import option).
+
+---
+
+## 10. Out of Scope
 
 - Week grid (Uge mode in I dag) — manual schedule not shown there in this iteration
 - Parents' schedule (only child members)
