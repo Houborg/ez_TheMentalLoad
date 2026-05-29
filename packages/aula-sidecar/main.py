@@ -819,19 +819,12 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     "start": _fmt_aula_dt(start_dt, end_of_day=False),
                     "end": _fmt_aula_dt(end_dt, end_of_day=True),
                 }
-                # Log all cookies to see what the sidecar actually has
-                get_cookie = getattr(client._client, "get_cookie", None)
-                cookie_names = ['PHPSESSID', 'Csrfp-Token', 'initialLogin', 'profile_change']
-                cookie_vals = {n: get_cookie(n) if callable(get_cookie) else '?' for n in cookie_names}
-                print(f"[fetch-data] cookies: {cookie_vals}", flush=True)
                 print(f"[fetch-data] calendar payload: {payload}", flush=True)
                 resp = await client._request_with_version_retry(
                     "post",
                     f"{client.api_url}?method=calendar.getEventsByProfileIdsAndResourceIds",
                     json=payload,
                 )
-                if resp.status_code != 200:
-                    print(f"[fetch-data] calendar non-200: status={resp.status_code} body={str(resp.data)[:400]}", flush=True)
                 resp.raise_for_status()
                 print(f"[fetch-data] calendar response ok, status={resp.status_code}", flush=True)
                 raw_events = resp.json().get("data", []) or []
