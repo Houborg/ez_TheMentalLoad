@@ -800,8 +800,8 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     f"{client.api_url}?method=calendar.getEventsByProfileIdsAndResourceIds",
                     json=payload,
                 )
-                print(f"[fetch-data] calendar response: status={resp.status_code} body={resp.text[:300]}", flush=True)
                 resp.raise_for_status()
+                print(f"[fetch-data] calendar response ok, status={resp.status_code}", flush=True)
                 raw_events = resp.json().get("data", []) or []
                 for ev in raw_events:
                     belongs = (ev.get("belongsToProfiles") or [])
