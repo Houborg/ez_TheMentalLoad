@@ -451,33 +451,18 @@ test('assistant fun chat returns a friendly response', async () => {
   await app.close();
 });
 
-test('assistant status falls back to env Ollama URL when persisted settings contain loopback', async () => {
-  process.env.OLLAMA_URL = 'http://ollama:11434';
-  process.env.OLLAMA_MODEL = 'llama3.2:3b';
+test('assistant status reports claude when ANTHROPIC_API_KEY is set', async () => {
+  process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key';
 
   const app = await createTestApp();
 
-  await app.inject({
-    method: 'PUT',
-    url: '/api/v1/settings',
-    payload: {
-      assistant: {
-        ollamaUrl: 'http://127.0.0.1:11434',
-      },
-    },
-  });
-
-  const settingsResponse = await app.inject({ method: 'GET', url: '/api/v1/settings' });
-  assert.equal(settingsResponse.statusCode, 200);
-  assert.equal(settingsResponse.json().assistant.ollamaUrl, 'http://ollama:11434');
-
   const statusResponse = await app.inject({ method: 'GET', url: '/api/v1/assistant/status' });
   assert.equal(statusResponse.statusCode, 200);
-  assert.equal(statusResponse.json().ollamaUrl, 'http://ollama:11434');
-  assert.equal(statusResponse.json().modelName, 'llama3.2:3b');
+  assert.equal(statusResponse.json().provider, 'claude');
+  assert.equal(statusResponse.json().ok, true);
+  assert.ok(statusResponse.json().modelName?.includes('haiku'));
 
-  delete process.env.OLLAMA_URL;
-  delete process.env.OLLAMA_MODEL;
+  delete process.env.ANTHROPIC_API_KEY;
   await app.close();
 });
 

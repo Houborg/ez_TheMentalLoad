@@ -62,7 +62,7 @@ export interface AssistantFunRequest {
 }
 
 export interface AssistantFunResponse {
-  source: 'rule-based' | 'ollama-fallback';
+  source: 'rule-based' | 'claude';
   response: string;
 }
 
@@ -71,8 +71,7 @@ export interface AssistantStatusResponse {
   enabled: boolean;
   reachable: boolean;
   modelAvailable: boolean;
-  provider: 'ollama' | 'rule-based';
-  ollamaUrl?: string;
+  provider: 'claude' | 'rule-based';
   modelName?: string;
   message: string;
 }

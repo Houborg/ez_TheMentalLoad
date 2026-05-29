@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk';
 import type {
   AssistantStatusResponse,
   AssistantConfirmRequest,
@@ -12,6 +13,8 @@ import type {
   FoodPlanItem,
   Member,
 } from '@mental-load/contracts';
+
+const CLAUDE_MODEL = 'claude-haiku-4-5';
 
 export class AssistantService {
   constructor(
@@ -29,8 +32,13 @@ export class AssistantService {
     private readonly getFamilyName?: () => Promise<string | null>,
   ) {}
 
+  private getApiKey(): string | undefined {
+    return process.env.ANTHROPIC_API_KEY?.trim() || undefined;
+  }
+
   private async buildSystemPrompt(runtimeConfig?: {
-    ollamaUrl?: string; modelName?: string; tone?: string; customInstructions?: string;
+    tone?: string;
+    customInstructions?: string;
   }): Promise<string | undefined> {
     try {
       const [members, familyName] = await Promise.all([
@@ -129,15 +137,13 @@ export class AssistantService {
     }
 
     // Keep draft completion deterministic when the user did not provide any temporal clue.
-    // This avoids an LLM from inventing dates/times for prompts like "add task: ...".
     if (interpreted.missingFields.includes('date/time') && !hasTemporalHint(input.message)) {
       return interpreted;
     }
 
-    const runtimeConfig = await this.getAssistantRuntimeConfig?.();
-    const ollamaDraft = await tryOllamaFallback(input, initialDraft, runtimeConfig);
-    if (ollamaDraft && ollamaDraft.missingFields.length < interpreted.missingFields.length) {
-      return ollamaDraft;
+    const claudeDraft = await tryClaudeFallback(input, initialDraft, this.getApiKey());
+    if (claudeDraft && claudeDraft.missingFields.length < interpreted.missingFields.length) {
+      return claudeDraft;
     }
 
     return interpreted;
@@ -166,18 +172,115 @@ export class AssistantService {
   async funChat(input: AssistantFunRequest): Promise<AssistantFunResponse> {
     const runtimeConfig = await this.getAssistantRuntimeConfig?.();
     const systemPrompt = await this.buildSystemPrompt(runtimeConfig);
-    const ollamaResponse = await tryOllamaChat(input.message, runtimeConfig, systemPrompt);
-    if (ollamaResponse) {
-      return { source: 'ollama-fallback', response: ollamaResponse };
+    const claudeResponse = await tryClaudeChat(input.message, systemPrompt, this.getApiKey());
+    if (claudeResponse) {
+      return { source: 'claude', response: claudeResponse };
     }
     return { source: 'rule-based', response: buildFunFallback(input.message) };
   }
 
   async getStatus(): Promise<AssistantStatusResponse> {
-    const runtimeConfig = await this.getAssistantRuntimeConfig?.();
-    return checkOllamaStatus(runtimeConfig);
+    return checkClaudeStatus(this.getApiKey());
   }
 }
+
+// ── Claude helpers ────────────────────────────────────────────────────────────
+
+async function tryClaudeChat(
+  message: string,
+  systemPrompt: string | undefined,
+  apiKey: string | undefined,
+): Promise<string | undefined> {
+  if (!apiKey) return undefined;
+
+  try {
+    const client = new Anthropic({ apiKey });
+    const response = await client.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 512,
+      system: systemPrompt ?? 'Du er en hjælpsom familie-assistent. Svar på dansk.',
+      messages: [{ role: 'user', content: message }],
+    });
+    const block = response.content[0];
+    return block.type === 'text' ? block.text.trim() || undefined : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function tryClaudeFallback(
+  input: AssistantParseRequest,
+  baseDraft: AssistantDraft,
+  apiKey: string | undefined,
+): Promise<AssistantParseResponse | undefined> {
+  if (!apiKey) return undefined;
+
+  try {
+    const client = new Anthropic({ apiKey });
+    const response = await client.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 256,
+      messages: [{
+        role: 'user',
+        content: [
+          'Extract a scheduling draft as JSON with keys: title, type (event|task), startTime (ISO), endTime (ISO), allDay (bool), recurrenceRule, location.',
+          'Return only valid JSON, no explanation.',
+          `Today is ${new Date().toISOString().slice(0, 10)}.`,
+          `Message: ${input.message}`,
+        ].join('\n'),
+      }],
+    });
+
+    const block = response.content[0];
+    if (block.type !== 'text') return undefined;
+
+    const jsonMatch = block.text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return undefined;
+
+    const parsed = JSON.parse(jsonMatch[0]) as Partial<AssistantDraft>;
+    const draft: AssistantDraft = { ...baseDraft, ...parsed };
+    const missingFields: string[] = [];
+    if (!draft.startTime || !draft.endTime) missingFields.push('date/time');
+    if (!draft.title || draft.title === 'Untitled entry') missingFields.push('title');
+
+    return {
+      source: 'claude' as AssistantParseResponse['source'],
+      response: missingFields.length === 0
+        ? 'I prepared a Claude-assisted draft. Confirm to save it.'
+        : 'I still need a little more detail to save this.',
+      requiresConfirmation: true,
+      missingFields,
+      draft,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function checkClaudeStatus(apiKey: string | undefined): AssistantStatusResponse {
+  if (!apiKey) {
+    return {
+      ok: false,
+      enabled: false,
+      reachable: false,
+      modelAvailable: false,
+      provider: 'rule-based',
+      message: 'ANTHROPIC_API_KEY is not set. The assistant will use rule-based fallback only.',
+    };
+  }
+
+  return {
+    ok: true,
+    enabled: true,
+    reachable: true,
+    modelAvailable: true,
+    provider: 'claude',
+    modelName: CLAUDE_MODEL,
+    message: `Claude assistant ready (${CLAUDE_MODEL}).`,
+  };
+}
+
+// ── Deterministic NLP helpers (unchanged) ────────────────────────────────────
 
 function hasTemporalHint(message: string): boolean {
   const lower = message.toLowerCase();
@@ -292,14 +395,8 @@ function interpretMessage(
 
 function isMeaningfulTitle(value: string): boolean {
   const trimmed = value.trim();
-  if (!trimmed) {
-    return false;
-  }
-
-  if (/^(\d{1,2})(?::|\.)(\d{2})$/.test(trimmed)) {
-    return false;
-  }
-
+  if (!trimmed) return false;
+  if (/^(\d{1,2})(?::|\.)(\d{2})$/.test(trimmed)) return false;
   return /[A-Za-zÆØÅæøå]/.test(trimmed);
 }
 
@@ -307,9 +404,7 @@ function parseDateExpression(message: string): Date | undefined {
   const now = new Date();
   const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
-  if (/(today|i dag)/i.test(message)) {
-    return startOfDay;
-  }
+  if (/(today|i dag)/i.test(message)) return startOfDay;
 
   if (/(tomorrow|i morgen)/i.test(message)) {
     const result = new Date(startOfDay);
@@ -341,15 +436,11 @@ function parseDateExpression(message: string): Date | undefined {
 
 function parseTimeExpression(message: string): { hours: number; minutes: number } | undefined {
   const match = message.match(/(?:at|kl\.?|@)\s*(\d{1,2})(?::|\.)(\d{2})|(?:at|kl\.?|@)\s*(\d{1,2})\b/i);
-  if (!match) {
-    return undefined;
-  }
+  if (!match) return undefined;
 
   const hours = Number(match[1] ?? match[3]);
   const minutes = Number(match[2] ?? '00');
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-    return undefined;
-  }
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return undefined;
 
   return { hours, minutes };
 }
@@ -366,173 +457,6 @@ function buildFunFallback(message: string): string {
   }
 
   return `MentalLoad playground: ${message.trim() || 'Ready for a cheerful family-planning prompt.'}`;
-}
-
-async function tryOllamaChat(
-  message: string,
-  runtimeConfig?: { ollamaUrl?: string; modelName?: string },
-  systemPrompt?: string,
-): Promise<string | undefined> {
-  const config = resolveOllamaConfig(runtimeConfig);
-  if (!config) return undefined;
-
-  try {
-    if (systemPrompt) {
-      const response = await fetch(`${config.ollamaUrl}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: config.modelName,
-          stream: false,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: message },
-          ],
-        }),
-      });
-      if (!response.ok) return undefined;
-      const payload = (await response.json()) as { message?: { content?: string } };
-      return payload.message?.content?.trim() || undefined;
-    }
-
-    // Fallback: /api/generate without system context
-    const response = await fetch(`${config.ollamaUrl}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: config.modelName,
-        stream: false,
-        prompt: `You are a cheerful family planning assistant. Reply briefly and helpfully. User: ${message}`,
-      }),
-    });
-    if (!response.ok) return undefined;
-    const payload = (await response.json()) as { response?: string };
-    return payload.response?.trim() || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function tryOllamaFallback(
-  input: AssistantParseRequest,
-  baseDraft: AssistantDraft,
-  runtimeConfig?: { ollamaUrl?: string; modelName?: string },
-): Promise<AssistantParseResponse | undefined> {
-  const config = resolveOllamaConfig(runtimeConfig);
-  if (!config) {
-    return undefined;
-  }
-
-  try {
-    const response = await fetch(`${config.ollamaUrl}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: config.modelName,
-        stream: false,
-        prompt: [
-          'Extract a scheduling draft as JSON with keys title, type, startTime, endTime, allDay, recurrenceRule, location.',
-          'Use ISO timestamps when possible. Return JSON only.',
-          `Message: ${input.message}`,
-        ].join('\n'),
-      }),
-    });
-
-    if (!response.ok) {
-      return undefined;
-    }
-
-    const payload = (await response.json()) as { response?: string };
-    const parsed = JSON.parse(payload.response ?? '{}') as Partial<AssistantDraft>;
-    const draft: AssistantDraft = { ...baseDraft, ...parsed };
-    const missingFields: string[] = [];
-    if (!draft.startTime || !draft.endTime) {
-      missingFields.push('date/time');
-    }
-    if (!draft.title) {
-      missingFields.push('title');
-    }
-
-    return {
-      source: 'ollama-fallback',
-      response: missingFields.length === 0 ? 'I prepared an AI-assisted draft. Confirm to save it.' : 'I still need a little more detail to save this.',
-      requiresConfirmation: true,
-      missingFields,
-      draft,
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-function resolveOllamaConfig(runtimeConfig?: { ollamaUrl?: string; modelName?: string }): { ollamaUrl: string; modelName: string } | undefined {
-  const ollamaUrl = runtimeConfig?.ollamaUrl?.trim() || process.env.OLLAMA_URL?.trim();
-  const modelName = runtimeConfig?.modelName?.trim() || process.env.OLLAMA_MODEL?.trim();
-  if (!ollamaUrl || !modelName) {
-    return undefined;
-  }
-
-  return { ollamaUrl, modelName };
-}
-
-async function checkOllamaStatus(
-  runtimeConfig?: { ollamaUrl?: string; modelName?: string },
-): Promise<AssistantStatusResponse> {
-  const config = resolveOllamaConfig(runtimeConfig);
-  if (!config) {
-    return {
-      ok: false,
-      enabled: false,
-      reachable: false,
-      modelAvailable: false,
-      provider: 'rule-based',
-      message: 'Ollama is not configured. The assistant will use rule-based fallback only.',
-    };
-  }
-
-  try {
-    const response = await fetch(`${config.ollamaUrl}/api/tags`);
-    if (!response.ok) {
-      return {
-        ok: false,
-        enabled: true,
-        reachable: false,
-        modelAvailable: false,
-        provider: 'rule-based',
-        ollamaUrl: config.ollamaUrl,
-        modelName: config.modelName,
-        message: `Ollama is configured but not reachable at ${config.ollamaUrl}.`,
-      };
-    }
-
-    const payload = (await response.json()) as { models?: Array<{ name?: string; model?: string }> };
-    const models = payload.models ?? [];
-    const modelAvailable = models.some((entry) => entry.name === config.modelName || entry.model === config.modelName);
-
-    return {
-      ok: modelAvailable,
-      enabled: true,
-      reachable: true,
-      modelAvailable,
-      provider: modelAvailable ? 'ollama' : 'rule-based',
-      ollamaUrl: config.ollamaUrl,
-      modelName: config.modelName,
-      message: modelAvailable
-        ? `Ollama is ready with model ${config.modelName}.`
-        : `Ollama is reachable, but model ${config.modelName} is not installed.`,
-    };
-  } catch {
-    return {
-      ok: false,
-      enabled: true,
-      reachable: false,
-      modelAvailable: false,
-      provider: 'rule-based',
-      ollamaUrl: config.ollamaUrl,
-      modelName: config.modelName,
-      message: `Ollama is configured but not reachable at ${config.ollamaUrl}.`,
-    };
-  }
 }
 
 function getMondayStr(date: Date): string {
