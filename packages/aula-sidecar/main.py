@@ -894,17 +894,21 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     # Extra wait for session to be fully established
                     await page.wait_for_timeout(2000)
 
+                    # Playwright can read HttpOnly cookies — document.cookie cannot.
+                    # Csrfp-Token is HttpOnly, so we fetch it via the Python API
+                    # and pass it into the JS evaluation as a plain argument.
+                    all_cookies = await ctx.cookies("https://www.aula.dk")
+                    csrf_token = next(
+                        (c["value"] for c in all_cookies if c["name"] == "Csrfp-Token"),
+                        "",
+                    )
+                    print(f"[calendar-pw] CSRF={'found ✓' if csrf_token else 'missing ✗'}", flush=True)
+
                     # Make the calendar API call FROM WITHIN the browser page —
                     # all cookies (including the newly set PHPSESSID) are sent automatically.
                     print(f"[calendar-pw] calling calendar API", flush=True)
                     cal_result = await page.evaluate("""
-                        async (payload) => {
-                            // Read csrfp-token from cookies — required on all Aula POST requests
-                            const csrfToken = document.cookie
-                                .split('; ')
-                                .find(c => c.startsWith('Csrfp-Token='))
-                                ?.split('=')[1] || '';
-
+                        async ([payload, csrfToken]) => {
                             const r = await fetch(
                                 '/api/v23/?method=calendar.getEventsByProfileIdsAndResourceIds',
                                 {
@@ -921,9 +925,9 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                             let data;
                             try { data = JSON.parse(text); }
                             catch(e) { data = { _raw: text.slice(0, 300) }; }
-                            return { status: r.status, data, csrfUsed: csrfToken ? 'yes' : 'no' };
+                            return { status: r.status, data };
                         }
-                    """, payload)
+                    """, [payload, csrf_token])
 
                     await browser.close()
 
