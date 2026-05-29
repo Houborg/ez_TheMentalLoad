@@ -375,7 +375,7 @@ export function MobileMemberView({ member, onBack, onSelectEntry }: Props) {
         {/* ── Section 3: Skoleskema ── */}
         {visible.skoleskema && (
           <section className="px-4 pt-2 pb-2">
-            <MemberSchoolSchedule memberId={member.id} memberName={member.name} />
+            <MemberSchoolSchedule memberId={member.id} memberName={member.name} memberColor={member.color} />
           </section>
         )}
 

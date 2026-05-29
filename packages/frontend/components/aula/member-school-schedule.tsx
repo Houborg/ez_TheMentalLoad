@@ -1,13 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BookOpen, Check } from 'lucide-react';
 import { aulaGetItems, type AulaItem } from '@/lib/aula-api';
-import { LessonDetailSheet } from './lesson-detail-sheet';
+import { getMemberSchedule, confirmAulaItem, unconfirmAulaItem, confirmScheduleEntry, unconfirmScheduleEntry } from '@/lib/api';
+import type { MemberScheduleEntry } from '@mental-load/contracts';
 
 interface Props {
   memberId: string;
   memberName: string;
+  memberColor?: string;
+  useAulaSchedule?: boolean;
 }
 
 const WEEKDAY_LABELS = ['Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag'];
@@ -36,42 +39,72 @@ function ymd(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-export function MemberSchoolSchedule({ memberId }: Props) {
+export function MemberSchoolSchedule({ memberId, memberColor }: Props) {
   const [items, setItems] = useState<AulaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
-  const [selectedLesson, setSelectedLesson] = useState<AulaItem | null>(null);
+  const [manualEntries, setManualEntries] = useState<MemberScheduleEntry[]>([]);
+  const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    aulaGetItems({ type: 'weekplan_lesson', memberId, pageSize: 200 })
-      .then(res => { if (active) setItems(res.items); })
-      .catch(() => { if (active) setItems([]); })
-      .finally(() => { if (active) setLoading(false); });
+
+    Promise.all([
+      aulaGetItems({ type: 'calendar_lesson', memberId, pageSize: 200 }),
+      aulaGetItems({ type: 'weekplan_lesson', memberId, pageSize: 200 }),
+      getMemberSchedule(memberId),
+    ]).then(([calRes, wpRes, manual]) => {
+      if (!active) return;
+      const allAula = [...calRes.items, ...wpRes.items];
+      setItems(allAula);
+      setManualEntries(manual);
+      const confirmed = new Set<string>();
+      allAula.forEach(i => { if ((i as { confirmed?: boolean }).confirmed) confirmed.add(i.id); });
+      manual.forEach(e => { if (e.confirmed) confirmed.add(e.id); });
+      setConfirmedIds(confirmed);
+    }).catch(() => {
+      if (active) { setItems([]); setManualEntries([]); }
+    }).finally(() => { if (active) setLoading(false); });
+
     return () => { active = false; };
   }, [memberId]);
 
-  const weekItems = useMemo(() => {
+  const weekLessonsByDay = useMemo(() => {
     const start = ymd(weekStart);
     const endDate = new Date(weekStart);
     endDate.setDate(endDate.getDate() + 5);
-    const end = ymd(endDate);
-    return items
-      .filter(i => i.published_at)
-      .filter(i => {
-        const d = i.published_at!.slice(0, 10);
-        return d >= start && d < end;
-      })
-      .sort((a, b) => {
-        const ad = (a.published_at ?? '').slice(0, 10) + ((a.raw_json as { startTime?: string })?.startTime ?? '');
-        const bd = (b.published_at ?? '').slice(0, 10) + ((b.raw_json as { startTime?: string })?.startTime ?? '');
-        return ad.localeCompare(bd);
-      });
-  }, [items, weekStart]);
+
+    const aulaThisWeek = items.filter(i => {
+      if (!i.published_at) return false;
+      const d = i.published_at.slice(0, 10);
+      return d >= start && d < ymd(endDate);
+    });
+
+    const manualThisWeek = manualEntries.map(e => {
+      const dayDate = new Date(weekStart);
+      dayDate.setDate(dayDate.getDate() + (e.dayOfWeek - 1));
+      return { ...e, _dateStr: ymd(dayDate) };
+    });
+
+    const byDay: Record<string, Array<{ id: string; title: string; time?: string; isManual: boolean }>> = {};
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(weekStart);
+      d.setDate(d.getDate() + i);
+      const key = ymd(d);
+      const aulaDay = aulaThisWeek
+        .filter(it => it.published_at!.slice(0, 10) === key)
+        .map(it => ({ id: it.id, title: it.title ?? 'Lektion', time: (it.raw_json as { startTime?: string })?.startTime ?? undefined, isManual: false }));
+      const manualDay = manualThisWeek
+        .filter(e => e._dateStr === key)
+        .map(e => ({ id: e.id, title: e.title, time: e.startTime, isManual: true }));
+      byDay[key] = [...aulaDay, ...manualDay].sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
+    }
+    return byDay;
+  }, [items, manualEntries, weekStart]);
 
   // Return null if there's no school data at all for this member (parents, daycare).
-  if (!loading && items.length === 0) return null;
+  if (!loading && items.length === 0 && manualEntries.length === 0) return null;
 
   const weekNo = isoWeekNumber(weekStart);
 
@@ -107,49 +140,66 @@ export function MemberSchoolSchedule({ memberId }: Props) {
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Henter skema…</p>
-      ) : weekItems.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Ingen ugeplan for uge {weekNo}.</p>
       ) : (
         <div className="space-y-2">
-          {WEEKDAY_LABELS.map((label, idx) => {
-            const dayDate = new Date(weekStart);
-            dayDate.setDate(dayDate.getDate() + idx);
-            const dayKey = ymd(dayDate);
-            const lessons = weekItems.filter(i => (i.published_at ?? '').slice(0, 10) === dayKey);
-            return (
-              <div key={dayKey} className="rounded-2xl border border-border/60 bg-card/50 p-3">
-                <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
-                  {label}
-                </div>
-                {lessons.length === 0 ? (
-                  <div className="text-xs text-muted-foreground">Ingen lektioner</div>
-                ) : (
-                  <div className="space-y-1">
-                    {lessons.map(lesson => {
-                      const time = (lesson.raw_json as { startTime?: string })?.startTime;
-                      return (
-                        <button
-                          key={lesson.id}
-                          type="button"
-                          onClick={() => setSelectedLesson(lesson)}
-                          className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-sm hover:bg-accent"
-                        >
-                          <span className="w-12 shrink-0 tabular-nums text-xs text-muted-foreground">
-                            {time ?? '—'}
-                          </span>
-                          <span className="font-medium">{lesson.title || 'Lektion'}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+          {Object.entries(weekLessonsByDay).map(([dayKey, lessons], idx) => (
+            <div key={dayKey} className="rounded-2xl border border-border/60 bg-card/50 p-3">
+              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
+                {WEEKDAY_LABELS[idx]}
               </div>
-            );
-          })}
+              {lessons.length === 0 ? (
+                <div className="text-xs text-muted-foreground">Ingen lektioner</div>
+              ) : (
+                <div className="space-y-1">
+                  {lessons.map(lesson => {
+                    const isConfirmed = confirmedIds.has(lesson.id);
+                    const toggle = async () => {
+                      if (lesson.isManual) {
+                        if (isConfirmed) {
+                          await unconfirmScheduleEntry(memberId, lesson.id);
+                          setConfirmedIds(prev => { const s = new Set(prev); s.delete(lesson.id); return s; });
+                        } else {
+                          await confirmScheduleEntry(memberId, lesson.id);
+                          setConfirmedIds(prev => new Set([...prev, lesson.id]));
+                        }
+                      } else {
+                        if (isConfirmed) {
+                          await unconfirmAulaItem(lesson.id);
+                          setConfirmedIds(prev => { const s = new Set(prev); s.delete(lesson.id); return s; });
+                        } else {
+                          await confirmAulaItem(lesson.id);
+                          setConfirmedIds(prev => new Set([...prev, lesson.id]));
+                        }
+                      }
+                    };
+                    return (
+                      <div key={lesson.id} className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-accent">
+                        <button
+                          type="button"
+                          onClick={toggle}
+                          aria-label={isConfirmed ? 'Fjern bekræftelse' : 'Bekræft lektion'}
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                            isConfirmed
+                              ? 'border-transparent text-white'
+                              : 'border-muted-foreground/40 text-transparent'
+                          }`}
+                          style={isConfirmed ? { background: memberColor ?? '#6d5efc' } : {}}
+                        >
+                          <Check className="h-3 w-3" />
+                        </button>
+                        <span className="w-12 shrink-0 tabular-nums text-xs text-muted-foreground">{lesson.time ?? '—'}</span>
+                        <span className={`flex-1 text-sm font-medium ${isConfirmed ? 'text-muted-foreground line-through' : ''}`}>
+                          {lesson.title}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
-
-      <LessonDetailSheet item={selectedLesson} onClose={() => setSelectedLesson(null)} />
     </section>
   );
 }
