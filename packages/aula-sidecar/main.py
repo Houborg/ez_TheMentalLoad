@@ -824,6 +824,21 @@ async def fetch_data(req: FetchDataRequest) -> dict:
         # Calendar events via Playwright — uses a real headless browser so all
         # session/cookie complexity is handled natively, exactly like the browser.
         if req.child_ids and start_dt and end_dt:
+            # ── Diagnostic: try Python library directly before Playwright ─────
+            # create_client() above already refreshed tokens and seeded a valid
+            # PHPSESSID via the portal-visit. If the library can reach the
+            # calendar API directly, we can skip Playwright entirely.
+            try:
+                raw_cal_py = await client.get_calendar_events(
+                    institution_profile_ids=all_inst_ids,
+                    start=start_dt,
+                    end=end_dt,
+                )
+                print(f"[calendar-py] success: {len(raw_cal_py or [])} events", flush=True)
+            except Exception as _py_e:
+                print(f"[calendar-py] failed: {type(_py_e).__name__}: {_py_e}", flush=True)
+            # ── end diagnostic ────────────────────────────────────────────────
+
             try:
                 from playwright.async_api import async_playwright
 
@@ -875,10 +890,19 @@ async def fetch_data(req: FetchDataRequest) -> dict:
 
                     async def on_response(response):
                         url = response.url
+                        st = response.status
                         if "getProfilesByLogin" in url or "getProfileContext" in url:
                             profile_done[0] = True
+                            method = url.split("method=")[-1].split("&")[0] if "method=" in url else url.split("/")[-1]
+                            print(f"[calendar-pw] profile call: {method} → HTTP {st}", flush=True)
                         if "getEventTypes" in url or "CalendarFeed" in url or "getBirthdayEvents" in url:
                             calendar_context_done[0] = True
+                            method = url.split("method=")[-1].split("&")[0] if "method=" in url else url.split("/")[-1]
+                            print(f"[calendar-pw] calendar ctx call: {method} → HTTP {st}", flush=True)
+                        # Log all Aula API calls so we can see what Angular is actually doing
+                        if "/api/v" in url and "aula.dk" in url:
+                            method = url.split("method=")[-1].split("&")[0] if "method=" in url else "?"
+                            print(f"[calendar-pw] angular api: {method} → HTTP {st}", flush=True)
 
                     page = await ctx.new_page()
                     page.on("response", on_response)
