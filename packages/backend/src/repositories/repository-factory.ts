@@ -7,11 +7,15 @@ import { InMemoryDailyTimelineRepository, type DailyTimelineRepository } from '.
 import { InMemoryEntryRepository, type EntryRepository } from './entry-repository';
 import { InMemoryFoodPlanRepository, type FoodPlanRepository } from './food-plan-repository';
 import { InMemoryMemberRepository, type MemberRepository } from './member-repository';
+import { InMemoryMemberScheduleRepository, type MemberScheduleRepository } from './member-schedule-repository';
+import { InMemoryAulaConfirmationRepository, type AulaConfirmationRepository } from './aula-confirmation-repository';
 import { PostgresCalendarRepository } from './postgres/calendar-repository';
 import { PostgresDailyTimelineRepository } from './postgres/daily-timeline-repository';
 import { PostgresEntryRepository } from './postgres/entry-repository';
 import { PostgresFoodPlanRepository } from './postgres/food-plan-repository';
 import { PostgresMemberRepository } from './postgres/member-repository';
+import { PostgresMemberScheduleRepository } from './postgres/member-schedule-repository';
+import { PostgresAulaConfirmationRepository } from './postgres/aula-confirmation-repository';
 
 const DEMO_IDS = {
   mom: '11111111-1111-4111-8111-111111111111',
@@ -27,6 +31,8 @@ export interface RepositoryBundle {
   entryRepository: EntryRepository;
   foodPlanRepository: FoodPlanRepository;
   dailyTimelineRepository: DailyTimelineRepository;
+  memberScheduleRepository: MemberScheduleRepository;
+  aulaConfirmationRepository: AulaConfirmationRepository;
   reminderScheduler: ReminderScheduler;
   persistence: 'memory' | 'postgres';
   pool: Pool | null;
@@ -50,6 +56,8 @@ export async function createRepositoryBundle(): Promise<RepositoryBundle> {
         entryRepository: new PostgresEntryRepository(pool),
         foodPlanRepository: new PostgresFoodPlanRepository(pool),
         dailyTimelineRepository: new PostgresDailyTimelineRepository(pool),
+        memberScheduleRepository: new PostgresMemberScheduleRepository(pool),
+        aulaConfirmationRepository: new PostgresAulaConfirmationRepository(pool),
         reminderScheduler: scheduler,
         persistence: 'postgres',
         pool,
@@ -80,6 +88,8 @@ export async function createRepositoryBundle(): Promise<RepositoryBundle> {
     entryRepository: new InMemoryEntryRepository(),
     foodPlanRepository: new InMemoryFoodPlanRepository(),
     dailyTimelineRepository: new InMemoryDailyTimelineRepository(),
+    memberScheduleRepository: new InMemoryMemberScheduleRepository(),
+    aulaConfirmationRepository: new InMemoryAulaConfirmationRepository(),
     reminderScheduler: scheduler,
     persistence: 'memory',
     pool: null,

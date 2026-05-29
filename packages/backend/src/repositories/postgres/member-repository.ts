@@ -8,7 +8,7 @@ export class PostgresMemberRepository implements MemberRepository {
   async list(familyId?: string): Promise<Member[]> {
     if (!familyId) return [];
     const result = await this.pool.query(
-      'select id, name, role, email, avatar, color, created_at from members where family_id = $1 order by created_at asc',
+      'select id, name, role, email, avatar, color, use_aula_schedule, created_at from members where family_id = $1 order by created_at asc',
       [familyId],
     );
 
@@ -19,6 +19,7 @@ export class PostgresMemberRepository implements MemberRepository {
       email: row.email ?? undefined,
       avatar: row.avatar ?? undefined,
       color: row.color ?? undefined,
+      useAulaSchedule: row.use_aula_schedule ?? true,
       createdAt: new Date(row.created_at).toISOString(),
     }));
   }
@@ -26,21 +27,21 @@ export class PostgresMemberRepository implements MemberRepository {
   async findById(id: string, familyId?: string): Promise<Member | undefined> {
     if (!familyId) return undefined;
     const result = await this.pool.query(
-      'select id, name, role, email, avatar, color, created_at from members where id = $1 and family_id = $2',
+      'select id, name, role, email, avatar, color, use_aula_schedule, created_at from members where id = $1 and family_id = $2',
       [id, familyId],
     );
 
     const row = result.rows[0];
     return row
-      ? { id: row.id, name: row.name, role: row.role, email: row.email ?? undefined, avatar: row.avatar ?? undefined, color: row.color ?? undefined, createdAt: new Date(row.created_at).toISOString() }
+      ? { id: row.id, name: row.name, role: row.role, email: row.email ?? undefined, avatar: row.avatar ?? undefined, color: row.color ?? undefined, useAulaSchedule: row.use_aula_schedule ?? true, createdAt: new Date(row.created_at).toISOString() }
       : undefined;
   }
 
   async create(member: Member, familyId?: string): Promise<Member> {
     if (!familyId) throw new Error('familyId required for create');
     await this.pool.query(
-      'insert into members (id, name, role, email, avatar, color, created_at, family_id) values ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [member.id, member.name, member.role, member.email ?? null, member.avatar ?? null, member.color ?? null, member.createdAt, familyId],
+      'insert into members (id, name, role, email, avatar, color, use_aula_schedule, created_at, family_id) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+      [member.id, member.name, member.role, member.email ?? null, member.avatar ?? null, member.color ?? null, member.useAulaSchedule ?? true, member.createdAt, familyId],
     );
 
     return member;
@@ -61,8 +62,8 @@ export class PostgresMemberRepository implements MemberRepository {
     };
 
     await this.pool.query(
-      'update members set name = $2, role = $3, email = $4, avatar = $5, color = $6 where id = $1 and family_id = $7',
-      [id, next.name, next.role, next.email ?? null, next.avatar ?? null, next.color ?? null, familyId],
+      'update members set name = $2, role = $3, email = $4, avatar = $5, color = $6, use_aula_schedule = $7 where id = $1 and family_id = $8',
+      [id, next.name, next.role, next.email ?? null, next.avatar ?? null, next.color ?? null, next.useAulaSchedule ?? true, familyId],
     );
 
     return next;
