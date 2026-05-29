@@ -33,6 +33,8 @@ import type {
   UpdateMemberTimelineSettingsRequest,
   UpdateMemberTimelineTemplateRequest,
   UpsertOneOffTimelineTaskRequest,
+  MemberScheduleEntry,
+  CreateScheduleEntryRequest,
 } from '@mental-load/contracts';
 
 export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
@@ -212,6 +214,37 @@ export async function updateMember(id: string, payload: UpdateMemberRequest) {
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
+}
+
+export async function getMemberSchedule(memberId: string): Promise<MemberScheduleEntry[]> {
+  return fetchJson<MemberScheduleEntry[]>(`/api/v1/members/${memberId}/schedule`);
+}
+
+export async function createScheduleEntry(memberId: string, payload: CreateScheduleEntryRequest): Promise<MemberScheduleEntry> {
+  return fetchJson<MemberScheduleEntry>(`/api/v1/members/${memberId}/schedule`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteScheduleEntry(memberId: string, entryId: string): Promise<void> {
+  await fetchJson<void>(`/api/v1/members/${memberId}/schedule/${entryId}`, { method: 'DELETE' });
+}
+
+export async function confirmScheduleEntry(memberId: string, entryId: string): Promise<void> {
+  await fetchJson<void>(`/api/v1/members/${memberId}/schedule/${entryId}/confirm`, { method: 'POST' });
+}
+
+export async function unconfirmScheduleEntry(memberId: string, entryId: string): Promise<void> {
+  await fetchJson<void>(`/api/v1/members/${memberId}/schedule/${entryId}/confirm`, { method: 'DELETE' });
+}
+
+export async function confirmAulaItem(itemId: string): Promise<void> {
+  await fetchJson<void>(`/api/v1/aula/items/${itemId}/confirm`, { method: 'POST' });
+}
+
+export async function unconfirmAulaItem(itemId: string): Promise<void> {
+  await fetchJson<void>(`/api/v1/aula/items/${itemId}/confirm`, { method: 'DELETE' });
 }
 
 export async function deleteCalendar(id: string): Promise<void> {
