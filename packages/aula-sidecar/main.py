@@ -741,27 +741,7 @@ async def fetch_data(req: FetchDataRequest) -> dict:
     """Fetch Aula data using the Python library client (bypasses REST API auth issues)."""
     try:
         from datetime import datetime, timezone
-        from aula import HttpxHttpClient, AulaApiClient
-        from aula.auth.mitid_client import API_URL as _AULA_API_URL
-
-        # Monkey-patch init() to remove deviceId=aula-cli which may mark the
-        # session as "mobile/CLI-only" and block the calendar endpoint.
-        # Also try without portalrole restriction to see if that helps.
-        _original_init = AulaApiClient.init.__func__ if hasattr(AulaApiClient.init, '__func__') else None
-
-        async def _patched_init(self_client):
-            from aula.auth_flow import CSRF_TOKEN_COOKIE
-            await self_client._set_correct_api_version()
-            # Call WITHOUT deviceId=aula-cli — try both with and without portalrole
-            await self_client._request_with_version_retry(
-                "get",
-                f"{self_client.api_url}?method=profiles.getProfileContext&portalrole=guardian",
-            )
-            self_client._access_token = None
-            if self_client._csrf_token is None:
-                self_client._csrf_token = self_client._client.get_cookie(CSRF_TOKEN_COOKIE)
-
-        AulaApiClient.init = _patched_init
+        from aula import HttpxHttpClient
 
         # ── Correct session order for calendar API access ──────────────────────
         # The calendar endpoint requires an *authenticated* PHPSESSID cookie.
@@ -841,38 +821,18 @@ async def fetch_data(req: FetchDataRequest) -> dict:
         except Exception as e:
             print(f"[fetch-data] could not load profile for inst ids, using child_ids: {e}", flush=True)
 
-        # Calendar events — direct API call bypassing library method.
+        # Calendar events via Playwright — uses a real headless browser so all
+        # session/cookie complexity is handled natively, exactly like the browser.
         if req.child_ids and start_dt and end_dt:
             try:
-                # Warm up the PHP session for calendar access by calling the same
-                # endpoints the browser's Angular app calls before getEventsByProfileIds.
-                # These appear in the browser's network log just before the calendar call
-                # and likely activate the guardian calendar context in the PHP session.
-                for warmup_method in [
-                    f"profiles.getProfileMasterData&instProfileId={all_inst_ids[0]}" if all_inst_ids else None,
-                    "CalendarFeed.getPolicyAnswer",
-                    "CalendarFeed.getFeedConfigurations",
-                    f"calendar.getEventTypes&filterInstitutionCodes={','.join(str(i) for i in all_inst_ids)}" if all_inst_ids else None,
-                ]:
-                    if warmup_method is None:
-                        continue
-                    try:
-                        await client._request_with_version_retry(
-                            "get",
-                            f"{client.api_url}?method={warmup_method}",
-                        )
-                    except Exception:
-                        pass  # warmup failures are non-fatal
+                from playwright.async_api import async_playwright
 
-                cph_tz = timezone(timedelta(hours=2))  # Europe/Copenhagen DST offset
-
+                cph_tz = timezone(timedelta(hours=2))
                 def _fmt_aula_dt(dt, end_of_day: bool = False) -> str:
-                    """Format datetime as Aula expects: 'YYYY-MM-DD HH:MM:SS.0000+02:00'"""
                     d = dt.astimezone(cph_tz)
                     time_part = "23:59:59.9990" if end_of_day else "00:00:00.0000"
-                    tz_str = d.strftime("%z")  # "+0200"
-                    tz_colon = f"{tz_str[:3]}:{tz_str[3:]}"  # "+02:00"
-                    return f"{d.strftime('%Y-%m-%d')} {time_part}{tz_colon}"
+                    tz_str = d.strftime("%z")
+                    return f"{d.strftime('%Y-%m-%d')} {time_part}{tz_str[:3]}:{tz_str[3:]}"
 
                 payload = {
                     "instProfileIds": all_inst_ids,
@@ -880,52 +840,86 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     "start": _fmt_aula_dt(start_dt, end_of_day=False),
                     "end": _fmt_aula_dt(end_dt, end_of_day=True),
                 }
-                # The calendar endpoint requires a valid access_token in the URL.
-                # init() clears _access_token from the client (relies on cookies after).
-                # We re-inject a fresh token by calling the token refresh callback.
-                fresh_token = None
-                if callable(getattr(client, "_on_token_refresh", None)):
-                    try:
-                        fresh_token = await client._on_token_refresh()
-                        print(f"[fetch-data] token refreshed: {'ok' if fresh_token else 'none'}", flush=True)
-                    except Exception as te:
-                        print(f"[fetch-data] token refresh failed: {te}", flush=True)
 
-                if fresh_token:
-                    # Temporarily set so _do_request appends it to the URL
-                    client._access_token = fresh_token
+                stored_cookies = req.token_data.get("cookies", {})
 
-                cal_url = f"{client.api_url}?method=calendar.getEventsByProfileIdsAndResourceIds"
-                print(f"[fetch-data] calendar attempt (fresh_token={'yes' if fresh_token else 'no'})", flush=True)
-                resp = await client._request_with_version_retry(
-                    "post",
-                    cal_url,
-                    json=payload,
-                    headers={
-                        "origin": "https://www.aula.dk",
-                        "referer": "https://www.aula.dk/portal/",
-                    },
-                )
-                client._access_token = None  # clear again after the call
-                resp.raise_for_status()
-                print(f"[fetch-data] calendar response ok, status={resp.status_code}", flush=True)
-                raw_events = resp.json().get("data", []) or []
-                for ev in raw_events:
-                    belongs = (ev.get("belongsToProfiles") or [])
-                    result["calendar_events"].append({
-                        "id": str(ev.get("id", "")),
-                        "title": ev.get("title") or "",
-                        "startTime": ev.get("startDateTime") or "",
-                        "endTime": ev.get("endDateTime") or "",
-                        "allDay": bool(ev.get("allDay", False)),
-                        "location": ev.get("location"),
-                        "childId": belongs[0] if belongs else (all_inst_ids[0] if all_inst_ids else 0),
-                        "lessonStatus": (ev.get("lesson") or {}).get("lessonStatus"),
-                        "type": ev.get("type", "lesson"),
-                    })
-                print(f"[fetch-data] calendar events (direct): {len(result['calendar_events'])} events", flush=True)
+                print(f"[calendar-pw] launching headless browser", flush=True)
+                async with async_playwright() as pw:
+                    browser = await pw.chromium.launch(headless=True)
+                    ctx = await browser.new_context(
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+                    )
+
+                    # Inject all stored auth cookies into the browser context
+                    pw_cookies = []
+                    for name, value in stored_cookies.items():
+                        if value:
+                            pw_cookies.append({
+                                "name": name, "value": str(value),
+                                "domain": "www.aula.dk", "path": "/",
+                                "secure": True, "httpOnly": False,
+                            })
+                            pw_cookies.append({
+                                "name": name, "value": str(value),
+                                "domain": "login.aula.dk", "path": "/",
+                                "secure": True, "httpOnly": False,
+                            })
+                    if pw_cookies:
+                        await ctx.add_cookies(pw_cookies)
+
+                    page = await ctx.new_page()
+
+                    # Navigate to the Aula portal — this establishes the authenticated
+                    # PHP session (PHPSESSID) just like a real browser does.
+                    print(f"[calendar-pw] navigating to portal", flush=True)
+                    await page.goto("https://www.aula.dk/portal/", wait_until="domcontentloaded", timeout=30000)
+                    # Brief wait for Angular to initialise and fire its auth API calls
+                    await page.wait_for_timeout(3000)
+
+                    # Make the calendar API call FROM WITHIN the browser page —
+                    # all cookies (including the newly set PHPSESSID) are sent automatically.
+                    print(f"[calendar-pw] calling calendar API", flush=True)
+                    cal_result = await page.evaluate("""
+                        async (payload) => {
+                            const r = await fetch(
+                                '/api/v23/?method=calendar.getEventsByProfileIdsAndResourceIds',
+                                {
+                                    method: 'POST',
+                                    headers: {'content-type': 'application/json'},
+                                    credentials: 'include',
+                                    body: JSON.stringify(payload),
+                                }
+                            );
+                            return { status: r.status, data: await r.json() };
+                        }
+                    """, payload)
+
+                    await browser.close()
+
+                status = cal_result.get("status", 0)
+                print(f"[calendar-pw] response status={status}", flush=True)
+
+                if status == 200:
+                    raw_events = (cal_result.get("data") or {}).get("data", []) or []
+                    for ev in raw_events:
+                        belongs = (ev.get("belongsToProfiles") or [])
+                        result["calendar_events"].append({
+                            "id": str(ev.get("id", "")),
+                            "title": ev.get("title") or "",
+                            "startTime": ev.get("startDateTime") or "",
+                            "endTime": ev.get("endDateTime") or "",
+                            "allDay": bool(ev.get("allDay", False)),
+                            "location": ev.get("location"),
+                            "childId": belongs[0] if belongs else (all_inst_ids[0] if all_inst_ids else 0),
+                            "lessonStatus": (ev.get("lesson") or {}).get("lessonStatus"),
+                            "type": ev.get("type", "lesson"),
+                        })
+                    print(f"[calendar-pw] got {len(result['calendar_events'])} events", flush=True)
+                else:
+                    print(f"[calendar-pw] non-200: {cal_result.get('data', {})}", flush=True)
+
             except Exception as e:
-                print(f"[fetch-data] calendar events failed: {type(e).__name__}: {e}", flush=True)
+                print(f"[calendar-pw] failed: {type(e).__name__}: {e}", flush=True)
 
         # Weekplan — replaces daily_overview (item 3 from MentalLoad-Issues)
         if req.fetch_weekplan and req.child_ids:

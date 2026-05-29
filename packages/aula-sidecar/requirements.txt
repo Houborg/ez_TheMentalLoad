@@ -3,3 +3,4 @@ fastapi
 uvicorn[standard]
 qrcode[pil]
 Pillow
+playwright
