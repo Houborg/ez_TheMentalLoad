@@ -860,18 +860,29 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     "start": _fmt_aula_dt(start_dt, end_of_day=False),
                     "end": _fmt_aula_dt(end_dt, end_of_day=True),
                 }
-                # Try with access_token in URL — bypasses PHP session requirement.
-                # init() clears it from the client, but we still have it in token_data.
-                access_token = req.token_data.get("tokens", {}).get("access_token", "")
+                # The calendar endpoint requires a valid access_token in the URL.
+                # init() clears _access_token from the client (relies on cookies after).
+                # We re-inject a fresh token by calling the token refresh callback.
+                fresh_token = None
+                if callable(getattr(client, "_on_token_refresh", None)):
+                    try:
+                        fresh_token = await client._on_token_refresh()
+                        print(f"[fetch-data] token refreshed: {'ok' if fresh_token else 'none'}", flush=True)
+                    except Exception as te:
+                        print(f"[fetch-data] token refresh failed: {te}", flush=True)
+
+                if fresh_token:
+                    # Temporarily set so _do_request appends it to the URL
+                    client._access_token = fresh_token
+
                 cal_url = f"{client.api_url}?method=calendar.getEventsByProfileIdsAndResourceIds"
-                if access_token:
-                    cal_url += f"&access_token={access_token}"
-                print(f"[fetch-data] calendar attempt (token={'yes' if access_token else 'no'})", flush=True)
+                print(f"[fetch-data] calendar attempt (fresh_token={'yes' if fresh_token else 'no'})", flush=True)
                 resp = await client._request_with_version_retry(
                     "post",
                     cal_url,
                     json=payload,
                 )
+                client._access_token = None  # clear again after the call
                 resp.raise_for_status()
                 print(f"[fetch-data] calendar response ok, status={resp.status_code}", flush=True)
                 raw_events = resp.json().get("data", []) or []
