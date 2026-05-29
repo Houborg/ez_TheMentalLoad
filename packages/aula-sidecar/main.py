@@ -754,6 +754,16 @@ async def fetch_data(req: FetchDataRequest) -> dict:
             )
             phpsessid = getattr(client._client, "get_cookie", lambda x: None)("PHPSESSID")
             print(f"[fetch-data] portal visit status={portal_resp.status_code} PHPSESSID={'set' if phpsessid else 'missing'}", flush=True)
+
+            # Set cookies the browser has but the API session doesn't.
+            # initialLogin=true signals a fresh web-portal session.
+            # profile_change is a session counter set by Aula's web app JS.
+            # Both are required by the calendar endpoint.
+            httpx_client = getattr(client._client, "_client", None)
+            if httpx_client is not None:
+                httpx_client.cookies.set("initialLogin", "true", domain="www.aula.dk")
+                httpx_client.cookies.set("profile_change", "10", domain="www.aula.dk")
+                print(f"[fetch-data] injected initialLogin + profile_change cookies", flush=True)
         except Exception as e:
             print(f"[fetch-data] portal visit failed (non-fatal): {e}", flush=True)
 
