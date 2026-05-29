@@ -68,6 +68,37 @@ Tapping the prompt opens the Schedule Editor bottom sheet for that member.
 
 ---
 
+## 4b. Member View Display
+
+Classes appear as a **"Skoleskema"** section on the member detail page (`/member/[memberId]`) alongside the existing Uge noter and Lektier sections. There is already a `MemberSchoolSchedule` component — this spec extends it to cover both Aula calendar_lesson items and manual schedule entries.
+
+### What is shown
+- **Source**: Aula `calendar_lesson` items for the member OR manual `member_schedule` entries, using the same priority logic as I dag (section 5 below). For the member view the relevant range is **this week** (Mon–Fri), not just today.
+- **Grouping**: One sub-header per weekday (Mandag–Fredag), classes listed under their day in chronological order.
+- **Each row**: `[tick] Subject name  HH:MM–HH:MM`
+
+### Ticking behaviour
+Each class row has a checkbox. Ticking it marks the class as **bekræftet** (confirmed — e.g. parent confirms child attended). This state is stored locally per family:
+
+- New column `confirmed BOOLEAN NOT NULL DEFAULT FALSE` on `member_schedule` rows.
+- For Aula `calendar_lesson` items: store confirmation in a lightweight new table `aula_item_confirmations (family_id, aula_item_id, confirmed_at)` — one row per confirmed item.
+- A ticked class shows a filled ✓ circle (member colour); unticked shows an empty ring — same visual pattern as the existing Opgaver checkboxes.
+- Ticking/unticking is optimistic (instant UI update, background API call).
+
+### New endpoints for confirmations
+```
+POST   /api/v1/members/:id/schedule/:entryId/confirm
+DELETE /api/v1/members/:id/schedule/:entryId/confirm
+
+POST   /api/v1/aula/items/:id/confirm
+DELETE /api/v1/aula/items/:id/confirm
+```
+
+### Relationship to I dag
+The I dag timeline shows the class blocks as before (striped background). Confirmed classes gain a small ✓ badge on the block so parents can see at a glance from I dag as well.
+
+---
+
 ## 5. Priority Logic
 
 | Aula toggle | Aula data available | I dag shows |
