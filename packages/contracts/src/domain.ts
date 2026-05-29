@@ -86,12 +86,25 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+export type AiProvider = 'claude' | 'openai' | 'ollama' | 'none';
+
 export interface AssistantConfig {
   id: string;
   modelName: string;
   language: SupportedLanguage;
   enabled: boolean;
+  /** Which AI backend to use. Defaults to 'claude' if ANTHROPIC_API_KEY is set. */
+  provider?: AiProvider;
+  /** Anthropic API key (overrides ANTHROPIC_API_KEY env var) */
+  apiKey?: string;
+  /** OpenAI API key */
+  openaiApiKey?: string;
+  /** OpenAI model name, e.g. 'gpt-4o-mini' */
+  openaiModel?: string;
+  /** Remote Ollama base URL, e.g. 'http://192.168.1.50:11434' */
   ollamaUrl?: string;
+  /** Ollama model name, e.g. 'llama3.2:3b' */
+  ollamaModel?: string;
   tone?: 'informal' | 'formal';
   customInstructions?: string;
 }

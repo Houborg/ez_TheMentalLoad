@@ -219,8 +219,12 @@ export async function buildApp() {
       async () => {
         const settings = await settingsService.getSettings();
         return {
+          provider: settings.assistant.provider,
+          apiKey: settings.assistant.apiKey,
+          openaiApiKey: settings.assistant.openaiApiKey,
+          openaiModel: settings.assistant.openaiModel,
           ollamaUrl: settings.assistant.ollamaUrl,
-          modelName: settings.assistant.modelName,
+          ollamaModel: settings.assistant.ollamaModel,
           tone: settings.assistant.tone,
           customInstructions: settings.assistant.customInstructions,
         };

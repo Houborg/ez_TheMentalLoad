@@ -45,7 +45,7 @@ export interface AssistantParseRequest {
 }
 
 export interface AssistantParseResponse {
-  source: 'rule-based' | 'ollama-fallback';
+  source: 'rule-based' | 'claude' | 'openai' | 'ollama';
   response: string;
   requiresConfirmation: boolean;
   missingFields: string[];
@@ -62,7 +62,7 @@ export interface AssistantFunRequest {
 }
 
 export interface AssistantFunResponse {
-  source: 'rule-based' | 'claude';
+  source: 'rule-based' | 'claude' | 'openai' | 'ollama';
   response: string;
 }
 
@@ -71,7 +71,7 @@ export interface AssistantStatusResponse {
   enabled: boolean;
   reachable: boolean;
   modelAvailable: boolean;
-  provider: 'claude' | 'rule-based';
+  provider: 'claude' | 'openai' | 'ollama' | 'rule-based';
   modelName?: string;
   message: string;
 }

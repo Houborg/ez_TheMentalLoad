@@ -374,6 +374,13 @@ function CalendarsTab({ calendars, onRefresh }: { calendars: Calendar[]; onRefre
 }
 
 /* ─── Assistant ─── */
+const AI_PROVIDERS = [
+  { value: 'claude', label: 'Claude (Anthropic)', hint: 'claude-haiku-4-5' },
+  { value: 'openai', label: 'OpenAI (GPT)', hint: 'gpt-4o-mini' },
+  { value: 'ollama', label: 'Ollama (lokal/fjern)', hint: 'llama3.2' },
+  { value: 'none',   label: 'Ingen AI', hint: 'Regelbaseret kun' },
+] as const;
+
 function AssistantTab({
   settings,
   onChange,
@@ -384,13 +391,140 @@ function AssistantTab({
   onSave: (patch: Parameters<typeof saveSettings>[0]) => Promise<void>;
 }) {
   const a = settings.assistant;
+  const provider = a.provider ?? 'claude';
 
   function patch(update: Partial<AppSettings['assistant']>) {
     onChange({ ...settings, assistant: { ...a, ...update } });
   }
 
+  function handleSave() {
+    return onSave({
+      assistant: {
+        provider: a.provider,
+        apiKey: a.apiKey,
+        openaiApiKey: a.openaiApiKey,
+        openaiModel: a.openaiModel,
+        ollamaUrl: a.ollamaUrl,
+        ollamaModel: a.ollamaModel,
+        tone: a.tone,
+        customInstructions: a.customInstructions,
+      },
+    });
+  }
+
   return (
     <div className="flex flex-col gap-5">
+
+      {/* Provider selector */}
+      <div>
+        <p className={LABEL}>AI-udbyder</p>
+        <div className="grid grid-cols-2 gap-2">
+          {AI_PROVIDERS.map(p => (
+            <button
+              key={p.value}
+              type="button"
+              onClick={() => patch({ provider: p.value })}
+              className={cn(
+                'flex flex-col items-start rounded-xl border px-3 py-2.5 text-left transition-colors',
+                provider === p.value
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-background text-muted-foreground hover:border-primary/50',
+              )}
+            >
+              <span className="text-sm font-semibold">{p.label}</span>
+              <span className="text-[10px] opacity-70">{p.hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Claude — API key */}
+      {provider === 'claude' && (
+        <div>
+          <p className={LABEL}>Anthropic API-nøgle</p>
+          <input
+            type="password"
+            value={a.apiKey ?? ''}
+            onChange={e => patch({ apiKey: e.target.value })}
+            placeholder="sk-ant-api03-…"
+            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary font-mono"
+          />
+          <p className="text-xs text-muted-foreground mt-1">Hentes fra <span className="font-mono">console.anthropic.com</span>. Gemmes krypteret i databasen.</p>
+        </div>
+      )}
+
+      {/* OpenAI — API key + model */}
+      {provider === 'openai' && (
+        <>
+          <div>
+            <p className={LABEL}>OpenAI API-nøgle</p>
+            <input
+              type="password"
+              value={a.openaiApiKey ?? ''}
+              onChange={e => patch({ openaiApiKey: e.target.value })}
+              placeholder="sk-…"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary font-mono"
+            />
+          </div>
+          <div>
+            <p className={LABEL}>Model</p>
+            <div className="flex gap-2 flex-wrap">
+              {['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'].map(m => (
+                <button key={m} type="button"
+                  onClick={() => patch({ openaiModel: m })}
+                  className={cn('rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors',
+                    (a.openaiModel ?? 'gpt-4o-mini') === m ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/50')}>
+                  {m}
+                </button>
+              ))}
+              <input
+                value={!['gpt-4o-mini','gpt-4o','gpt-4-turbo'].includes(a.openaiModel ?? '') ? (a.openaiModel ?? '') : ''}
+                onChange={e => patch({ openaiModel: e.target.value })}
+                placeholder="Anden model…"
+                className="flex-1 min-w-[120px] rounded-lg border border-border bg-background px-3 py-1.5 text-xs outline-none focus:border-primary"
+              />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Ollama — URL + model */}
+      {provider === 'ollama' && (
+        <>
+          <div>
+            <p className={LABEL}>Ollama URL</p>
+            <input
+              type="url"
+              value={a.ollamaUrl ?? ''}
+              onChange={e => patch({ ollamaUrl: e.target.value })}
+              placeholder="http://192.168.1.50:11434"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary font-mono"
+            />
+            <p className="text-xs text-muted-foreground mt-1">IP/hostname på maskinen der kører Ollama.</p>
+          </div>
+          <div>
+            <p className={LABEL}>Model</p>
+            <div className="flex gap-2 flex-wrap">
+              {['llama3.2:3b', 'llama3.2', 'mistral', 'gemma2:2b'].map(m => (
+                <button key={m} type="button"
+                  onClick={() => patch({ ollamaModel: m })}
+                  className={cn('rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors',
+                    (a.ollamaModel ?? 'llama3.2:3b') === m ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/50')}>
+                  {m}
+                </button>
+              ))}
+              <input
+                value={!['llama3.2:3b','llama3.2','mistral','gemma2:2b'].includes(a.ollamaModel ?? '') ? (a.ollamaModel ?? '') : ''}
+                onChange={e => patch({ ollamaModel: e.target.value })}
+                placeholder="Anden model…"
+                className="flex-1 min-w-[120px] rounded-lg border border-border bg-background px-3 py-1.5 text-xs outline-none focus:border-primary"
+              />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Tone */}
       <div>
         <p className={LABEL}>Tone</p>
         <div className="flex rounded-xl border border-border overflow-hidden">
@@ -402,10 +536,12 @@ function AssistantTab({
           ))}
         </div>
       </div>
+
+      {/* Custom instructions */}
       <div>
         <p className={LABEL}>Egne instruktioner</p>
         <textarea
-          rows={4}
+          rows={3}
           value={a.customInstructions ?? ''}
           onChange={e => patch({ customInstructions: e.target.value })}
           placeholder="Eks: Brug altid navne. Vær humoristisk."
@@ -413,7 +549,8 @@ function AssistantTab({
         />
         <p className="text-xs text-muted-foreground mt-1">Tilføjes til AI-assistentens systemprompt.</p>
       </div>
-      <button type="button" onClick={() => onSave({ assistant: { tone: a.tone, customInstructions: a.customInstructions } })}
+
+      <button type="button" onClick={handleSave}
         className="rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground">
         Gem
       </button>
