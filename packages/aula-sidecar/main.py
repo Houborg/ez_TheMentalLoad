@@ -791,6 +791,20 @@ async def fetch_data(req: FetchDataRequest) -> dict:
         phpsessid_after = client._client.get_cookie("PHPSESSID")
         print(f"[fetch-data] post-init PHPSESSID={'set ✓' if phpsessid_after else 'missing ✗'}", flush=True)
 
+        # Extract ALL fresh cookies from the Python HTTP client after init.
+        # create_client() refreshes the access_token internally; these cookies
+        # include the new token + authenticated PHPSESSID. Playwright must use
+        # these instead of the stale req.token_data["cookies"].
+        _fresh_pw_cookies: dict[str, str] = {}
+        try:
+            _hc_src = http_client if http_client is not None else client._client
+            _hx = getattr(_hc_src, "_client", None)  # inner httpx.AsyncClient
+            if _hx and hasattr(_hx, "cookies"):
+                _fresh_pw_cookies = {k: v for k, v in _hx.cookies.items()}
+            print(f"[fetch-data] fresh cookies ({len(_fresh_pw_cookies)}): {sorted(_fresh_pw_cookies.keys())}", flush=True)
+        except Exception as _ce:
+            print(f"[fetch-data] fresh cookie extraction failed: {_ce}", flush=True)
+
         result: dict[str, Any] = {
             "calendar_events": [],
             "weekplan_lessons": [],
@@ -825,18 +839,17 @@ async def fetch_data(req: FetchDataRequest) -> dict:
         # session/cookie complexity is handled natively, exactly like the browser.
         if req.child_ids and start_dt and end_dt:
             # ── Diagnostic: try Python library directly before Playwright ─────
-            # create_client() above already refreshed tokens and seeded a valid
-            # PHPSESSID via the portal-visit. If the library can reach the
-            # calendar API directly, we can skip Playwright entirely.
-            try:
-                raw_cal_py = await client.get_calendar_events(
-                    institution_profile_ids=all_inst_ids,
-                    start=start_dt,
-                    end=end_dt,
-                )
-                print(f"[calendar-py] success: {len(raw_cal_py or [])} events", flush=True)
-            except Exception as _py_e:
-                print(f"[calendar-py] failed: {type(_py_e).__name__}: {_py_e}", flush=True)
+            for _py_ids in ([all_inst_ids] if all_inst_ids != req.child_ids else []) + [req.child_ids]:
+                try:
+                    raw_cal_py = await client.get_calendar_events(
+                        institution_profile_ids=_py_ids,
+                        start=start_dt,
+                        end=end_dt,
+                    )
+                    print(f"[calendar-py] ids={_py_ids} → {len(raw_cal_py or [])} events", flush=True)
+                    break
+                except Exception as _py_e:
+                    print(f"[calendar-py] ids={_py_ids} failed: {type(_py_e).__name__}: {_py_e}", flush=True)
             # ── end diagnostic ────────────────────────────────────────────────
 
             try:
@@ -856,9 +869,11 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     "end": _fmt_aula_dt(end_dt, end_of_day=True),
                 }
 
-                stored_cookies = req.token_data.get("cookies", {})
+                # Use fresh cookies from the Python client (includes refreshed
+                # access_token + authenticated PHPSESSID). Fall back to stored.
+                stored_cookies = _fresh_pw_cookies if _fresh_pw_cookies else req.token_data.get("cookies", {})
 
-                print(f"[calendar-pw] launching headless browser", flush=True)
+                print(f"[calendar-pw] launching headless browser (cookies: {sorted(stored_cookies.keys())})", flush=True)
                 async with async_playwright() as pw:
                     browser = await pw.chromium.launch(headless=True)
                     ctx = await browser.new_context(
@@ -911,6 +926,7 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     # calendar context in Angular (profile + calendar feed + event types).
                     print(f"[calendar-pw] navigating to calendar page", flush=True)
                     await page.goto("https://www.aula.dk/portal/#/kalender", wait_until="domcontentloaded", timeout=30000)
+                    print(f"[calendar-pw] landed on: {page.url}", flush=True)
 
                     # Wait for calendar context to be ready (max 15s)
                     for _ in range(30):
