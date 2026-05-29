@@ -139,16 +139,28 @@ export async function registerAulaRoutes(
     if (memberId) { conditions.push(`member_id = $${params.length + 1}`); params.push(memberId); }
 
     params.push(Number(pageSize), offset);
-    const result = await pool.query(
-      `select id, aula_id, type, title, body, author, member_id, published_at, created_at, raw_json
-       from aula_items
-       where ${conditions.join(' and ')}
-       order by published_at desc nulls last, created_at desc
-       limit $${params.length - 1} offset $${params.length}`,
-      params,
-    );
+    const [result, confirmedResult] = await Promise.all([
+      pool.query(
+        `select id, aula_id, type, title, body, author, member_id, published_at, created_at, raw_json
+         from aula_items
+         where ${conditions.join(' and ')}
+         order by published_at desc nulls last, created_at desc
+         limit $${params.length - 1} offset $${params.length}`,
+        params,
+      ),
+      pool.query<{ aula_item_id: string }>(
+        `select aula_item_id::text as aula_item_id from aula_item_confirmations where family_id = $1`,
+        [familyId],
+      ),
+    ]);
 
-    return reply.send({ items: result.rows });
+    const confirmedSet = new Set(confirmedResult.rows.map((r) => r.aula_item_id));
+    const annotated = result.rows.map((item: Record<string, unknown>) => ({
+      ...item,
+      confirmed: confirmedSet.has(String(item.id)),
+    }));
+
+    return reply.send({ items: annotated });
   });
 
   app.delete<{ Params: { id: string } }>('/api/v1/aula/items/:id', async (req, reply) => {

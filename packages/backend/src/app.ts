@@ -13,6 +13,7 @@ import type {
   CreateEntryRequest,
   CreateMemberRequest,
   CreateMemberTimelineTemplateRequest,
+  CreateScheduleEntryRequest,
   DeleteFoodPlanItemRequest,
   Entry,
   FoodPlanDay,
@@ -235,7 +236,9 @@ export async function buildApp() {
         return result.rows[0]?.name ?? null;
       },
     );
-    return { ...repo, entryService, dailyTimelineService, syncService, syncConnectionService, assistantService, settingsService };
+    const memberScheduleRepository = infrastructure.memberScheduleRepository;
+    const aulaConfirmationRepository = infrastructure.aulaConfirmationRepository;
+    return { ...repo, entryService, dailyTimelineService, syncService, syncConnectionService, assistantService, settingsService, memberScheduleRepository, aulaConfirmationRepository };
   }
 
   app.get('/api/v1/health', async () => ({
@@ -501,6 +504,10 @@ export async function buildApp() {
       patch.color = request.body.color.trim() || undefined;
     }
 
+    if (typeof request.body.useAulaSchedule === 'boolean') {
+      patch.useAulaSchedule = request.body.useAulaSchedule;
+    }
+
     const updated = await svc(request).memberRepository.update(request.params.id, patch);
     if (!updated) {
       reply.code(404);
@@ -531,6 +538,78 @@ export async function buildApp() {
 
     reply.code(204);
     return null;
+  });
+
+  // ── Member schedule ───────────────────────────────────────────────────────────
+
+  app.get<{ Params: { memberId: string } }>('/api/v1/members/:memberId/schedule', async (request) => {
+    const familyId = (request as any).familyId as string; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const { memberScheduleRepository } = svc(request);
+    return memberScheduleRepository.list(familyId, request.params.memberId);
+  });
+
+  app.post<{ Params: { memberId: string }; Body: CreateScheduleEntryRequest }>(
+    '/api/v1/members/:memberId/schedule',
+    async (request, reply) => {
+      const { dayOfWeek, title, startTime, endTime } = request.body;
+      if (!dayOfWeek || !title?.trim() || !startTime || !endTime) {
+        reply.code(400);
+        return { message: 'dayOfWeek, title, startTime, endTime are required' };
+      }
+      const familyId = (request as any).familyId as string; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const { memberScheduleRepository } = svc(request);
+      const entry = await memberScheduleRepository.create(familyId, request.params.memberId, {
+        dayOfWeek: dayOfWeek as 1 | 2 | 3 | 4 | 5,
+        title: title.trim(),
+        startTime,
+        endTime,
+      });
+      reply.code(201);
+      return entry;
+    },
+  );
+
+  app.delete<{ Params: { memberId: string; entryId: string } }>(
+    '/api/v1/members/:memberId/schedule/:entryId',
+    async (request, reply) => {
+      const familyId = (request as any).familyId as string; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const deleted = await svc(request).memberScheduleRepository.delete(familyId, request.params.entryId);
+      if (!deleted) { reply.code(404); return { message: 'Entry not found' }; }
+      reply.code(204);
+    },
+  );
+
+  app.post<{ Params: { memberId: string; entryId: string } }>(
+    '/api/v1/members/:memberId/schedule/:entryId/confirm',
+    async (request, reply) => {
+      const familyId = (request as any).familyId as string; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const ok = await svc(request).memberScheduleRepository.setConfirmed(familyId, request.params.entryId, true);
+      if (!ok) { reply.code(404); return { message: 'Entry not found' }; }
+      reply.code(204);
+    },
+  );
+
+  app.delete<{ Params: { memberId: string; entryId: string } }>(
+    '/api/v1/members/:memberId/schedule/:entryId/confirm',
+    async (request, reply) => {
+      const familyId = (request as any).familyId as string; // eslint-disable-line @typescript-eslint/no-explicit-any
+      await svc(request).memberScheduleRepository.setConfirmed(familyId, request.params.entryId, false);
+      reply.code(204);
+    },
+  );
+
+  // ── Aula item confirmations ────────────────────────────────────────────────────
+
+  app.post<{ Params: { id: string } }>('/api/v1/aula/items/:id/confirm', async (request, reply) => {
+    const familyId = (request as any).familyId as string; // eslint-disable-line @typescript-eslint/no-explicit-any
+    await svc(request).aulaConfirmationRepository.confirm(familyId, request.params.id);
+    reply.code(204);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/v1/aula/items/:id/confirm', async (request, reply) => {
+    const familyId = (request as any).familyId as string; // eslint-disable-line @typescript-eslint/no-explicit-any
+    await svc(request).aulaConfirmationRepository.unconfirm(familyId, request.params.id);
+    reply.code(204);
   });
 
   app.put<{ Params: { memberId: string }; Body: UpdateMemberTimelineSettingsRequest }>('/api/v1/members/:memberId/timeline-settings', async (request, reply) => {
