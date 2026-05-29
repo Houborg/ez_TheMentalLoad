@@ -91,6 +91,7 @@ export interface UpdateMemberRequest {
   email?: string;
   avatar?: string;
   color?: string;
+  useAulaSchedule?: boolean;
 }
 
 export interface UpdateSettingsRequest {
@@ -209,6 +210,13 @@ export interface CreateMemberTimelineTemplateRequest {
 }
 
 export type UpdateMemberTimelineTemplateRequest = Partial<CreateMemberTimelineTemplateRequest>;
+
+export interface CreateScheduleEntryRequest {
+  dayOfWeek: 1 | 2 | 3 | 4 | 5;
+  title: string;
+  startTime: string;  // "HH:MM"
+  endTime: string;    // "HH:MM"
+}
 
 export interface UpsertOneOffTimelineTaskRequest {
   title: string;

@@ -7,6 +7,10 @@ export interface Member {
     id: string;
     name: string;
     role: MemberRole;
+    email?: string;
+    avatar?: string;
+    color?: string;
+    useAulaSchedule?: boolean;
     createdAt: string;
 }
 export interface Calendar {
@@ -48,6 +52,7 @@ export interface Entry {
     invitees: Invitee[];
     linkedEntryIds: string[];
     parentEntryId?: string;
+    aulaItemId?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -74,4 +79,14 @@ export interface SyncSettings {
     provider: SyncProvider;
     configJson: Record<string, unknown>;
     isConnected: boolean;
+}
+export interface MemberScheduleEntry {
+    id: string;
+    memberId: string;
+    dayOfWeek: 1 | 2 | 3 | 4 | 5;  // 1=Mon
+    title: string;
+    startTime: string;  // "HH:MM"
+    endTime: string;    // "HH:MM"
+    confirmed?: boolean;
+    createdAt: string;
 }
