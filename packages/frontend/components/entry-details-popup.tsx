@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { LoaderCircle, Trash2, X } from 'lucide-react';
 import type { Entry } from '@mental-load/contracts';
+import { createEntry, deleteEntry } from '@/lib/api';
 
 type EntryDetailsPopupProps = {
   entry: Entry;
@@ -26,6 +27,7 @@ export function EntryDetailsPopup({ entry, ownerName, onClose, onSave, onDelete 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [errorText, setErrorText] = useState('');
+  const [importedEntryId, setImportedEntryId] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft(buildDraft(entry));
@@ -64,6 +66,27 @@ export function EntryDetailsPopup({ entry, ownerName, onClose, onSave, onDelete 
       setErrorText(error instanceof Error ? error.message : 'Could not delete entry');
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleToggleCalendarImport() {
+    if (!entry.aulaItemId) return;
+    if (importedEntryId) {
+      await deleteEntry(importedEntryId);
+      setImportedEntryId(null);
+    } else {
+      const created = await createEntry({
+        title: entry.title,
+        type: 'event',
+        startTime: entry.startTime,
+        endTime: entry.endTime,
+        allDay: entry.allDay,
+        timezone: entry.timezone,
+        calendarId: entry.calendarId,
+        ownerMemberId: entry.ownerMemberId,
+        aulaItemId: entry.aulaItemId,
+      });
+      setImportedEntryId(created.id);
     }
   }
 
@@ -158,6 +181,24 @@ export function EntryDetailsPopup({ entry, ownerName, onClose, onSave, onDelete 
             />
             All day
           </label>
+
+          {entry.aulaItemId && (
+            <div className="flex items-center justify-between rounded-xl bg-muted/40 px-4 py-3">
+              <div>
+                <div className="text-sm font-semibold">Tilføj til familiekalender</div>
+                <div className="text-xs text-muted-foreground">Vises i kalender og på forsiden</div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!!importedEntryId}
+                onClick={() => void handleToggleCalendarImport()}
+                className={`relative h-6 w-11 rounded-full transition-colors ${importedEntryId ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+              >
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${importedEntryId ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center justify-between gap-2 pt-2">
             <button

@@ -79,6 +79,7 @@ export class EntryService {
       parentEntryId: input.parentEntryId,
       assignedToMemberId: input.assignedToMemberId,
       visibleMemberIds: input.visibleMemberIds ?? [],
+      aulaItemId: input.aulaItemId,
       invitees: normalizeInvitees(input.invitees),
       linkedEntryIds: [],
       createdAt: now,

@@ -130,7 +130,7 @@ export class PostgresEntryRepository implements EntryRepository {
 
   private async writeEntry(entry: Entry, familyId: string, client: PoolClient): Promise<void> {
     await client.query(
-      'insert into entries (id, title, type, owner_member_id, calendar_id, start_time, end_time, all_day, location, status, recurrence_rule, parent_entry_id, timezone, assigned_to_member_id, external_uid, created_at, updated_at, family_id, visible_member_ids) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)',
+      'insert into entries (id, title, type, owner_member_id, calendar_id, start_time, end_time, all_day, location, status, recurrence_rule, parent_entry_id, timezone, assigned_to_member_id, external_uid, created_at, updated_at, family_id, visible_member_ids, aula_item_id) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)',
       [
         entry.id,
         entry.title,
@@ -151,6 +151,7 @@ export class PostgresEntryRepository implements EntryRepository {
         entry.updatedAt,
         familyId,
         JSON.stringify(entry.visibleMemberIds ?? []),
+        entry.aulaItemId ?? null,
       ],
     );
 
@@ -241,6 +242,7 @@ export class PostgresEntryRepository implements EntryRepository {
       parentEntryId: row.parent_entry_id ? String(row.parent_entry_id) : undefined,
       assignedToMemberId: row.assigned_to_member_id ? String(row.assigned_to_member_id) : undefined,
       externalUid: row.external_uid ? String(row.external_uid) : undefined,
+      aulaItemId: row.aula_item_id ? String(row.aula_item_id) : undefined,
       visibleMemberIds: Array.isArray(row.visible_member_ids) ? (row.visible_member_ids as string[]) : [],
       createdAt: new Date(String(row.created_at)).toISOString(),
       updatedAt: new Date(String(row.updated_at)).toISOString(),

@@ -182,6 +182,7 @@ export type CreateEntryRequest = Pick<
   checklist?: Array<{ text: string; isCompleted?: boolean; assignedToMemberId?: string }>;
   invitees?: Array<{ email: string }>;
   parentEntryId?: string;
+  aulaItemId?: string;
 };
 
 export type UpdateEntryRequest = Partial<CreateEntryRequest> & {
