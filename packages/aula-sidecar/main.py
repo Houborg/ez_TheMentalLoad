@@ -741,7 +741,27 @@ async def fetch_data(req: FetchDataRequest) -> dict:
     """Fetch Aula data using the Python library client (bypasses REST API auth issues)."""
     try:
         from datetime import datetime, timezone
-        from aula import HttpxHttpClient
+        from aula import HttpxHttpClient, AulaApiClient
+        from aula.auth.mitid_client import API_URL as _AULA_API_URL
+
+        # Monkey-patch init() to remove deviceId=aula-cli which may mark the
+        # session as "mobile/CLI-only" and block the calendar endpoint.
+        # Also try without portalrole restriction to see if that helps.
+        _original_init = AulaApiClient.init.__func__ if hasattr(AulaApiClient.init, '__func__') else None
+
+        async def _patched_init(self_client):
+            from aula.auth_flow import CSRF_TOKEN_COOKIE
+            await self_client._set_correct_api_version()
+            # Call WITHOUT deviceId=aula-cli — try both with and without portalrole
+            await self_client._request_with_version_retry(
+                "get",
+                f"{self_client.api_url}?method=profiles.getProfileContext&portalrole=guardian",
+            )
+            self_client._access_token = None
+            if self_client._csrf_token is None:
+                self_client._csrf_token = self_client._client.get_cookie(CSRF_TOKEN_COOKIE)
+
+        AulaApiClient.init = _patched_init
 
         # ── Correct session order for calendar API access ──────────────────────
         # The calendar endpoint requires an *authenticated* PHPSESSID cookie.
