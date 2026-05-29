@@ -157,7 +157,7 @@ export class AulaSyncService {
             title: event.title || '',
             body: '',
             memberId: mapping.mentalLoadMemberId,
-            publishedAt: eventDate ?? undefined,
+            publishedAt: eventDate ?? null,
             rawJson: event,
             mode: 'upsert',
           });
