@@ -835,191 +835,77 @@ async def fetch_data(req: FetchDataRequest) -> dict:
         except Exception as e:
             print(f"[fetch-data] could not load profile for inst ids, using child_ids: {e}", flush=True)
 
-        # Calendar events via Playwright — uses a real headless browser so all
-        # session/cookie complexity is handled natively, exactly like the browser.
+        # Calendar events — navigates a headless browser to Aula's calendar
+        # page and intercepts Angular's own API call. Angular authenticates
+        # natively; we capture its response rather than replaying the call
+        # ourselves (replays return 403 due to Angular-internal auth headers).
         if req.child_ids and start_dt and end_dt:
-            # ── Diagnostic: try Python library directly before Playwright ─────
-            for _py_ids in ([all_inst_ids] if all_inst_ids != req.child_ids else []) + [req.child_ids]:
-                try:
-                    raw_cal_py = await client.get_calendar_events(
-                        institution_profile_ids=_py_ids,
-                        start=start_dt,
-                        end=end_dt,
-                    )
-                    print(f"[calendar-py] ids={_py_ids} → {len(raw_cal_py or [])} events", flush=True)
-                    break
-                except Exception as _py_e:
-                    print(f"[calendar-py] ids={_py_ids} failed: {type(_py_e).__name__}: {_py_e}", flush=True)
-            # ── end diagnostic ────────────────────────────────────────────────
-
             try:
                 from playwright.async_api import async_playwright
 
-                cph_tz = timezone(timedelta(hours=2))
-                def _fmt_aula_dt(dt, end_of_day: bool = False) -> str:
-                    d = dt.astimezone(cph_tz)
-                    time_part = "23:59:59.9990" if end_of_day else "00:00:00.0000"
-                    tz_str = d.strftime("%z")
-                    return f"{d.strftime('%Y-%m-%d')} {time_part}{tz_str[:3]}:{tz_str[3:]}"
+                pw_base_cookies = _fresh_pw_cookies if _fresh_pw_cookies else req.token_data.get("cookies", {})
 
-                payload = {
-                    "instProfileIds": all_inst_ids,
-                    "resourceIds": [],
-                    "start": _fmt_aula_dt(start_dt, end_of_day=False),
-                    "end": _fmt_aula_dt(end_dt, end_of_day=True),
-                }
-
-                # Use fresh cookies from the Python client (includes refreshed
-                # access_token + authenticated PHPSESSID). Fall back to stored.
-                stored_cookies = _fresh_pw_cookies if _fresh_pw_cookies else req.token_data.get("cookies", {})
-
-                print(f"[calendar-pw] launching headless browser (cookies: {sorted(stored_cookies.keys())})", flush=True)
                 async with async_playwright() as pw:
                     browser = await pw.chromium.launch(headless=True)
                     ctx = await browser.new_context(
                         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
                     )
 
-                    # Inject all stored auth cookies into the browser context
+                    # Inject fresh auth cookies from the Python client
                     pw_cookies = []
-                    for name, value in stored_cookies.items():
+                    for name, value in pw_base_cookies.items():
                         if value:
-                            pw_cookies.append({
-                                "name": name, "value": str(value),
-                                "domain": "www.aula.dk", "path": "/",
-                                "secure": True, "httpOnly": False,
-                            })
-                            pw_cookies.append({
-                                "name": name, "value": str(value),
-                                "domain": "login.aula.dk", "path": "/",
-                                "secure": True, "httpOnly": False,
-                            })
+                            for domain in ("www.aula.dk", "login.aula.dk"):
+                                pw_cookies.append({
+                                    "name": name, "value": str(value),
+                                    "domain": domain, "path": "/",
+                                    "secure": True, "httpOnly": False,
+                                })
                     if pw_cookies:
                         await ctx.add_cookies(pw_cookies)
 
-                    # Wait for the calendar endpoint itself to be hit by Angular —
-                    # this means the full calendar context is loaded and ready.
-                    # We track multiple signals: profile login AND calendar event type fetch.
                     profile_done: list[bool] = [False]
                     calendar_context_done: list[bool] = [False]
-                    # Capture Angular's own successful calendar API calls so we
-                    # can use its instProfileIds AND fall back to its response
-                    # if our own replay still fails.
-                    _angular_cal_responses: list[Any] = []
-                    _angular_inst_ids: list[int] = []
+                    _cal_responses: list[Any] = []
 
                     async def on_response(response):
                         url = response.url
-                        st = response.status
                         if "getProfilesByLogin" in url or "getProfileContext" in url:
                             profile_done[0] = True
-                            method = url.split("method=")[-1].split("&")[0] if "method=" in url else url.split("/")[-1]
-                            print(f"[calendar-pw] profile call: {method} → HTTP {st}", flush=True)
                         if "getEventTypes" in url or "CalendarFeed" in url or "getBirthdayEvents" in url:
                             calendar_context_done[0] = True
-                            method = url.split("method=")[-1].split("&")[0] if "method=" in url else url.split("/")[-1]
-                            print(f"[calendar-pw] calendar ctx call: {method} → HTTP {st}", flush=True)
-                        # Intercept Angular's own calendar event fetch — capture
-                        # instProfileIds from the request body and store the
-                        # response object for later body extraction.
-                        if "getEventsByProfileIdsAndResourceIds" in url and st == 200:
-                            try:
-                                post_data_str = response.request.post_data
-                                if post_data_str:
-                                    _rb = json.loads(post_data_str)
-                                    _ids = _rb.get("instProfileIds", [])
-                                    if _ids and not _angular_inst_ids:
-                                        _angular_inst_ids.extend(_ids)
-                                        print(f"[calendar-pw] angular instProfileIds: {_ids}", flush=True)
-                                _angular_cal_responses.append(response)
-                            except Exception as _ie:
-                                print(f"[calendar-pw] intercept error: {_ie}", flush=True)
-                        # Log all Aula API calls so we can see what Angular is actually doing
-                        if "/api/v" in url and "aula.dk" in url:
-                            method = url.split("method=")[-1].split("&")[0] if "method=" in url else "?"
-                            print(f"[calendar-pw] angular api: {method} → HTTP {st}", flush=True)
+                        if "getEventsByProfileIdsAndResourceIds" in url and response.status == 200:
+                            _cal_responses.append(response)
 
                     page = await ctx.new_page()
                     page.on("response", on_response)
 
-                    # Navigate directly to the calendar page — this initialises the full
-                    # calendar context in Angular (profile + calendar feed + event types).
-                    print(f"[calendar-pw] navigating to calendar page", flush=True)
                     await page.goto("https://www.aula.dk/portal/#/kalender", wait_until="domcontentloaded", timeout=30000)
-                    print(f"[calendar-pw] landed on: {page.url}", flush=True)
 
-                    # Wait for calendar context to be ready (max 15s)
+                    # Wait up to 15 s for Angular's calendar view to fully load
                     for _ in range(30):
                         if profile_done[0] and calendar_context_done[0]:
                             break
                         await page.wait_for_timeout(500)
-                    print(f"[calendar-pw] ready: profile={profile_done[0]} calendar_ctx={calendar_context_done[0]}", flush=True)
+                    print(f"[calendar-pw] profile={profile_done[0]} calendar_ctx={calendar_context_done[0]}", flush=True)
 
-                    # Extra wait for any trailing session setup
+                    # Brief extra wait for Angular's calendar API call to complete
                     await page.wait_for_timeout(2000)
 
-                    # Process Angular's captured responses now that the page has
-                    # settled (safe to await body here, not inside the handler).
-                    _angular_events_raw: list[Any] = []
-                    for _r in _angular_cal_responses:
+                    # Await response bodies here (safe now the page has settled)
+                    raw_events: list[Any] = []
+                    for _r in _cal_responses:
                         try:
-                            _rb = await _r.json()
-                            _evs = _rb.get("data") or []
-                            _angular_events_raw.extend(_evs)
-                            print(f"[calendar-pw] Angular response: {len(_evs)} events captured", flush=True)
+                            _body = await _r.json()
+                            raw_events.extend(_body.get("data") or [])
                         except Exception as _re:
-                            print(f"[calendar-pw] Angular response parse error: {_re}", flush=True)
-
-                    # Playwright can read HttpOnly cookies — document.cookie cannot.
-                    # Csrfp-Token is HttpOnly, so we fetch it via the Python API
-                    # and pass it into the JS evaluation as a plain argument.
-                    all_cookies = await ctx.cookies("https://www.aula.dk")
-                    csrf_token = next(
-                        (c["value"] for c in all_cookies if c["name"] == "Csrfp-Token"),
-                        "",
-                    )
-                    print(f"[calendar-pw] CSRF={'found ✓' if csrf_token else 'missing ✗'}", flush=True)
-
-                    # Use Angular's verified instProfileIds if captured — our
-                    # all_inst_ids (from the Python library) appears to differ
-                    # from what Angular uses, causing the 403.
-                    if _angular_inst_ids:
-                        payload["instProfileIds"] = _angular_inst_ids
-                        print(f"[calendar-pw] overriding instProfileIds with Angular's: {_angular_inst_ids}", flush=True)
-
-                    # Make the calendar API call FROM WITHIN the browser page —
-                    # all cookies (including the newly set PHPSESSID) are sent automatically.
-                    print(f"[calendar-pw] calling calendar API", flush=True)
-                    cal_result = await page.evaluate("""
-                        async ([payload, csrfToken]) => {
-                            const r = await fetch(
-                                '/api/v23/?method=calendar.getEventsByProfileIdsAndResourceIds',
-                                {
-                                    method: 'POST',
-                                    headers: {
-                                        'content-type': 'application/json',
-                                        'csrfp-token': csrfToken,
-                                    },
-                                    credentials: 'include',
-                                    body: JSON.stringify(payload),
-                                }
-                            );
-                            const text = await r.text();
-                            let data;
-                            try { data = JSON.parse(text); }
-                            catch(e) { data = { _raw: text.slice(0, 300) }; }
-                            return { status: r.status, data };
-                        }
-                    """, [payload, csrf_token])
+                            print(f"[calendar-pw] response parse error: {_re}", flush=True)
 
                     await browser.close()
 
-                status = cal_result.get("status", 0)
-                print(f"[calendar-pw] response status={status}", flush=True)
-
-                def _normalize_event(ev: Any) -> dict:
-                    belongs = (ev.get("belongsToProfiles") or [])
-                    return {
+                for ev in raw_events:
+                    belongs = ev.get("belongsToProfiles") or []
+                    result["calendar_events"].append({
                         "id": str(ev.get("id", "")),
                         "title": ev.get("title") or "",
                         "startTime": ev.get("startDateTime") or "",
@@ -1029,19 +915,8 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                         "childId": belongs[0] if belongs else (all_inst_ids[0] if all_inst_ids else 0),
                         "lessonStatus": (ev.get("lesson") or {}).get("lessonStatus"),
                         "type": ev.get("type", "lesson"),
-                    }
-
-                if status == 200:
-                    raw_events = (cal_result.get("data") or {}).get("data", []) or []
-                    result["calendar_events"] = [_normalize_event(ev) for ev in raw_events]
-                    print(f"[calendar-pw] got {len(result['calendar_events'])} events (our call)", flush=True)
-                elif _angular_events_raw:
-                    # Our replay failed but Angular already fetched events —
-                    # use those as a fallback (date range = Angular's current view).
-                    result["calendar_events"] = [_normalize_event(ev) for ev in _angular_events_raw]
-                    print(f"[calendar-pw] our call failed (HTTP {status}), using {len(result['calendar_events'])} events from Angular's own fetch", flush=True)
-                else:
-                    print(f"[calendar-pw] non-200 and no Angular fallback: {cal_result.get('data', {})}", flush=True)
+                    })
+                print(f"[calendar-pw] got {len(result['calendar_events'])} events", flush=True)
 
             except Exception as e:
                 print(f"[calendar-pw] failed: {type(e).__name__}: {e}", flush=True)
