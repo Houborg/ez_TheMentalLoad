@@ -8,6 +8,7 @@ import { TimeGrid, type AulaLesson } from '@/components/time-grid';
 import { WeekGrid } from '@/components/week-grid';
 import { MealDetailSheet } from '@/components/meal-detail-sheet';
 import { aulaGetItems } from '@/lib/aula-api';
+import { getMemberSchedule } from '@/lib/api';
 
 const DAY_LABELS_SHORT: Record<string, string> = {
   monday: 'Man', tuesday: 'Tir', wednesday: 'Ons',
@@ -37,12 +38,14 @@ type Props = {
   foodPlanItems: FoodPlanItem[];
   weatherByDate: Record<string, WeatherDailyPoint>;
   onClickEntry?: (entry: Entry) => void;
+  onOpenScheduleEditor?: (memberId: string) => void;
 };
 
-export function IDagView({ members, entries, memberColorById, foodPlanItems, weatherByDate, onClickEntry }: Props) {
+export function IDagView({ members, entries, memberColorById, foodPlanItems, weatherByDate, onClickEntry, onOpenScheduleEditor }: Props) {
   const [view, setView] = useState<'today' | 'week'>('today');
   const [selectedMeal, setSelectedMeal] = useState<FoodPlanItem | null>(null);
   const [aulaLessons, setAulaLessons] = useState<AulaLesson[]>([]);
+  const [noScheduleChildIds, setNoScheduleChildIds] = useState<Set<string>>(new Set());
 
   const todayDay = new Date()
     .toLocaleDateString('en-US', { weekday: 'long' })
@@ -63,9 +66,9 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
   const todayDow = new Date().getDay();
   const isSchoolDay = todayDow >= 1 && todayDow <= 5;
 
-  // Load Aula school lessons for child members on school days.
-  // Tries calendar_lesson first (real timed lessons from Aula calendar API),
-  // falls back to weekplan_lesson (text-only overview with no times).
+  // Load school lessons for child members on school days.
+  // Priority: useAulaSchedule===false → manual schedule only
+  //           otherwise: Aula calendar_lesson → weekplan_lesson → manual schedule fallback → placeholder
   useEffect(() => {
     if (!isSchoolDay) return;
     const children = members.filter((m) => m.role === 'child');
@@ -74,77 +77,85 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
     Promise.all(
       children.map(async (child) => {
         try {
-          // Prefer calendar_lesson — these have real start/end times (UTC ISO)
+          // 1. If useAulaSchedule is explicitly false, skip Aula entirely
+          if (child.useAulaSchedule === false) {
+            const schedule = await getMemberSchedule(child.id);
+            const todayDowJs = new Date().getDay(); // 0=Sun, 1=Mon...
+            const todayDow = todayDowJs === 0 ? 7 : todayDowJs;
+            const todayEntries = schedule.filter(e => e.dayOfWeek === todayDow);
+            if (todayEntries.length === 0) return { childId: child.id, noSchedule: true, lessons: [] };
+            return {
+              childId: child.id,
+              noSchedule: false,
+              lessons: todayEntries.map(e => ({
+                memberId: child.id,
+                title: e.title,
+                date: todayStr,
+                startTime: e.startTime,
+                endTime: e.endTime,
+              } as AulaLesson)),
+            };
+          }
+
+          // 2. Try Aula calendar_lesson
           const { items } = await aulaGetItems({ type: 'calendar_lesson', memberId: child.id, pageSize: 100 });
           const todayLessons = items.filter((item) => {
             const raw = item.raw_json as Record<string, unknown> | undefined;
-            const startTime = String(raw?.startTime ?? '');
-            return startTime.startsWith(todayStr);
+            return String(raw?.startTime ?? '').startsWith(todayStr);
           });
 
           if (todayLessons.length > 0) {
-            return todayLessons.map((item) => {
-              const raw = item.raw_json as Record<string, unknown>;
-              const startISO = String(raw.startTime ?? '');
-              const endISO = String(raw.endTime ?? '');
-              // Convert UTC ISO to HH:MM in Copenhagen time (UTC+2 in summer)
-              const toHHMM = (iso: string) => {
-                if (!iso) return undefined;
-                const d = new Date(iso);
-                return d.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Copenhagen' });
-              };
-              return {
-                memberId: child.id,
-                title: String(raw.title ?? item.title ?? 'Lektion'),
-                date: todayStr,
-                startTime: toHHMM(startISO),
-                endTime: toHHMM(endISO),
-              } as AulaLesson;
-            });
+            return {
+              childId: child.id, noSchedule: false,
+              lessons: todayLessons.map((item) => {
+                const raw = item.raw_json as Record<string, unknown>;
+                const toHHMM = (iso: string) => {
+                  if (!iso) return undefined;
+                  return new Date(iso).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Copenhagen' });
+                };
+                return { memberId: child.id, title: String(raw.title ?? item.title ?? 'Lektion'), date: todayStr, startTime: toHHMM(String(raw.startTime ?? '')), endTime: toHHMM(String(raw.endTime ?? '')) } as AulaLesson;
+              }),
+            };
           }
 
-          // Fallback: weekplan_lesson (no times, filtered by raw_json.date)
+          // 3. Try weekplan_lesson
           const { items: wpItems } = await aulaGetItems({ type: 'weekplan_lesson', memberId: child.id, pageSize: 50 });
-          return wpItems
-            .filter((item) => {
-              const raw = item.raw_json as Record<string, unknown> | undefined;
-              return raw?.date === todayStr;
-            })
-            .map((item) => {
-              const raw = item.raw_json as Record<string, unknown>;
-              return {
-                memberId: child.id,
-                title: String(raw.title ?? item.title ?? 'Lektion'),
-                date: String(raw.date ?? todayStr),
-                startTime: raw.startTime ? String(raw.startTime) : undefined,
-                endTime: raw.endTime ? String(raw.endTime) : undefined,
-              } as AulaLesson;
-            });
+          const wpToday = wpItems.filter(i => (i.raw_json as Record<string, unknown>)?.date === todayStr);
+          if (wpToday.length > 0) {
+            return {
+              childId: child.id, noSchedule: false,
+              lessons: wpToday.map(item => {
+                const raw = item.raw_json as Record<string, unknown>;
+                return { memberId: child.id, title: String(raw.title ?? item.title ?? 'Lektion'), date: String(raw.date ?? todayStr), startTime: raw.startTime ? String(raw.startTime) : undefined, endTime: raw.endTime ? String(raw.endTime) : undefined } as AulaLesson;
+              }),
+            };
+          }
+
+          // 4. Aula empty — try manual schedule as fallback
+          const schedule = await getMemberSchedule(child.id);
+          const todayDowJs = new Date().getDay();
+          const todayDow = todayDowJs === 0 ? 7 : todayDowJs;
+          const manualToday = schedule.filter(e => e.dayOfWeek === todayDow);
+          if (manualToday.length > 0) {
+            return {
+              childId: child.id, noSchedule: false,
+              lessons: manualToday.map(e => ({ memberId: child.id, title: e.title, date: todayStr, startTime: e.startTime, endTime: e.endTime } as AulaLesson)),
+            };
+          }
+
+          return { childId: child.id, noSchedule: true, lessons: [] };
         } catch {
-          return [];
+          return { childId: child.id, noSchedule: true, lessons: [] };
         }
       }),
-    ).then((allResults) => {
-      const flat = allResults.flat();
-
-      // If no real timed lessons found for a child, add a generic "I skole" block
-      // (08:00–14:30 school hours) so the time grid shows they're at school.
-      const childrenWithLessons = new Set(flat.map((l) => l.memberId));
-      const children = members.filter((m) => m.role === 'child');
-      const fallbacks: AulaLesson[] = children
-        .filter((c) => !childrenWithLessons.has(c.id))
-        .map((c) => ({
-          memberId: c.id,
-          title: 'I skole',
-          date: todayStr,
-          startTime: '08:00',
-          endTime: '14:30',
-        }));
-
-      setAulaLessons([...flat, ...fallbacks]);
+    ).then((results) => {
+      const noSchedule = new Set(results.filter(r => r.noSchedule).map(r => r.childId));
+      setNoScheduleChildIds(noSchedule);
+      const flat = results.flatMap(r => r.lessons);
+      setAulaLessons(flat);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todayStr, isSchoolDay, members.map(m => m.id).join(',')]);
+  }, [todayStr, isSchoolDay, members.map(m => m.id + (m.useAulaSchedule ?? true)).join(',')]);
 
   return (
     <div className="flex flex-col gap-4 p-3">
@@ -211,6 +222,23 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
           />
         )}
       </div>
+
+      {isSchoolDay && noScheduleChildIds.size > 0 && (
+        <div className="flex gap-3 px-1">
+          {members.filter(m => m.role === 'child' && noScheduleChildIds.has(m.id)).map(m => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => onOpenScheduleEditor?.(m.id)}
+              className="flex-1 rounded-xl border border-dashed border-border py-3 text-center text-xs text-muted-foreground hover:border-primary hover:text-primary"
+            >
+              <div className="font-semibold">{m.name}</div>
+              <div>Ingen skemadata</div>
+              <div className="mt-0.5 text-primary">Tilføj manuelt →</div>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Meal strip */}
       <div>
