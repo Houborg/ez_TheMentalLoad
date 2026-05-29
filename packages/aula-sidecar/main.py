@@ -741,31 +741,55 @@ async def fetch_data(req: FetchDataRequest) -> dict:
     """Fetch Aula data using the Python library client (bypasses REST API auth issues)."""
     try:
         from datetime import datetime, timezone
-        client = await create_client(req.token_data)
+        from aula import HttpxHttpClient
 
-        # Visit the Aula portal page to establish a PHP session (PHPSESSID cookie).
-        # The calendar endpoint requires PHPSESSID — it's set when the browser visits
-        # the portal, but the API-based auth flow doesn't visit it automatically.
+        # ── Correct session order for calendar API access ──────────────────────
+        # The calendar endpoint requires an *authenticated* PHPSESSID cookie.
+        # Aula's PHP backend authenticates a PHP session by seeing a valid
+        # access_token in the same request that establishes the session.
+        #
+        # Browser order:
+        #   1. Visit portal/ → server sets empty PHPSESSID
+        #   2. Angular calls ?method=profiles.getProfilesByLogin&access_token=X
+        #      → Aula server finds the existing PHPSESSID and authenticates it
+        #
+        # We replicate this by:
+        #   1. Create a bare HTTP client with stored cookies (has access_token)
+        #   2. Visit portal/ FIRST to get empty PHPSESSID into the cookie jar
+        #   3. THEN call create_client() which calls init() → getProfilesByLogin
+        #      with access_token → Aula authenticates the PHPSESSID in place
+        #   4. Also inject initialLogin + profile_change (set by Aula's JS)
+
+        # Step 1: bare HTTP client with stored MitID cookies
+        stored_cookies = req.token_data.get("cookies", {})
+        http_client = HttpxHttpClient(cookies=stored_cookies)
+
+        # Step 2: visit portal FIRST to establish empty PHPSESSID
         try:
-            portal_resp = await client._client.request(
+            portal_resp = await http_client.request(
                 "get", "https://www.aula.dk/portal/",
                 headers={"Accept": "text/html,application/xhtml+xml,*/*"},
                 params=None, json=None,
             )
-            phpsessid = getattr(client._client, "get_cookie", lambda x: None)("PHPSESSID")
-            print(f"[fetch-data] portal visit status={portal_resp.status_code} PHPSESSID={'set' if phpsessid else 'missing'}", flush=True)
+            phpsessid_before = http_client.get_cookie("PHPSESSID")
+            print(f"[fetch-data] pre-init portal visit: status={portal_resp.status_code} PHPSESSID={'set' if phpsessid_before else 'missing'}", flush=True)
 
-            # Set cookies the browser has but the API session doesn't.
-            # initialLogin=true signals a fresh web-portal session.
-            # profile_change is a session counter set by Aula's web app JS.
-            # Both are required by the calendar endpoint.
-            httpx_client = getattr(client._client, "_client", None)
-            if httpx_client is not None:
-                httpx_client.cookies.set("initialLogin", "true", domain="www.aula.dk")
-                httpx_client.cookies.set("profile_change", "10", domain="www.aula.dk")
-                print(f"[fetch-data] injected initialLogin + profile_change cookies", flush=True)
+            # Inject the two JS-set cookies Aula's web app always has
+            httpx_raw = getattr(http_client, "_client", None)
+            if httpx_raw is not None:
+                httpx_raw.cookies.set("initialLogin", "true", domain="www.aula.dk")
+                httpx_raw.cookies.set("profile_change", "10", domain="www.aula.dk")
         except Exception as e:
-            print(f"[fetch-data] portal visit failed (non-fatal): {e}", flush=True)
+            print(f"[fetch-data] pre-init portal visit failed (non-fatal): {e}", flush=True)
+            http_client = None  # fall back to default client creation
+
+        # Step 3: create_client with our pre-seeded HTTP client
+        # init() calls profiles.getProfilesByLogin?access_token=X which
+        # authenticates the PHPSESSID the portal visit just established.
+        client = await create_client(req.token_data, http_client=http_client)
+
+        phpsessid_after = client._client.get_cookie("PHPSESSID")
+        print(f"[fetch-data] post-init PHPSESSID={'set ✓' if phpsessid_after else 'missing ✗'}", flush=True)
 
         result: dict[str, Any] = {
             "calendar_events": [],
