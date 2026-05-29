@@ -794,11 +794,13 @@ async def fetch_data(req: FetchDataRequest) -> dict:
                     "start": _fmt_aula_dt(start_dt, end_of_day=False),
                     "end": _fmt_aula_dt(end_dt, end_of_day=True),
                 }
+                print(f"[fetch-data] calendar payload: {payload}", flush=True)
                 resp = await client._request_with_version_retry(
                     "post",
                     f"{client.api_url}?method=calendar.getEventsByProfileIdsAndResourceIds",
                     json=payload,
                 )
+                print(f"[fetch-data] calendar response: status={resp.status_code} body={resp.text[:300]}", flush=True)
                 resp.raise_for_status()
                 raw_events = resp.json().get("data", []) or []
                 for ev in raw_events:
