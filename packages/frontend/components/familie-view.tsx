@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronDown, UserPlus, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { AulaPresence, Entry, Member, TodayMemberTimeline } from '@mental-load/contracts';
+import type { AulaPresence, Entry, Member, TodayMemberTimeline, AiMemory } from '@mental-load/contracts';
 import { ScheduleEditor } from '@/components/schedule-editor';
+import { getAiMemory } from '@/lib/api';
 
 // ── Presence helpers ──────────────────────────────────────────────────────────
 
@@ -115,6 +116,11 @@ export function FamilieView({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [scheduleEditorMemberId, setScheduleEditorMemberId] = useState<string | null>(null);
   const scheduleEditorMember = members.find(m => m.id === scheduleEditorMemberId) ?? null;
+  const [memories, setMemories] = useState<AiMemory[]>([]);
+
+  useEffect(() => {
+    getAiMemory().then(setMemories).catch(() => setMemories([]));
+  }, []);
 
   return (
     <div className="flex flex-col gap-3 p-3">
@@ -176,6 +182,19 @@ export function FamilieView({
                   {member.role === 'parent' ? 'Forælder' : 'Barn'}
                 </div>
                 <div className="mt-0.5 text-[10px] font-semibold">{presenceLabel}</div>
+                {(() => {
+                  const memberFacts = memories.filter(m => m.memberId === member.id).slice(0, 3);
+                  if (memberFacts.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {memberFacts.map(fact => (
+                        <span key={fact.id} className="inline-flex items-center gap-0.5 rounded-full bg-muted/60 border border-border px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
+                          {fact.source === 'ai' ? '🤖' : '✏️'} {fact.key}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Progress bar + chevron */}
