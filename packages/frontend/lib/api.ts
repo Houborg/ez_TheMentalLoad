@@ -234,7 +234,7 @@ export async function deleteScheduleEntry(memberId: string, entryId: string): Pr
 }
 
 export async function confirmScheduleEntry(memberId: string, entryId: string): Promise<void> {
-  await fetchJson<void>(`/api/v1/members/${memberId}/schedule/${entryId}/confirm`, { method: 'POST' });
+  await fetchJson<void>(`/api/v1/members/${memberId}/schedule/${entryId}/confirm`, { method: 'POST', body: '{}' });
 }
 
 export async function unconfirmScheduleEntry(memberId: string, entryId: string): Promise<void> {
@@ -242,7 +242,7 @@ export async function unconfirmScheduleEntry(memberId: string, entryId: string):
 }
 
 export async function confirmAulaItem(itemId: string): Promise<void> {
-  await fetchJson<void>(`/api/v1/aula/items/${itemId}/confirm`, { method: 'POST' });
+  await fetchJson<void>(`/api/v1/aula/items/${itemId}/confirm`, { method: 'POST', body: '{}' });
 }
 
 export async function unconfirmAulaItem(itemId: string): Promise<void> {
@@ -433,11 +433,11 @@ export async function getAiSuggestions(): Promise<AiSuggestion[]> {
 }
 
 export async function confirmAiSuggestion(id: string): Promise<void> {
-  await fetchJson<void>(`/api/v1/ai/suggestions/${id}/confirm`, { method: 'POST' });
+  await fetchJson<void>(`/api/v1/ai/suggestions/${id}/confirm`, { method: 'POST', body: '{}' });
 }
 
 export async function executeAiSuggestion(id: string): Promise<{ ok: boolean; message: string; createdId?: string }> {
-  return fetchJson<{ ok: boolean; message: string; createdId?: string }>(`/api/v1/ai/suggestions/${id}/execute`, { method: 'POST' });
+  return fetchJson<{ ok: boolean; message: string; createdId?: string }>(`/api/v1/ai/suggestions/${id}/execute`, { method: 'POST', body: '{}' });
 }
 
 export async function dismissAiSuggestion(id: string): Promise<void> {
