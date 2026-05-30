@@ -1,15 +1,16 @@
 'use client';
 
-import { CalendarDays, Clock, ClipboardList, Users, Settings } from 'lucide-react';
+import { CalendarDays, Clock, ClipboardList, Users, Settings, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export type NavSection = 'dashboard' | 'idag' | 'planner' | 'family' | 'settings';
+export type NavSection = 'dashboard' | 'idag' | 'planner' | 'family' | 'ai' | 'settings';
 
 const NAV_ITEMS: Array<{ key: NavSection; label: string; Icon: React.ElementType }> = [
   { key: 'dashboard', label: 'Hjem',     Icon: CalendarDays },
   { key: 'idag',      label: 'I dag',    Icon: Clock },
   { key: 'planner',   label: 'Planner',  Icon: ClipboardList },
   { key: 'family',    label: 'Familie',  Icon: Users },
+  { key: 'ai',        label: 'AI',       Icon: Bot },
   { key: 'settings',  label: 'Indstil.', Icon: Settings },
 ];
 

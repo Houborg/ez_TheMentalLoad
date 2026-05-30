@@ -68,6 +68,7 @@ import { WeatherStrip } from '@/components/weather-strip';
 import { IDagView } from '@/components/idag-view';
 import { PlannerView } from '@/components/planner-view';
 import { FamilieView } from '@/components/familie-view';
+import { AiTab } from '@/components/ai-tab';
 
 type ReminderDraftMode = 'none' | '5' | '10' | '60' | '120' | '1440' | '2880' | 'custom';
 type RecurrenceFreq = 'none' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
@@ -233,7 +234,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
 
   const navSectionFromQuery = useMemo<NavSection>(() => {
     const value = searchParams.get('section');
-    if (value === 'dashboard' || value === 'idag' || value === 'planner' || value === 'family' || value === 'settings') {
+    if (value === 'dashboard' || value === 'idag' || value === 'planner' || value === 'family' || value === 'ai' || value === 'settings') {
       return value;
     }
     return 'dashboard';
@@ -1872,6 +1873,8 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                   onCreateEntry={() => openCreateEntryComposer()}
                 />
               </div>
+            ) : activeNav === 'ai' ? (
+              <AiTab members={dashboard.members} />
             ) : activeNav === 'family' ? (
               <div className="mx-auto max-w-[900px]">
                 <FamilieView
