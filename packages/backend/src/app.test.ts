@@ -1116,3 +1116,89 @@ test('member schedule: delete returns 404 for missing entry', async () => {
 
   await app.close();
 });
+
+test('AI memory: creates and lists a memory', async () => {
+  const app = await createTestApp();
+
+  const createRes = await app.inject({
+    method: 'POST',
+    url: '/api/v1/ai/memory',
+    payload: { category: 'preference', key: 'Emil kan ikke lide', value: 'fisk' },
+  });
+  assert.strictEqual(createRes.statusCode, 201);
+  const memory = createRes.json();
+  assert.strictEqual(memory.key, 'Emil kan ikke lide');
+  assert.strictEqual(memory.value, 'fisk');
+  assert.strictEqual(memory.source, 'user');
+
+  const listRes = await app.inject({ method: 'GET', url: '/api/v1/ai/memory' });
+  assert.strictEqual(listRes.statusCode, 200);
+  const memories = listRes.json();
+  assert.strictEqual(memories.length, 1);
+  assert.strictEqual(memories[0].value, 'fisk');
+
+  await app.close();
+});
+
+test('AI memory: deletes a memory', async () => {
+  const app = await createTestApp();
+
+  const createRes = await app.inject({
+    method: 'POST',
+    url: '/api/v1/ai/memory',
+    payload: { category: 'person', key: 'Sara fødselsdag', value: '3. oktober' },
+  });
+  assert.strictEqual(createRes.statusCode, 201);
+  const { id } = createRes.json();
+
+  const delRes = await app.inject({ method: 'DELETE', url: `/api/v1/ai/memory/${id}` });
+  assert.strictEqual(delRes.statusCode, 204);
+
+  const listRes = await app.inject({ method: 'GET', url: '/api/v1/ai/memory' });
+  assert.deepStrictEqual(listRes.json(), []);
+
+  await app.close();
+});
+
+test('AI memory: returns 400 for missing required fields', async () => {
+  const app = await createTestApp();
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/v1/ai/memory',
+    payload: { category: 'preference' }, // missing key and value
+  });
+  assert.strictEqual(res.statusCode, 400);
+
+  await app.close();
+});
+
+test('AI suggestions: lists empty suggestions initially', async () => {
+  const app = await createTestApp();
+  const res = await app.inject({ method: 'GET', url: '/api/v1/ai/suggestions' });
+  assert.strictEqual(res.statusCode, 200);
+  assert.deepStrictEqual(res.json(), []);
+  await app.close();
+});
+
+test('AI suggestions: manual analyze returns 202', async () => {
+  const app = await createTestApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/v1/ai/analyze',
+  });
+  // 202 Accepted — queue is null in tests (no REDIS_URL), but the route still returns 202
+  assert.strictEqual(res.statusCode, 202);
+  await app.close();
+});
+
+test('AI suggestions: returns 204 or 404 for unknown suggestion id', async () => {
+  const app = await createTestApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: '/api/v1/ai/suggestions/00000000-0000-0000-0000-000000000999',
+  });
+  // dismiss calls setStatus regardless; if not found it may return 204 or 404
+  assert.ok(res.statusCode === 204 || res.statusCode === 404);
+  await app.close();
+});
