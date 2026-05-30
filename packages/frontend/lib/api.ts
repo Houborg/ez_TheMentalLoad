@@ -35,6 +35,8 @@ import type {
   UpsertOneOffTimelineTaskRequest,
   MemberScheduleEntry,
   CreateScheduleEntryRequest,
+  AiSuggestion,
+  AiMemory,
 } from '@mental-load/contracts';
 
 export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
@@ -422,4 +424,41 @@ export async function loadWeatherForecast(input: {
   }
 
   return fetchJson<WeatherForecastResponse>(`/api/weather?${params.toString()}`);
+}
+
+// ── AI ────────────────────────────────────────────────────────────────────────
+
+export async function getAiSuggestions(): Promise<AiSuggestion[]> {
+  return fetchJson<AiSuggestion[]>('/api/v1/ai/suggestions');
+}
+
+export async function confirmAiSuggestion(id: string): Promise<void> {
+  await fetchJson<void>(`/api/v1/ai/suggestions/${id}/confirm`, { method: 'POST' });
+}
+
+export async function executeAiSuggestion(id: string): Promise<{ ok: boolean; message: string; createdId?: string }> {
+  return fetchJson<{ ok: boolean; message: string; createdId?: string }>(`/api/v1/ai/suggestions/${id}/execute`, { method: 'POST' });
+}
+
+export async function dismissAiSuggestion(id: string): Promise<void> {
+  await fetchJson<void>(`/api/v1/ai/suggestions/${id}`, { method: 'DELETE' });
+}
+
+export async function getAiMemory(): Promise<AiMemory[]> {
+  return fetchJson<AiMemory[]>('/api/v1/ai/memory');
+}
+
+export async function createAiMemory(input: { memberId?: string; category: AiMemory['category']; key: string; value: string }): Promise<AiMemory> {
+  return fetchJson<AiMemory>('/api/v1/ai/memory', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteAiMemory(id: string): Promise<void> {
+  await fetchJson<void>(`/api/v1/ai/memory/${id}`, { method: 'DELETE' });
+}
+
+export async function triggerAiAnalysis(): Promise<void> {
+  await fetchJson<void>('/api/v1/ai/analyze', { method: 'POST' });
 }
