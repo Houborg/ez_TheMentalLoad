@@ -2853,6 +2853,108 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                 <div className="rounded-2xl border border-border/60 bg-background/30 p-5">
                   <h3 className="mb-4 text-sm font-semibold">AI Assistent</h3>
                   <div className="space-y-5">
+
+                    {/* Provider selector */}
+                    <div className="space-y-1.5">
+                      <span className="text-sm font-medium">AI-udbyder</span>
+                      <div className="grid grid-cols-2 gap-2 mt-1 sm:grid-cols-4">
+                        {([
+                          { value: 'claude', label: 'Claude', hint: 'Anthropic Haiku' },
+                          { value: 'openai', label: 'OpenAI', hint: 'GPT-4o-mini' },
+                          { value: 'ollama', label: 'Ollama', hint: 'Lokal / fjern' },
+                          { value: 'none',   label: 'Ingen AI', hint: 'Regelbaseret' },
+                        ] as const).map(p => (
+                          <button
+                            key={p.value}
+                            type="button"
+                            onClick={() => setSettings(cur => cur ? { ...cur, assistant: { ...cur.assistant, provider: p.value } } : cur)}
+                            className={cn(
+                              'flex flex-col items-start rounded-xl border px-3 py-2.5 text-left transition',
+                              (settings.assistant.provider ?? 'claude') === p.value
+                                ? 'border-primary bg-primary/10 text-primary'
+                                : 'border-border/60 bg-background/60 text-muted-foreground hover:text-foreground',
+                            )}
+                          >
+                            <span className="text-sm font-semibold">{p.label}</span>
+                            <span className="text-[10px] opacity-70">{p.hint}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Claude — API key */}
+                    {(settings.assistant.provider ?? 'claude') === 'claude' && (
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Anthropic API-nøgle</label>
+                        <input
+                          type="password"
+                          value={settings.assistant.apiKey ?? ''}
+                          onChange={e => setSettings(cur => cur ? { ...cur, assistant: { ...cur.assistant, apiKey: e.target.value } } : cur)}
+                          placeholder="sk-ant-api03-…"
+                          className="w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-2.5 text-sm font-mono outline-none focus:border-primary/60"
+                        />
+                        <p className="text-xs text-muted-foreground">Fra console.anthropic.com</p>
+                      </div>
+                    )}
+
+                    {/* OpenAI */}
+                    {settings.assistant.provider === 'openai' && (
+                      <>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium">OpenAI API-nøgle</label>
+                          <input
+                            type="password"
+                            value={settings.assistant.openaiApiKey ?? ''}
+                            onChange={e => setSettings(cur => cur ? { ...cur, assistant: { ...cur.assistant, openaiApiKey: e.target.value } } : cur)}
+                            placeholder="sk-…"
+                            className="w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-2.5 text-sm font-mono outline-none focus:border-primary/60"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium">Model</label>
+                          <div className="flex flex-wrap gap-2 mt-1">
+                            {['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'].map(m => (
+                              <button key={m} type="button"
+                                onClick={() => setSettings(cur => cur ? { ...cur, assistant: { ...cur.assistant, openaiModel: m } } : cur)}
+                                className={cn('rounded-xl border px-3 py-1.5 text-xs font-semibold transition',
+                                  (settings.assistant.openaiModel ?? 'gpt-4o-mini') === m ? 'border-primary bg-primary/10 text-primary' : 'border-border/60 text-muted-foreground hover:text-foreground')}>
+                                {m}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Ollama */}
+                    {settings.assistant.provider === 'ollama' && (
+                      <>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium">Ollama URL</label>
+                          <input
+                            type="url"
+                            value={settings.assistant.ollamaUrl ?? ''}
+                            onChange={e => setSettings(cur => cur ? { ...cur, assistant: { ...cur.assistant, ollamaUrl: e.target.value } } : cur)}
+                            placeholder="http://192.168.1.50:11434"
+                            className="w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-2.5 text-sm font-mono outline-none focus:border-primary/60"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium">Model</label>
+                          <div className="flex flex-wrap gap-2 mt-1">
+                            {['llama3.2:3b', 'llama3.2', 'mistral', 'gemma2:2b'].map(m => (
+                              <button key={m} type="button"
+                                onClick={() => setSettings(cur => cur ? { ...cur, assistant: { ...cur.assistant, ollamaModel: m } } : cur)}
+                                className={cn('rounded-xl border px-3 py-1.5 text-xs font-semibold transition',
+                                  (settings.assistant.ollamaModel ?? 'llama3.2:3b') === m ? 'border-primary bg-primary/10 text-primary' : 'border-border/60 text-muted-foreground hover:text-foreground')}>
+                                {m}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
                     {/* Tone */}
                     <div className="space-y-1.5">
                       <span className="text-sm font-medium">Tone</span>
@@ -2882,7 +2984,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">Egne instruktioner</label>
                       <textarea
-                        rows={4}
+                        rows={3}
                         value={settings.assistant.customInstructions ?? ''}
                         onChange={e => setSettings(current => current ? {
                           ...current,
@@ -2892,7 +2994,7 @@ const [birthdaysDraft, setBirthdaysDraft] = useState<{ id?: string; name: string
                         className="w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm outline-none focus:border-primary/60 resize-none"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Tilføjes til AI-assistentens systemprompt. Giv assistenten personlighed eller husregler.
+                        Tilføjes til AI-assistentens systemprompt.
                       </p>
                     </div>
                   </div>
