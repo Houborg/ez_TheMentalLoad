@@ -34,8 +34,10 @@ export function LoginForm() {
       }
 
       const destination = searchParams.get('from') ?? '/';
-      router.push(destination);
-      router.refresh();
+      // Hard redirect so the browser sends the new session cookie on the
+      // next request — client-side router.push() is unreliable on mobile
+      // because the cookie may not yet be included in the navigation.
+      window.location.replace(destination);
     } catch {
       setError('Network error. Please check your connection.');
     } finally {
