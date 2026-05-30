@@ -50,6 +50,10 @@ import { registerAuthRoutes } from './auth/auth-routes';
 import { verifyToken } from './auth/auth-service';
 import { registerAulaRoutes } from './aula/aula-routes';
 import { InMemorySyncConnectionService, SyncConnectionService } from './sync/sync-connection-service';
+import { Queue } from 'bullmq';
+import { AI_QUEUE_NAME, type AiJobData } from './workers/ai-worker.js';
+import { executeSuggestion } from './domains/assistant/tool-executor.js';
+import type { CreateAiMemoryRequest } from '@mental-load/contracts';
 
 const DEFAULT_FAMILY_ID = '00000000-0000-4000-8000-000000000001';
 const MEMBER_COLORS = ['#6366f1', '#f59e0b', '#ec4899', '#14b8a6', '#f97316', '#8b5cf6', '#06b6d4', '#84cc16'];
@@ -89,6 +93,17 @@ export async function buildApp() {
   const app = Fastify({ logger: false });
   const eventBus = new DomainEventBus();
   const infrastructure = await createRepositoryBundle();
+
+  const aiQueue = process.env.REDIS_URL
+    ? new Queue<AiJobData>(AI_QUEUE_NAME, {
+        connection: (() => { const u = new URL(process.env.REDIS_URL!); return { host: u.hostname, port: Number(u.port) || 6379 }; })(),
+      })
+    : null;
+
+  async function enqueueAiJob(data: AiJobData) {
+    if (!aiQueue) return;
+    await aiQueue.add('ai-job', data, { removeOnComplete: 100, removeOnFail: 50 });
+  }
   const { dailyTimelineRepository, reminderScheduler, persistence, close } = infrastructure;
 
   // On startup (in-memory / new postgres deployment): ensure every member in the default family
@@ -242,7 +257,7 @@ export async function buildApp() {
     );
     const memberScheduleRepository = infrastructure.memberScheduleRepository;
     const aulaConfirmationRepository = infrastructure.aulaConfirmationRepository;
-    return { ...repo, entryService, dailyTimelineService, syncService, syncConnectionService, assistantService, settingsService, memberScheduleRepository, aulaConfirmationRepository };
+    return { ...repo, entryService, dailyTimelineService, syncService, syncConnectionService, assistantService, settingsService, memberScheduleRepository, aulaConfirmationRepository, aiMemoryRepository: infrastructure.aiMemoryRepository, aiSuggestionRepository: infrastructure.aiSuggestionRepository };
   }
 
   app.get('/api/v1/health', async () => ({
@@ -929,6 +944,99 @@ export async function buildApp() {
     }
   });
 
+  // ── AI Suggestions ────────────────────────────────────────────────────────────
+
+  app.get('/api/v1/ai/suggestions', async (request) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const { aiSuggestionRepository } = svc(request);
+    await aiSuggestionRepository.expireOld(familyId);
+    return aiSuggestionRepository.list(familyId, 'pending');
+  });
+
+  app.post<{ Params: { id: string } }>('/api/v1/ai/suggestions/:id/confirm', async (request, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const { aiSuggestionRepository } = svc(request);
+    const ok = await aiSuggestionRepository.setStatus(familyId, request.params.id, 'confirmed');
+    if (!ok) { reply.code(404); return { message: 'Suggestion not found' }; }
+    reply.code(204);
+  });
+
+  app.post<{ Params: { id: string } }>('/api/v1/ai/suggestions/:id/execute', async (request, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const { aiSuggestionRepository, entryService } = svc(request);
+    const suggestion = await aiSuggestionRepository.findById(familyId, request.params.id);
+    if (!suggestion) { reply.code(404); return { message: 'Suggestion not found' }; }
+    if (suggestion.status !== 'confirmed') { reply.code(400); return { message: 'Suggestion must be confirmed first' }; }
+
+    // Get the food plan repository from the scoped repo bundle
+    const scopedRepo = svc(request);
+    const result = await executeSuggestion(
+      familyId,
+      suggestion,
+      {
+        createEntry: (input) => entryService.createEntry(input) as Promise<{ id: string }>,
+        upsertFoodPlan: (input) => scopedRepo.foodPlanRepository.upsert(input),
+      },
+      aiSuggestionRepository,
+    );
+
+    return result;
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/v1/ai/suggestions/:id', async (request, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const { aiSuggestionRepository } = svc(request);
+    await aiSuggestionRepository.setStatus(familyId, request.params.id, 'dismissed');
+    reply.code(204);
+  });
+
+  // ── AI Memory ─────────────────────────────────────────────────────────────────
+
+  app.get('/api/v1/ai/memory', async (request) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const { aiMemoryRepository } = svc(request);
+    return aiMemoryRepository.list(familyId);
+  });
+
+  app.post<{ Body: CreateAiMemoryRequest }>('/api/v1/ai/memory', async (request, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const { aiMemoryRepository } = svc(request);
+    const { memberId, category, key, value } = request.body;
+    if (!category || !key?.trim() || !value?.trim()) {
+      reply.code(400); return { message: 'category, key, and value are required' };
+    }
+    const memory = await aiMemoryRepository.upsert(familyId, {
+      memberId, category, key: key.trim(), value: value.trim(), source: 'user',
+    });
+    reply.code(201);
+    return memory;
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/v1/ai/memory/:id', async (request, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const { aiMemoryRepository } = svc(request);
+    const ok = await aiMemoryRepository.delete(familyId, request.params.id);
+    if (!ok) { reply.code(404); return { message: 'Memory not found' }; }
+    reply.code(204);
+  });
+
+  // ── Manual analysis trigger ───────────────────────────────────────────────────
+
+  app.post('/api/v1/ai/analyze', async (request, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    await enqueueAiJob({ familyId, triggerType: 'manual' });
+    reply.code(202);
+    return { message: 'Analysis queued' };
+  });
+
   app.post<{ Body: { calendarId: string; ownerMemberId: string; ics: string } }>('/api/v1/entries/import/ics', async (request, reply) => {
     const result = await svc(request).entryService.importFromIcs(request.body);
     reply.code(200);
@@ -982,6 +1090,16 @@ export async function buildApp() {
 
   eventBus.on('entry.created', (event) => {
     broadcast({ type: 'entry.created', payload: event.payload, occurredAt: event.occurredAt });
+    // Trigger AI analysis for new entries (non-recurring only to avoid spam)
+    const ep = event.payload as { entry: { id: string; type: string; title: string; startTime: string; recurrenceRule?: string }; familyId?: string };
+    if (ep.familyId && !ep.entry.recurrenceRule) {
+      void enqueueAiJob({
+        familyId: ep.familyId,
+        triggerType: 'event',
+        triggerRef: ep.entry.id,
+        triggerContext: `Ny ${ep.entry.type === 'task' ? 'opgave' : 'begivenhed'} oprettet: "${ep.entry.title}" den ${new Date(ep.entry.startTime).toLocaleDateString('da-DK')}`,
+      });
+    }
   });
 
   eventBus.on('entry.updated', (event) => {
@@ -1092,6 +1210,25 @@ export async function buildApp() {
       }, settings.mail);
     }));
   }
+
+  // Daily AI analysis at 07:00
+  const scheduleMorningAnalysis = () => {
+    const now = new Date();
+    const next = new Date();
+    next.setHours(7, 0, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    const msUntil = next.getTime() - now.getTime();
+    setTimeout(async () => {
+      if (infrastructure.pool) {
+        const { rows } = await infrastructure.pool.query<{ id: string }>('select id from families');
+        for (const row of rows) {
+          await enqueueAiJob({ familyId: row.id, triggerType: 'morning', triggerContext: 'Daglig morgenanalyse' });
+        }
+      }
+      scheduleMorningAnalysis();
+    }, msUntil);
+  };
+  scheduleMorningAnalysis();
 
   return app;
 }

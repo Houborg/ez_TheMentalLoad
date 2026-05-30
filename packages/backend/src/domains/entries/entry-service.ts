@@ -290,13 +290,13 @@ export class EntryService {
   private publish(name: 'entry.created' | 'entry.updated' | 'entry.deleted', payload: EntryEventPayload): void {
     this.eventBus.emit({
       name,
-      payload,
+      payload: { ...payload, familyId: this.familyId },
       occurredAt: new Date().toISOString(),
     });
   }
 }
 
-type EntryEventPayload = { entry: Entry };
+type EntryEventPayload = { entry: Entry; familyId?: string };
 
 type NodeIcsEvent = {
   type?: string;
