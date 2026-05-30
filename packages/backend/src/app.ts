@@ -1031,12 +1031,9 @@ export async function buildApp() {
   // ── Manual analysis trigger ───────────────────────────────────────────────────
 
   app.post('/api/v1/ai/analyze', async (request, reply) => {
-    console.log('[ai-analyze] route hit');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const familyId = (request as any).familyId as string;
-    console.log('[ai-analyze] familyId:', familyId);
     const { aiMemoryRepository, aiSuggestionRepository, entryService } = svc(request);
-    console.log('[ai-analyze] repos ready, aiSuggestionRepo:', !!aiSuggestionRepository);
 
     // Always run inline — there is no separate AI worker container
     if (false && aiQueue) {
