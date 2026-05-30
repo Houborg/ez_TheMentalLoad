@@ -84,6 +84,36 @@ export async function executeSuggestion(
         break;
       }
 
+      case 'set_reminder': {
+        // set_reminder: create a task entry as a stand-in for the reminder
+        const d = suggestion.actionData as {
+          title?: string;
+          minutesBefore?: number;
+          startTime?: string;
+          memberId?: string;
+          calendarId?: string;
+        };
+        if (!d.title || !d.memberId || !d.calendarId) {
+          // Minimal fallback: mark as info if we can't create an entry
+          result = { ok: true, message: `Påmindelse noteret: ${suggestion.text}` };
+          break;
+        }
+        const startTime = d.startTime ?? new Date(Date.now() + (d.minutesBefore ?? 1440) * 60000).toISOString();
+        const endTime = new Date(new Date(startTime).getTime() + 30 * 60000).toISOString();
+        const created = await deps.createEntry({
+          title: d.title,
+          type: 'task',
+          ownerMemberId: d.memberId,
+          calendarId: d.calendarId,
+          startTime,
+          endTime,
+          timezone: process.env.DEFAULT_TIMEZONE ?? 'Europe/Copenhagen',
+          allDay: false,
+        });
+        result = { ok: true, message: `Påmindelse tilføjet: ${d.title}`, createdId: (created as { id: string }).id };
+        break;
+      }
+
       case 'info':
         result = { ok: true, message: suggestion.text };
         break;
