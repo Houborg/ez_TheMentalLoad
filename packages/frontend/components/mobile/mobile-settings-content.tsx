@@ -13,9 +13,11 @@ import {
 import { SettingsHolidays } from '@/components/settings-holidays';
 import { SyncSettings } from '@/components/sync/sync-settings';
 import { MobileAulaSettings } from './mobile-aula-settings';
+import { AiKnowledgeMap } from '@/components/ai-knowledge-map';
+import { triggerAiAnalysis } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-type Tab = 'tema' | 'vejr' | 'familie' | 'kalendere' | 'assistent' | 'helligdage' | 'sync' | 'aula' | 'udvikler';
+type Tab = 'tema' | 'vejr' | 'familie' | 'kalendere' | 'assistent' | 'ai' | 'helligdage' | 'sync' | 'aula' | 'udvikler';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'tema', label: 'Tema' },
@@ -23,6 +25,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'familie', label: 'Familie' },
   { id: 'kalendere', label: 'Kalendere' },
   { id: 'assistent', label: 'Assistent' },
+  { id: 'ai', label: 'AI Viden' },
   { id: 'helligdage', label: 'Helligdage' },
   { id: 'sync', label: 'Sync' },
   { id: 'aula', label: 'Aula' },
@@ -97,7 +100,7 @@ export function MobileSettingsContent({ members, calendars, onRefresh }: Props) 
             </div>
           )}
 
-          {loadingSettings && activeTab !== 'familie' && activeTab !== 'kalendere' && activeTab !== 'helligdage' && activeTab !== 'sync' && activeTab !== 'aula' ? (
+          {loadingSettings && activeTab !== 'familie' && activeTab !== 'kalendere' && activeTab !== 'helligdage' && activeTab !== 'sync' && activeTab !== 'aula' && activeTab !== 'ai' ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
@@ -167,6 +170,11 @@ export function MobileSettingsContent({ members, calendars, onRefresh }: Props) 
               {/* ── ASSISTENT ── */}
               {activeTab === 'assistent' && settings && (
                 <AssistantTab settings={settings} onChange={setSettings} onSave={save} />
+              )}
+
+              {/* ── AI VIDEN ── */}
+              {activeTab === 'ai' && (
+                <AiKnowledgeMapSettings members={members} />
               )}
 
               {/* ── HELLIGDAGE ── */}
@@ -554,6 +562,46 @@ function AssistantTab({
         className="rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground">
         Gem
       </button>
+    </div>
+  );
+}
+
+/* ─── AI Knowledge Settings ─── */
+function AiKnowledgeMapSettings({ members }: { members: Member[] }) {
+  const [analyzing, setAnalyzing] = useState(false);
+  const [message, setMessage] = useState('');
+
+  async function handleAnalyze() {
+    setAnalyzing(true);
+    setMessage('');
+    try {
+      await triggerAiAnalysis();
+      setMessage('Analyse igangsat — forslag opdateres inden for et par sekunder.');
+    } catch {
+      setMessage('Kunne ikke starte analyse.');
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <p className={LABEL}>Familiehjernen</p>
+        <p className="text-xs text-muted-foreground mb-3">Hvad AI ved om jeres familie. Tilføj, rediger og slet facts.</p>
+        <AiKnowledgeMap members={members} />
+      </div>
+      <div>
+        <button
+          type="button"
+          onClick={handleAnalyze}
+          disabled={analyzing}
+          className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+        >
+          {analyzing ? 'Analyserer…' : '🔄 Kør AI-analyse nu'}
+        </button>
+        {message && <p className="text-xs text-muted-foreground mt-2">{message}</p>}
+      </div>
     </div>
   );
 }
