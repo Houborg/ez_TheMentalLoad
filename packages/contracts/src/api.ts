@@ -292,3 +292,15 @@ export interface SyncConnectionRunResponse {
   lastSyncAt: string;
   message: string;
 }
+
+export interface CreateAiMemoryRequest {
+  memberId?: string;
+  category: import('./domain').AiMemoryCategory;
+  key: string;
+  value: string;
+}
+
+export interface AiAnalyzeRequest {
+  triggerType: 'manual';
+  context?: string;
+}

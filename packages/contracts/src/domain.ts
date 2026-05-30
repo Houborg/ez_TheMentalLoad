@@ -87,6 +87,35 @@ export interface ChatMessage {
 }
 
 export type AiProvider = 'claude' | 'openai' | 'ollama' | 'none';
+export type AiSuggestionStatus = 'pending' | 'confirmed' | 'executing' | 'done' | 'dismissed' | 'expired';
+export type AiSuggestionCategory = 'task' | 'food' | 'calendar' | 'grocery' | 'info';
+export type AiActionType = 'add_event' | 'add_task' | 'update_food' | 'add_grocery' | 'set_reminder' | 'info';
+export type AiMemoryCategory = 'person' | 'preference' | 'pattern' | 'event';
+export type AiMemorySource = 'sync' | 'event' | 'chat' | 'ai' | 'user';
+
+export interface AiSuggestion {
+  id: string;
+  triggerType: 'morning' | 'event' | 'sync' | 'manual';
+  triggerRef?: string;
+  category: AiSuggestionCategory;
+  text: string;
+  actionType: AiActionType;
+  actionData: Record<string, unknown>;
+  status: AiSuggestionStatus;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface AiMemory {
+  id: string;
+  memberId?: string;
+  category: AiMemoryCategory;
+  key: string;
+  value: string;
+  source: AiMemorySource;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface AssistantConfig {
   id: string;
