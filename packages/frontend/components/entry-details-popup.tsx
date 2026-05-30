@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { LoaderCircle, Trash2, X } from 'lucide-react';
-import type { Entry } from '@mental-load/contracts';
-import { createEntry, deleteEntry } from '@/lib/api';
+import type { Entry, AiSuggestion } from '@mental-load/contracts';
+import { createEntry, deleteEntry, getAiSuggestions, dismissAiSuggestion } from '@/lib/api';
+import { AiSuggestionCard } from '@/components/ai-suggestion-card';
+import { AiConfirmationSheet } from '@/components/ai-confirmation-sheet';
 
 type EntryDetailsPopupProps = {
   entry: Entry;
@@ -28,6 +30,8 @@ export function EntryDetailsPopup({ entry, ownerName, onClose, onSave, onDelete 
   const [deleting, setDeleting] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [importedEntryId, setImportedEntryId] = useState<string | null>(null);
+  const [entrySuggestions, setEntrySuggestions] = useState<AiSuggestion[]>([]);
+  const [confirmingSuggestion, setConfirmingSuggestion] = useState<AiSuggestion | null>(null);
 
   useEffect(() => {
     setDraft(buildDraft(entry));
@@ -35,6 +39,12 @@ export function EntryDetailsPopup({ entry, ownerName, onClose, onSave, onDelete 
     setSaving(false);
     setDeleting(false);
   }, [entry]);
+
+  useEffect(() => {
+    getAiSuggestions()
+      .then(all => setEntrySuggestions(all.filter(s => s.triggerRef === entry.id)))
+      .catch(() => setEntrySuggestions([]));
+  }, [entry.id]);
 
   async function handleSave() {
     try {
@@ -199,6 +209,26 @@ export function EntryDetailsPopup({ entry, ownerName, onClose, onSave, onDelete 
               </button>
             </div>
           )}
+
+          {entrySuggestions.length > 0 && (
+            <div className="space-y-2 mt-4">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">🤖 AI-forslag</div>
+              {entrySuggestions.map(s => (
+                <AiSuggestionCard
+                  key={s.id}
+                  suggestion={s}
+                  onAccept={() => setConfirmingSuggestion(s)}
+                  onDismiss={(id) => { dismissAiSuggestion(id).catch(() => undefined); setEntrySuggestions(prev => prev.filter(x => x.id !== id)); }}
+                />
+              ))}
+            </div>
+          )}
+
+          <AiConfirmationSheet
+            suggestion={confirmingSuggestion}
+            onClose={() => setConfirmingSuggestion(null)}
+            onDone={(id) => { setEntrySuggestions(prev => prev.filter(x => x.id !== id)); }}
+          />
 
           <div className="flex items-center justify-between gap-2 pt-2">
             <button
