@@ -4,7 +4,7 @@ import type { AiSuggestionRepository } from '../../repositories/ai-suggestion-re
 import type { AiSuggestion, AiMemoryCategory, AiActionType, AiSuggestionCategory } from '@mental-load/contracts';
 import { buildAiContext, type AiContextDeps } from './ai-context-service.js';
 
-const CLAUDE_MODEL = 'claude-haiku-4-5';
+const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 
 const ANALYSIS_TOOLS: Anthropic.Tool[] = [
   {

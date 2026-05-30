@@ -15,7 +15,7 @@ import type {
   Member,
 } from '@mental-load/contracts';
 
-const CLAUDE_MODEL = 'claude-haiku-4-5';
+const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 
 interface RuntimeConfig {

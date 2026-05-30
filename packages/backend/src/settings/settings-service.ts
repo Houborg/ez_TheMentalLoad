@@ -195,7 +195,7 @@ function mergeWithDefaults(stored: Record<string, unknown>): AppSettings {
       id: 'assistant-default',
       enabled: true,
       language: 'en',
-      modelName: 'claude-haiku-4-5',
+      modelName: 'claude-haiku-4-5-20251001',
       provider: process.env.ANTHROPIC_API_KEY ? 'claude' : 'none',
       apiKey: process.env.ANTHROPIC_API_KEY ?? '',
       openaiModel: 'gpt-4o-mini',
