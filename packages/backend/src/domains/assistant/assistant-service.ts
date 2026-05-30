@@ -251,7 +251,8 @@ async function callClaude(
     });
     const block = response.content[0];
     return block.type === 'text' ? block.text.trim() || undefined : undefined;
-  } catch {
+  } catch (err) {
+    console.error('[claude] callClaude error:', err instanceof Error ? err.message : String(err));
     return undefined;
   }
 }
