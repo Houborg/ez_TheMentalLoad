@@ -1,0 +1,51 @@
+
+> @mental-load/backend@0.1.0 test
+> tsx --test src/**/*.test.ts
+
+[ai-worker] No REDIS_URL — AI worker idle
+✔ health endpoint responds with ok (112.509ms)
+✔ deploy update proxies to webhook when configured (9.7142ms)
+✔ deploy update returns 502 when webhook responds with error (12.3435ms)
+[mail-preview] Invitation: Saga birthday -> family@local.test
+✔ creating a birthday event also creates the gift task (29.09ms)
+[mail-preview] Invitation: Doctor visit -> family@local.test
+✔ entry can be updated and deleted (12.1901ms)
+[mail-preview] Invitation: Family trip -> family@local.test
+✔ entry create and update persist checklist tasks and multiple reminders (7.0778ms)
+[mail-preview] Invitation: Birthday prep -> family@local.test
+✔ entry create and update persist checklist task assignees (6.0384ms)
+[mail-preview] Invitation: Weekly swim class -> family@local.test
+✔ recurring entries expand into occurrences inside a requested date range (7.6532ms)
+[mail-preview] Invitation: Parent meeting -> family@local.test
+✔ calendar entries export to ICS and can be imported back (8.5925ms)
+✔ assistant parses a natural language draft and confirms it deterministically (6.3853ms)
+✔ assistant supports follow-up messages to complete a partial draft (5.6126ms)
+✔ assistant fun chat returns a friendly response (9.8924ms)
+✔ assistant status reports claude when ANTHROPIC_API_KEY is set (4.7548ms)
+[mail-preview] MentalLoad mail test -> qa@local.test
+✔ settings, member management, email preview, and manual sync endpoints work together (7.4024ms)
+✔ settings update rejects disconnected non-none sync provider (4.2661ms)
+✔ entries occurrences rejects invalid date ranges (4.7495ms)
+✔ delete endpoints return 404 when entities do not exist (6.9338ms)
+✔ food plan delete works with query params and ISO datetime weekStart (9.9172ms)
+✔ member patch validates empty name and returns 400 (12.3624ms)
+✔ member delete removes target member and returns 204 (3.7618ms)
+✔ member delete blocks self delete when actorMemberId matches target (3.3175ms)
+✔ assistant confirm validates missing date fields with 400 (4.4379ms)
+✔ timeline is generated from member task entries for today (5.0889ms)
+✔ deleting a generated entry task keeps it removed from the same day timeline (4.5251ms)
+﹣ timeline confirmation is blocked until the due time is reached (0.0757ms) # SKIP
+✔ timeline confirmation rejects unknown task ids deterministically (4.9325ms)
+✔ GET /api/v1/sync/connections returns empty list in in-memory mode (4.5026ms)
+✔ POST /api/v1/sync/connections/verify returns 400 with bad credentials in in-memory mode (8.0731ms)
+[mail-preview] Invitation: After school routine -> family@local.test
+✔ timeline includes checklist tasks from member events (4.9004ms)
+✔ member schedule: create, list, delete (8.2007ms)
+✔ member schedule: confirm and unconfirm entry (9.0501ms)
+✔ member schedule: delete returns 404 for missing entry (6.0132ms)
+✔ AI memory: creates and lists a memory (6.9693ms)
+✔ AI memory: deletes a memory (6.8792ms)
+✔ AI memory: returns 400 for missing required fields (9.8328ms)
+✔ AI suggestions: lists empty suggestions initially (5.508ms)
+✔ AI suggestions: manual analyze returns 202 (4.2818ms)
+✔ AI suggestions: returns 204 or 404 for unknown suggestion id (5.2878ms)
