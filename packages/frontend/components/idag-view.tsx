@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
-import type { Entry, Member, FoodPlanItem } from '@mental-load/contracts';
+import type { Entry, Member, FoodPlanItem, AiSuggestion } from '@mental-load/contracts';
 import type { WeatherDailyPoint } from '@/lib/api';
 import { TimeGrid, type AulaLesson } from '@/components/time-grid';
 import { WeekGrid } from '@/components/week-grid';
 import { MealDetailSheet } from '@/components/meal-detail-sheet';
+import { AiSuggestionCard } from '@/components/ai-suggestion-card';
+import { AiConfirmationSheet } from '@/components/ai-confirmation-sheet';
 import { aulaGetItems } from '@/lib/aula-api';
-import { getMemberSchedule } from '@/lib/api';
+import { getMemberSchedule, getAiSuggestions, dismissAiSuggestion } from '@/lib/api';
 
 const DAY_LABELS_SHORT: Record<string, string> = {
   monday: 'Man', tuesday: 'Tir', wednesday: 'Ons',
@@ -46,6 +48,8 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
   const [selectedMeal, setSelectedMeal] = useState<FoodPlanItem | null>(null);
   const [aulaLessons, setAulaLessons] = useState<AulaLesson[]>([]);
   const [noScheduleChildIds, setNoScheduleChildIds] = useState<Set<string>>(new Set());
+  const [foodSuggestions, setFoodSuggestions] = useState<AiSuggestion[]>([]);
+  const [confirmingSuggestion, setConfirmingSuggestion] = useState<AiSuggestion | null>(null);
 
   const todayDay = new Date()
     .toLocaleDateString('en-US', { weekday: 'long' })
@@ -156,6 +160,12 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
       setAulaLessons(flat);
     });
   }, [todayStr, isSchoolDay, members.map(m => m.id + (m.useAulaSchedule ?? true)).join(',')]);
+
+  useEffect(() => {
+    getAiSuggestions()
+      .then(all => setFoodSuggestions(all.filter(s => s.category === 'food')))
+      .catch(() => setFoodSuggestions([]));
+  }, []);
 
   return (
     <div className="flex flex-col gap-4 p-3">
@@ -279,6 +289,26 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
       </div>
 
       <MealDetailSheet item={selectedMeal} onClose={() => setSelectedMeal(null)} />
+
+      {foodSuggestions.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">🤖 AI — madforslag</div>
+          {foodSuggestions.map(s => (
+            <AiSuggestionCard
+              key={s.id}
+              suggestion={s}
+              onAccept={() => setConfirmingSuggestion(s)}
+              onDismiss={(id) => { dismissAiSuggestion(id).catch(() => undefined); setFoodSuggestions(prev => prev.filter(x => x.id !== id)); }}
+            />
+          ))}
+        </div>
+      )}
+
+      <AiConfirmationSheet
+        suggestion={confirmingSuggestion}
+        onClose={() => setConfirmingSuggestion(null)}
+        onDone={(id) => { setFoodSuggestions(prev => prev.filter(x => x.id !== id)); }}
+      />
     </div>
   );
 }
