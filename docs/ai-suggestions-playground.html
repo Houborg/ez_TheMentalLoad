@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Suggestions — UX Explorer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1a1a2e; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+  /* Layout */
+  .layout { display: flex; height: 100vh; }
+  .controls { width: 280px; flex-shrink: 0; background: #12121f; border-right: 1px solid #2a2a3e; overflow-y: auto; padding: 20px 16px; }
+  .preview-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .phones { flex: 1; display: flex; gap: 24px; align-items: center; justify-content: center; padding: 24px; overflow-x: auto; }
+  .prompt-area { background: #12121f; border-top: 1px solid #2a2a3e; padding: 14px 20px; display: flex; align-items: flex-start; gap: 12px; }
+  .prompt-text { flex: 1; font-family: 'SF Mono', monospace; font-size: 12px; line-height: 1.6; color: #a0b0cc; }
+  .copy-btn { background: #4f8ef7; color: white; border: none; border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: background 0.2s; }
+  .copy-btn:hover { background: #3a7ae0; }
+  .copy-btn.copied { background: #2ecc71; }
+
+  /* Controls */
+  .section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #6070a0; margin: 16px 0 8px; }
+  .section-title:first-child { margin-top: 0; }
+  .control-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .control-label { font-size: 12px; color: #8090b0; flex: 1; }
+  .option-group { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+  .opt-btn { background: #1e1e30; border: 1px solid #2a2a3e; color: #8090b0; border-radius: 6px; padding: 5px 10px; font-size: 11px; cursor: pointer; transition: all 0.15s; }
+  .opt-btn.active { background: #4f8ef7; border-color: #4f8ef7; color: white; }
+  .opt-btn:hover:not(.active) { border-color: #4f8ef7; color: #4f8ef7; }
+  input[type=range] { width: 100%; accent-color: #4f8ef7; }
+  .range-val { font-size: 11px; color: #6070a0; min-width: 28px; text-align: right; }
+
+  /* Phone frame */
+  .phone-wrapper { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .option-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #6070a0; }
+  .option-name { font-size: 13px; font-weight: 700; color: #4f8ef7; }
+  .phone { width: 320px; height: 620px; background: #f0f0ec; border-radius: 36px; border: 6px solid #2a2a3e; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.5); position: relative; flex-shrink: 0; }
+  .phone-inner { height: 100%; display: flex; flex-direction: column; background: #f0f0ec; }
+
+  /* App chrome */
+  .slim-header { background: white; border-bottom: 1px solid #e8e8e8; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .slim-header-title { font-size: 15px; font-weight: 700; color: #1a1a2e; }
+  .slim-header-right { display: flex; align-items: center; gap: 8px; }
+  .bottom-nav { background: white; border-top: 1px solid #e8e8e8; display: flex; flex-shrink: 0; }
+  .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 2px; cursor: pointer; transition: color 0.15s; }
+  .nav-item.active .nav-icon, .nav-item.active .nav-label { color: #4f8ef7; }
+  .nav-icon { font-size: 18px; color: #aaa; }
+  .nav-label { font-size: 9px; font-weight: 600; color: #aaa; }
+  .nav-dot { width: 4px; height: 4px; border-radius: 2px; background: #4f8ef7; }
+  .page-content { flex: 1; overflow-y: auto; padding: 12px; }
+
+  /* Suggestion cards */
+  .suggestion-card { background: white; border-radius: 12px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #e8e8e8; }
+  .suggestion-card.accepted { border-color: #2ecc71; background: #f0fff5; }
+  .suggestion-card.dismissed { opacity: 0.4; }
+  .sug-top { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+  .sug-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .sug-icon.birthday { background: #fff0f5; }
+  .sug-icon.food { background: #fff8e0; }
+  .sug-icon.calendar { background: #f0f0ff; }
+  .sug-icon.gift { background: #f0fff0; }
+  .sug-text { flex: 1; font-size: 12px; line-height: 1.5; color: #1a1a2e; font-weight: 500; }
+  .sug-meta { font-size: 10px; color: #aaa; margin-top: 2px; }
+  .sug-actions { display: flex; gap: 6px; }
+  .sug-accept { background: #4f8ef7; color: white; border: none; border-radius: 8px; padding: 6px 14px; font-size: 11px; font-weight: 600; cursor: pointer; flex: 1; transition: background 0.15s; }
+  .sug-accept:hover { background: #3a7ae0; }
+  .sug-accept.done { background: #2ecc71; }
+  .sug-dismiss { background: transparent; color: #aaa; border: 1px solid #e8e8e8; border-radius: 8px; padding: 6px 10px; font-size: 11px; cursor: pointer; transition: all 0.15s; }
+  .sug-dismiss:hover { background: #f5f5f5; }
+
+  /* Bell button */
+  .bell-btn { position: relative; width: 34px; height: 34px; background: #f0f0ec; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; font-size: 16px; transition: background 0.15s; }
+  .bell-btn:hover { background: #e8e8e4; }
+  .bell-badge { position: absolute; top: -3px; right: -3px; background: #ff4466; color: white; font-size: 9px; font-weight: 700; width: 16px; height: 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 2px solid white; }
+  .bell-panel { position: absolute; top: 52px; left: 0; right: 0; background: white; border-bottom: 1px solid #e8e8e8; padding: 12px; z-index: 10; box-shadow: 0 4px 16px rgba(0,0,0,0.1); max-height: 340px; overflow-y: auto; animation: slideDown 0.2s ease; }
+  @keyframes slideDown { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+  .bell-panel-title { font-size: 11px; font-weight: 700; color: #aaa; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+
+  /* Inline chip */
+  .ai-chip { background: linear-gradient(135deg, #e8f4ff, #f0e8ff); border: 1px solid #c0d8ff; border-radius: 10px; padding: 8px 12px; margin-top: 6px; display: flex; align-items: center; gap: 8px; }
+  .ai-chip-text { font-size: 11px; color: #3a7ae0; flex: 1; font-weight: 500; }
+  .chip-accept { background: #4f8ef7; color: white; border: none; border-radius: 6px; padding: 4px 10px; font-size: 10px; font-weight: 600; cursor: pointer; }
+  .chip-skip { background: transparent; color: #aaa; border: none; padding: 4px 8px; font-size: 10px; cursor: pointer; }
+
+  /* Event detail for option B */
+  .event-detail { background: white; border-radius: 14px; padding: 14px; margin-bottom: 10px; }
+  .event-title { font-size: 15px; font-weight: 700; color: #1a1a2e; margin-bottom: 4px; }
+  .event-meta { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .event-tag { display: inline-block; background: #fff0f5; color: #e0507a; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 6px; margin-bottom: 10px; }
+  .event-divider { border: none; border-top: 1px solid #f0f0f0; margin: 10px 0; }
+
+  /* Food plan for option B */
+  .food-day { background: white; border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; }
+  .food-day.empty { border: 1px dashed #ddd; background: #fafafa; }
+  .food-day-name { font-size: 11px; font-weight: 700; color: #888; width: 28px; }
+  .food-dish { font-size: 12px; color: #1a1a2e; font-weight: 500; flex: 1; }
+  .food-empty-text { font-size: 12px; color: #ccc; flex: 1; }
+
+  /* AI tab feed */
+  .ai-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #aaa; margin: 10px 0 6px; }
+  .ai-chat-bar { background: white; border-top: 1px solid #e8e8e8; padding: 8px 12px; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .ai-chat-input { flex: 1; background: #f5f5f5; border: 1px solid #e8e8e8; border-radius: 20px; padding: 7px 14px; font-size: 12px; color: #1a1a2e; outline: none; }
+  .ai-chat-send { background: #4f8ef7; color: white; border: none; border-radius: 20px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; }
+
+  /* Checkmark animation */
+  .check-anim { display: inline-block; animation: pop 0.3s ease; }
+  @keyframes pop { 0% { transform: scale(0); } 60% { transform: scale(1.3); } 100% { transform: scale(1); } }
+
+  /* Toggle */
+  .toggle-row { display: flex; gap: 6px; margin-bottom: 10px; }
+  .view-tab { background: #1e1e30; border: 1px solid #2a2a3e; color: #6070a0; border-radius: 8px; padding: 6px 12px; font-size: 11px; cursor: pointer; transition: all 0.15s; flex: 1; text-align: center; }
+  .view-tab.active { background: #4f8ef7; border-color: #4f8ef7; color: white; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="section-title">Nuværende view (Option B)</div>
+    <div class="toggle-row">
+      <button class="view-tab active" onclick="setState('viewB','event')">Begivenhed</button>
+      <button class="view-tab" onclick="setState('viewB','food')">Madplan</button>
+    </div>
+
+    <div class="section-title">Antal forslag (A + C)</div>
+    <div class="control-row">
+      <span class="control-label">Forslag i kø</span>
+      <input type="range" min="0" max="9" value="3" id="badgeCount" oninput="setState('badgeCount',+this.value)">
+      <span class="range-val" id="badgeVal">3</span>
+    </div>
+
+    <div class="section-title">Forslag indhold</div>
+    <div class="option-group">
+      <button class="opt-btn active" onclick="setSugSet('birthday')">🎂 Fødselsdag</button>
+      <button class="opt-btn" onclick="setSugSet('food')">🍽 Mad</button>
+      <button class="opt-btn" onclick="setSugSet('free')">📅 Fri tid</button>
+    </div>
+
+    <div class="section-title">Din valgte løsning</div>
+    <div class="option-group">
+      <button class="opt-btn active" id="pickA" onclick="setChoice('A')">A: Bell</button>
+      <button class="opt-btn" id="pickB" onclick="setChoice('B')">B: Inline</button>
+      <button class="opt-btn" id="pickC" onclick="setChoice('C')">C: AI Tab</button>
+    </div>
+    <p style="font-size:11px;color:#5060a0;line-height:1.5;margin-top:8px;">Vælg din favoritlayout — teksten nedenfor opdateres til en spec-beskrivelse du kan kopiere.</p>
+  </div>
+
+  <!-- Phones -->
+  <div class="preview-area">
+    <div class="phones">
+
+      <!-- Option A: Bell notification -->
+      <div class="phone-wrapper">
+        <div class="option-label">Option A</div>
+        <div class="option-name">Notifikations-bjælde</div>
+        <div class="phone">
+          <div class="phone-inner">
+            <div class="slim-header" style="position:relative;">
+              <span class="slim-header-title">Hjem</span>
+              <div class="slim-header-right">
+                <button class="bell-btn" onclick="toggleBell()" id="bellBtn">
+                  🔔
+                  <span class="bell-badge" id="bellBadge">3</span>
+                </button>
+              </div>
+              <!-- Bell panel -->
+              <div class="bell-panel" id="bellPanel" style="display:none;">
+                <div class="bell-panel-title">AI-forslag</div>
+                <div id="bellCards"></div>
+              </div>
+            </div>
+            <div class="page-content">
+              <div style="background:white;border-radius:14px;padding:14px;margin-bottom:10px;">
+                <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:8px;">Denne uge</div>
+                <div style="font-size:12px;color:#888;line-height:1.8;">
+                  Man: Spaghetti Bolognese 🍝<br>
+                  Tir: (tom)<br>
+                  Ons: Kylling med ris 🍗<br>
+                  <span style="color:#ccc;">Tor–Søn: ikke planlagt</span>
+                </div>
+              </div>
+              <div style="background:white;border-radius:14px;padding:14px;">
+                <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:8px;">Kommende</div>
+                <div style="font-size:12px;color:#888;line-height:1.8;">
+                  🎂 Emil's fødselsdag — fredag<br>
+                  🏊 Svømmning — ons 15:30<br>
+                  👩‍⚕️ Læge — tor 10:00
+                </div>
+              </div>
+            </div>
+            <div class="bottom-nav">
+              <div class="nav-item active"><div class="nav-icon">🏠</div><div class="nav-label">Hjem</div></div>
+              <div class="nav-item"><div class="nav-icon">📅</div><div class="nav-label">I dag</div></div>
+              <div class="nav-item"><div class="nav-icon">📋</div><div class="nav-label">Planner</div></div>
+              <div class="nav-item"><div class="nav-icon">👨‍👩‍👧</div><div class="nav-label">Familie</div></div>
+              <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">Indstil.</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Option B: Inline contextual -->
+      <div class="phone-wrapper">
+        <div class="option-label">Option B</div>
+        <div class="option-name">Kontekstuel inline</div>
+        <div class="phone">
+          <div class="phone-inner">
+            <div class="slim-header">
+              <span class="slim-header-title" id="bTitle">Begivenhed</span>
+            </div>
+            <div class="page-content" id="bContent"></div>
+            <div class="bottom-nav">
+              <div class="nav-item active"><div class="nav-icon">🏠</div><div class="nav-label">Hjem</div></div>
+              <div class="nav-item"><div class="nav-icon">📅</div><div class="nav-label">I dag</div></div>
+              <div class="nav-item"><div class="nav-icon">📋</div><div class="nav-label">Planner</div></div>
+              <div class="nav-item"><div class="nav-icon">👨‍👩‍👧</div><div class="nav-label">Familie</div></div>
+              <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">Indstil.</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Option C: AI Tab -->
+      <div class="phone-wrapper">
+        <div class="option-label">Option C</div>
+        <div class="option-name">Dedikeret AI-fane</div>
+        <div class="phone">
+          <div class="phone-inner">
+            <div class="slim-header">
+              <span class="slim-header-title">🤖 AI-assistent</span>
+            </div>
+            <div class="page-content" id="cContent" style="padding-bottom:0;"></div>
+            <div class="ai-chat-bar">
+              <input class="ai-chat-input" placeholder="Spørg AI om familien…" id="chatInput">
+              <button class="ai-chat-send" onclick="handleChat()">Send</button>
+            </div>
+            <div class="bottom-nav">
+              <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">Hjem</div></div>
+              <div class="nav-item"><div class="nav-icon">📅</div><div class="nav-label">I dag</div></div>
+              <div class="nav-item" style="color:#4f8ef7;"><div class="nav-icon" style="color:#4f8ef7;">🤖</div><div class="nav-label" style="color:#4f8ef7;">AI</div></div>
+              <div class="nav-item"><div class="nav-icon">👨‍👩‍👧</div><div class="nav-label">Familie</div></div>
+              <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">Indstil.</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Prompt output -->
+    <div class="prompt-area">
+      <div class="prompt-text" id="promptText">Vælg en layout-option ovenfor for at se spec-beskrivelsen.</div>
+      <button class="copy-btn" onclick="copyPrompt()" id="copyBtn">Kopier spec</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const state = {
+  badgeCount: 3,
+  viewB: 'event',
+  sugSet: 'birthday',
+  choice: 'A',
+  bellOpen: false,
+  aAccepted: {},
+  bAccepted: false,
+  cAccepted: {},
+};
+
+const SUGGESTIONS = {
+  birthday: [
+    { icon: '🎂', type: 'birthday', text: 'Emil har fødselsdag fredag — tilføj gave-opgave?', meta: 'Baseret på "Emil birthday" i kalender', action: 'Tilføj opgave', cat: 'I dag' },
+    { icon: '🛍️', type: 'gift', text: 'Husk at købe gave til Emil senest torsdag', meta: 'Automatisk forslag', action: 'Tilføj til indkøb', cat: 'Denne uge' },
+    { icon: '🎉', type: 'birthday', text: 'Vil du booke et fødselsdagsarrangement?', meta: 'AI-forslag', action: 'Søg ledige tider', cat: 'Denne uge' },
+  ],
+  food: [
+    { icon: '🍽️', type: 'food', text: 'Ingen madplan tirsdag — forslag: pasta bolognese?', meta: 'Madplan mangler', action: 'Tilføj til madplan', cat: 'I dag' },
+    { icon: '🛒', type: 'food', text: 'Kylling med ris ons — vil du tilføje indkøbsliste?', meta: 'Fra madplan', action: 'Tilføj ingredienser', cat: 'Denne uge' },
+    { icon: '🥗', type: 'food', text: 'Ingen grøntsager i indkøbslisten denne uge', meta: 'AI-forslag', action: 'Tilføj grøntsager', cat: 'Denne uge' },
+  ],
+  free: [
+    { icon: '☀️', type: 'calendar', text: 'Fri torsdag eftermiddag — god tid til lægetid?', meta: 'Ingen aftaler 13–18', action: 'Book tid', cat: 'I dag' },
+    { icon: '👨‍👩‍👧', type: 'calendar', text: 'Alle er fri søndag — familietur?', meta: 'Kalender fri', action: 'Planlæg tur', cat: 'Denne uge' },
+    { icon: '🏃', type: 'calendar', text: 'Mandag morgen er ledig for alle', meta: 'Tjekket alle kalendere', action: 'Tilføj aktivitet', cat: 'Næste uge' },
+  ],
+};
+
+function getSugs() { return SUGGESTIONS[state.sugSet]; }
+
+function toggleBell() {
+  state.bellOpen = !state.bellOpen;
+  document.getElementById('bellPanel').style.display = state.bellOpen ? 'block' : 'none';
+  if (state.bellOpen) renderBellCards();
+}
+
+function renderBellCards() {
+  const sugs = getSugs().slice(0, state.badgeCount);
+  document.getElementById('bellCards').innerHTML = sugs.map((s, i) => {
+    const accepted = state.aAccepted[i];
+    return `<div class="suggestion-card ${accepted ? 'accepted' : ''}" id="bc${i}">
+      <div class="sug-top">
+        <div class="sug-icon ${s.type}"><span>${s.icon}</span></div>
+        <div>
+          <div class="sug-text">${accepted ? '<span class="check-anim">✅</span> Tilføjet!' : s.text}</div>
+          <div class="sug-meta">${s.meta}</div>
+        </div>
+      </div>
+      ${!accepted ? `<div class="sug-actions">
+        <button class="sug-accept" onclick="acceptA(${i})">${s.action}</button>
+        <button class="sug-dismiss" onclick="dismissA(${i})">Afvis</button>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function acceptA(i) {
+  state.aAccepted[i] = true;
+  const remaining = getSugs().slice(0, state.badgeCount).filter((_,j) => !state.aAccepted[j]).length;
+  document.getElementById('bellBadge').textContent = remaining;
+  if (remaining === 0) document.getElementById('bellBadge').style.display = 'none';
+  renderBellCards();
+}
+function dismissA(i) {
+  const card = document.getElementById(`bc${i}`);
+  card.style.animation = 'none';
+  card.style.opacity = '0.3';
+  card.style.transition = 'opacity 0.2s';
+  setTimeout(() => { card.style.display = 'none'; }, 200);
+}
+
+function renderB() {
+  const v = state.viewB;
+  const bContent = document.getElementById('bContent');
+  document.getElementById('bTitle').textContent = v === 'event' ? 'Begivenhed' : 'Madplan';
+
+  if (v === 'event') {
+    const accepted = state.bAccepted;
+    bContent.innerHTML = `
+      <div class="event-detail">
+        <div class="event-title">🎂 Emil's Fødselsdag</div>
+        <div class="event-meta">Fredag 6. juni · Hele dagen</div>
+        <span class="event-tag">Familieevent</span>
+        <hr class="event-divider">
+        <div style="font-size:12px;color:#888;line-height:1.8;">
+          <b style="color:#1a1a2e;">Deltagere:</b> Hele familien<br>
+          <b style="color:#1a1a2e;">Lokation:</b> Hjemme
+        </div>
+        ${!accepted ? `
+        <div class="ai-chip" style="margin-top:12px;">
+          <span style="font-size:14px;">🤖</span>
+          <span class="ai-chip-text">Tilføj gave-opgave til Emil?</span>
+          <button class="chip-accept" onclick="acceptB()">Ja!</button>
+          <button class="chip-skip" onclick="skipB()">Nej</button>
+        </div>
+        <div class="ai-chip" style="margin-top:6px;background:linear-gradient(135deg,#fff8e0,#fff0e0);border-color:#ffe0a0;">
+          <span style="font-size:14px;">🛒</span>
+          <span class="ai-chip-text" style="color:#b07800;">Tilføj balloner til indkøb?</span>
+          <button class="chip-accept" style="background:#f0a020;" onclick="this.closest('.ai-chip').style.display='none'">Ja!</button>
+          <button class="chip-skip" onclick="this.closest('.ai-chip').style.display='none'">Nej</button>
+        </div>` : `<div style="background:#f0fff5;border:1px solid #80d080;border-radius:10px;padding:10px;margin-top:12px;font-size:12px;color:#2a8a2a;font-weight:600;">✅ Gave-opgave tilføjet til Emil</div>`}
+      </div>
+      <div style="background:white;border-radius:14px;padding:14px;">
+        <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:8px;">Andre begivenheder</div>
+        <div style="font-size:12px;color:#888;line-height:1.8;">
+          🏊 Svømmning — ons 15:30<br>
+          👩‍⚕️ Læge — tor 10:00
+        </div>
+      </div>`;
+  } else {
+    bContent.innerHTML = `
+      <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:8px;">Madplan — Denne uge</div>
+      ${['Man','Tir','Ons','Tor','Fre'].map((d, i) => {
+        const plans = [
+          { dish: 'Spaghetti Bolognese', empty: false },
+          { dish: '', empty: true },
+          { dish: 'Kylling med ris', empty: false },
+          { dish: '', empty: true },
+          { dish: 'Tacos', empty: false },
+        ];
+        const p = plans[i];
+        return `<div class="food-day ${p.empty ? 'empty' : ''}">
+          <span class="food-day-name">${d}</span>
+          ${p.empty
+            ? `<span class="food-empty-text">Ikke planlagt</span>
+               <div class="ai-chip" style="margin:0;padding:4px 8px;">
+                 <span style="font-size:11px;">🤖</span>
+                 <span class="ai-chip-text" style="font-size:10px;">Pasta bolognese?</span>
+                 <button class="chip-accept" style="font-size:9px;padding:3px 8px;" onclick="this.closest('.food-day').querySelector('.food-empty-text').textContent='Pasta bolognese';this.closest('.ai-chip').style.display='none'">+</button>
+               </div>`
+            : `<span class="food-dish">${p.dish}</span>`
+          }
+        </div>`;
+      }).join('')}`;
+  }
+}
+
+function acceptB() { state.bAccepted = true; renderB(); }
+function skipB() { document.querySelector('.ai-chip').style.display = 'none'; }
+
+function renderC() {
+  const sugs = getSugs();
+  const cats = [...new Set(sugs.map(s => s.cat))];
+  let html = '';
+  cats.forEach(cat => {
+    html += `<div class="ai-section-title">${cat}</div>`;
+    sugs.filter(s => s.cat === cat).forEach((s, i) => {
+      const gi = sugs.indexOf(s);
+      const accepted = state.cAccepted[gi];
+      html += `<div class="suggestion-card ${accepted ? 'accepted' : ''}" id="cc${gi}">
+        <div class="sug-top">
+          <div class="sug-icon ${s.type}">${s.icon}</div>
+          <div>
+            <div class="sug-text">${accepted ? '✅ Udført!' : s.text}</div>
+            <div class="sug-meta">${s.meta}</div>
+          </div>
+        </div>
+        ${!accepted ? `<div class="sug-actions">
+          <button class="sug-accept" onclick="acceptC(${gi})">${s.action}</button>
+          <button class="sug-dismiss" onclick="document.getElementById('cc${gi}').style.opacity='0.3'">Afvis</button>
+        </div>` : ''}
+      </div>`;
+    });
+  });
+  document.getElementById('cContent').innerHTML = html;
+}
+
+function acceptC(i) {
+  state.cAccepted[i] = true;
+  renderC();
+}
+
+function handleChat() {
+  const input = document.getElementById('chatInput');
+  const val = input.value.trim();
+  if (!val) return;
+  // Show a mock response card
+  const c = document.getElementById('cContent');
+  c.insertAdjacentHTML('afterbegin', `
+    <div class="suggestion-card" style="border-color:#4f8ef7;background:#f0f5ff;">
+      <div class="sug-top">
+        <div class="sug-icon calendar">🤖</div>
+        <div>
+          <div class="sug-text" style="color:#3a7ae0;">"${val}"</div>
+          <div class="sug-meta">Analyserer familiedata…</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#555;margin-top:6px;line-height:1.5;">
+        Baseret på jeres kalender er <b>torsdag 13–17</b> og <b>lørdag hele dagen</b> ledige for alle familiemedlemmer denne uge.
+      </div>
+    </div>`);
+  input.value = '';
+  c.scrollTop = 0;
+}
+
+function setState(key, val) {
+  state[key] = val;
+  if (key === 'viewB') {
+    document.querySelectorAll('.toggle-row .view-tab').forEach((b,i) => b.classList.toggle('active', (i===0&&val==='event')||(i===1&&val==='food')));
+  }
+  if (key === 'badgeCount') {
+    document.getElementById('badgeVal').textContent = val;
+    document.getElementById('bellBadge').textContent = val;
+    document.getElementById('bellBadge').style.display = val > 0 ? 'flex' : 'none';
+    state.aAccepted = {};
+    if (state.bellOpen) renderBellCards();
+  }
+  renderAll();
+}
+
+function setSugSet(s) {
+  state.sugSet = s;
+  state.aAccepted = {}; state.bAccepted = false; state.cAccepted = {};
+  state.bellOpen = false;
+  document.getElementById('bellPanel').style.display = 'none';
+  document.getElementById('bellBadge').textContent = state.badgeCount;
+  document.getElementById('bellBadge').style.display = 'flex';
+  document.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  renderAll();
+}
+
+function setChoice(c) {
+  state.choice = c;
+  ['A','B','C'].forEach(x => document.getElementById(`pick${x}`).classList.toggle('active', x===c));
+  updatePrompt();
+}
+
+function renderAll() {
+  renderB();
+  renderC();
+  if (state.bellOpen) renderBellCards();
+  updatePrompt();
+}
+
+function updatePrompt() {
+  const sugs = getSugs();
+  const setName = { birthday: 'fødselsdagsforslag', food: 'madplanforslag', free: 'fritidsforslag' }[state.sugSet];
+  const texts = {
+    A: `Implementer AI-forslag via notifikationsbjælde (Option A):
+• Tilføj 🔔 bell-ikon øverst til højre i SlimHeader med rød badge-tæller (antal ventende forslag)
+• Klik åbner et slide-down panel under headeren med AI-forslag som kort (ikon + tekst + Accept/Afvis)
+• Forslag genereres automatisk ved ny begivenhed/sync og gemmes i ai_suggestions-tabellen
+• Accept-handling kalder den relevante API (tilføj opgave, tilføj madplan, etc.) og fjerner kortet
+• Eksempel på ${setName}: "${sugs[0]?.text}"`,
+    B: `Implementer AI-forslag som kontekstuelle inline-chips (Option B):
+• AI-chips vises direkte under relevant indhold (begivenhedsdetalje, madplandag)
+• Chips er farvekodede: blå for kalender-forslag, gul for madforslag, grøn for opgaver
+• Ingen separat feed — forslag forsvinder når de accepteres/afvises
+• Backend analyserer data ved oprettelse/sync og knytter forslag til specifik entitet (entryId, dag)
+• Eksempel ved begivenhed: "${sugs[0]?.text}"`,
+    C: `Implementer AI-forslag i dedikeret AI-fane (Option C):
+• Tilføj 🤖 AI-fane i BottomNav (erstat evt. Planner eller tilføj som 6. punkt med scroll)
+• Feed viser forslag grupperet i sektioner: I dag / Denne uge / Næste uge
+• Chatinput i bunden: brugeren kan spørge AI direkte ("hvornår er vi alle fri?")
+• AI-svar vises øverst i feedet som svarkort
+• Backend kører proaktiv analyse ved hvert sync og ved nye begivenheder
+• Eksempel på ${setName}: "${sugs[0]?.text}"`,
+  };
+  document.getElementById('promptText').textContent = texts[state.choice];
+}
+
+function copyPrompt() {
+  const text = document.getElementById('promptText').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = 'Kopieret! ✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Kopier spec'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+// Init
+renderAll();
+document.getElementById('bellBadge').textContent = state.badgeCount;
+</script>
+</body>
+</html>
