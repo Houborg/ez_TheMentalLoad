@@ -7,6 +7,7 @@
     "start": "node dist/packages/backend/src/index.js",
     "worker": "tsx watch src/workers/reminder-worker.ts",
     "start:worker": "node dist/packages/backend/src/workers/reminder-worker.js",
+    "start:ai-worker": "node dist/packages/backend/src/workers/ai-worker.js",
     "migrate": "tsx src/scripts/migrate.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
