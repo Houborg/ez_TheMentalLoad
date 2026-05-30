@@ -6,15 +6,9 @@ import { PostgresMemberRepository } from '../repositories/postgres/member-reposi
 import { PostgresEntryRepository } from '../repositories/postgres/entry-repository.js';
 import { PostgresFoodPlanRepository } from '../repositories/postgres/food-plan-repository.js';
 import { runProactiveAnalysis } from '../domains/assistant/proactive-analysis-service.js';
+import { AI_QUEUE_NAME, type AiJobData } from './ai-queue-types.js';
 
-export const AI_QUEUE_NAME = 'mental-load-ai';
-
-export interface AiJobData {
-  familyId: string;
-  triggerType: 'morning' | 'event' | 'sync' | 'manual';
-  triggerRef?: string;
-  triggerContext?: string;
-}
+export { AI_QUEUE_NAME, type AiJobData };
 
 const redisUrl = process.env.REDIS_URL;
 

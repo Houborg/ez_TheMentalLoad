@@ -51,7 +51,7 @@ import { verifyToken } from './auth/auth-service';
 import { registerAulaRoutes } from './aula/aula-routes';
 import { InMemorySyncConnectionService, SyncConnectionService } from './sync/sync-connection-service';
 import { Queue } from 'bullmq';
-import { AI_QUEUE_NAME, type AiJobData } from './workers/ai-worker.js';
+import { AI_QUEUE_NAME, type AiJobData } from './workers/ai-queue-types.js';
 import { executeSuggestion } from './domains/assistant/tool-executor.js';
 import type { CreateAiMemoryRequest } from '@mental-load/contracts';
 
@@ -1228,7 +1228,10 @@ export async function buildApp() {
       scheduleMorningAnalysis();
     }, msUntil);
   };
-  scheduleMorningAnalysis();
+  // Only run the scheduler when a real AI queue is available (not in tests)
+  if (aiQueue) {
+    scheduleMorningAnalysis();
+  }
 
   return app;
 }
