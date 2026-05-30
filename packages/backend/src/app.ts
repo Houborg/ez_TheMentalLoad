@@ -54,7 +54,6 @@ import { Queue } from 'bullmq';
 import { AI_QUEUE_NAME, type AiJobData } from './workers/ai-queue-types.js';
 import { executeSuggestion } from './domains/assistant/tool-executor.js';
 import { runProactiveAnalysis } from './domains/assistant/proactive-analysis-service.js';
-import { buildAiContext } from './domains/assistant/ai-context-service.js';
 import type { CreateAiMemoryRequest } from '@mental-load/contracts';
 
 const DEFAULT_FAMILY_ID = '00000000-0000-4000-8000-000000000001';
@@ -1032,11 +1031,13 @@ export async function buildApp() {
   // ── Manual analysis trigger ───────────────────────────────────────────────────
 
   app.post('/api/v1/ai/analyze', async (request, reply) => {
-    const { aiMemoryRepository, aiSuggestionRepository } = svc(request);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const { aiMemoryRepository, aiSuggestionRepository, entryService } = svc(request);
 
     if (aiQueue) {
       // Redis available — queue the job for the worker
-      await enqueueAiJob({ familyId: request.familyId, triggerType: 'manual' });
+      await enqueueAiJob({ familyId, triggerType: 'manual' });
       reply.code(202);
       return { message: 'Analysis queued' };
     }
@@ -1045,21 +1046,21 @@ export async function buildApp() {
     reply.code(202);
     void (async () => {
       try {
-        const repo = makeScopedBundle(infrastructure, request.familyId);
+        const repo = makeScopedBundle(infrastructure, familyId);
         const familyResult = infrastructure.pool
-          ? await infrastructure.pool.query<{ name: string | null }>('select name from families where id = $1', [request.familyId])
+          ? await infrastructure.pool.query<{ name: string | null }>('select name from families where id = $1', [familyId])
           : null;
         const familyName = familyResult?.rows[0]?.name ?? null;
 
         await runProactiveAnalysis({
-          familyId: request.familyId,
+          familyId,
           triggerType: 'manual',
           triggerContext: 'Manuelt igangsat analyse',
           contextDeps: {
-            familyId: request.familyId,
+            familyId,
             familyName,
             listMembers: () => repo.memberRepository.list(),
-            listUpcomingEntries: (from, to) => svc(request).entryService.listOccurrences(from, to),
+            listUpcomingEntries: (from, to) => entryService.listOccurrences(from, to),
             listFoodPlan: (weekStart) => repo.foodPlanRepository.listByWeek(weekStart),
             aiMemoryRepository,
           },
