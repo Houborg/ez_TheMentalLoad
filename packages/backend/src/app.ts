@@ -1035,14 +1035,12 @@ export async function buildApp() {
     const familyId = (request as any).familyId as string;
     const { aiMemoryRepository, aiSuggestionRepository, entryService } = svc(request);
 
-    if (aiQueue) {
-      // Redis available — queue the job for the worker
+    // Always run inline — there is no separate AI worker container
+    if (false && aiQueue) {
       await enqueueAiJob({ familyId, triggerType: 'manual' });
       reply.code(202);
       return { message: 'Analysis queued' };
     }
-
-    // No Redis — run inline so the user gets results immediately
     reply.code(202);
     void (async () => {
       try {
