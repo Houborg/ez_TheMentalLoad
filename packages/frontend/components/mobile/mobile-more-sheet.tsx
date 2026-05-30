@@ -1,10 +1,10 @@
 'use client';
 
-import { Clock, Sparkles, Settings } from 'lucide-react';
+import { Clock, Sparkles, Settings, Bot } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { BottomSheet } from './bottom-sheet';
 
-export type MoreSection = 'idag' | 'assistent' | 'indstillinger';
+export type MoreSection = 'idag' | 'assistent' | 'indstillinger' | 'ai';
 
 type Props = {
   open: boolean;
@@ -14,6 +14,7 @@ type Props = {
 
 const TILES: Array<{ key: MoreSection; label: string; Icon: LucideIcon }> = [
   { key: 'idag',          label: 'I dag',         Icon: Clock },
+  { key: 'ai',            label: 'AI-assistent',  Icon: Bot },
   { key: 'assistent',     label: 'Assistent',      Icon: Sparkles },
   { key: 'indstillinger', label: 'Indstillinger',  Icon: Settings },
 ];

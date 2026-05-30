@@ -13,6 +13,7 @@ import { MobileEntrySheet } from './mobile-entry-sheet';
 import { MobileSettingsContent } from './mobile-settings-content';
 import { MobileMemberList } from './mobile-member-list';
 import { MobileMemberView } from './mobile-member-view';
+import { AiTab } from '@/components/ai-tab';
 import type { MobileEntryDraft } from './mobile-entry-draft';
 
 type EntrySheetState =
@@ -126,7 +127,9 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
         ? 'I dag'
         : moreSection === 'assistent'
           ? 'Assistent'
-          : 'Indstillinger';
+          : moreSection === 'ai'
+            ? 'AI-assistent'
+            : 'Indstillinger';
 
     return (
       <div className="fixed inset-0 z-30 bg-background flex flex-col">
@@ -157,6 +160,9 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-muted-foreground">Brug chat-assistenten på startskærmen.</p>
             </div>
+          )}
+          {moreSection === 'ai' && (
+            <AiTab members={members} />
           )}
         </div>
       </div>

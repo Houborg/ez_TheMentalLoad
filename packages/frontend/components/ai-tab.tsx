@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Send, RefreshCw } from 'lucide-react';
 import type { AiSuggestion, Member } from '@mental-load/contracts';
-import { getAiSuggestions, dismissAiSuggestion, triggerAiAnalysis } from '@/lib/api';
+import { getAiSuggestions, dismissAiSuggestion, triggerAiAnalysis, askAssistant } from '@/lib/api';
 import { AiSuggestionCard } from '@/components/ai-suggestion-card';
 import { AiConfirmationSheet } from '@/components/ai-confirmation-sheet';
 import { AiKnowledgeMap } from '@/components/ai-knowledge-map';
@@ -63,6 +63,35 @@ export function AiTab({ members }: Props) {
 
   function handleDone(id: string) {
     setSuggestions(prev => prev.filter(s => s.id !== id));
+  }
+
+  async function handleChat() {
+    const msg = chatInput.trim();
+    if (!msg) return;
+    setChatInput('');
+    // Show the message immediately as a "thinking" card
+    const tempId = `chat-${Date.now()}`;
+    setSuggestions(prev => [{
+      id: tempId,
+      triggerType: 'manual',
+      category: 'info',
+      text: `💬 ${msg}`,
+      actionType: 'info',
+      actionData: {},
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    }, ...prev]);
+    try {
+      const res = await askAssistant({ message: msg });
+      // Replace the temp card with the real response
+      setSuggestions(prev => prev.map(s => s.id === tempId
+        ? { ...s, text: res.response }
+        : s,
+      ));
+    } catch {
+      setSuggestions(prev => prev.filter(s => s.id !== tempId));
+    }
   }
 
   async function handleAnalyze() {
@@ -165,11 +194,13 @@ export function AiTab({ members }: Props) {
             type="text"
             value={chatInput}
             onChange={e => setChatInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && void handleChat()}
             placeholder="Spørg AI om familien…"
             className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
           />
           <button
             type="button"
+            onClick={() => void handleChat()}
             disabled={!chatInput.trim()}
             className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground disabled:opacity-40"
           >

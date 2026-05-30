@@ -53,6 +53,8 @@ import { InMemorySyncConnectionService, SyncConnectionService } from './sync/syn
 import { Queue } from 'bullmq';
 import { AI_QUEUE_NAME, type AiJobData } from './workers/ai-queue-types.js';
 import { executeSuggestion } from './domains/assistant/tool-executor.js';
+import { runProactiveAnalysis } from './domains/assistant/proactive-analysis-service.js';
+import { buildAiContext } from './domains/assistant/ai-context-service.js';
 import type { CreateAiMemoryRequest } from '@mental-load/contracts';
 
 const DEFAULT_FAMILY_ID = '00000000-0000-4000-8000-000000000001';
@@ -1030,11 +1032,46 @@ export async function buildApp() {
   // ── Manual analysis trigger ───────────────────────────────────────────────────
 
   app.post('/api/v1/ai/analyze', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const familyId = (request as any).familyId as string;
-    await enqueueAiJob({ familyId, triggerType: 'manual' });
+    const { aiMemoryRepository, aiSuggestionRepository } = svc(request);
+
+    if (aiQueue) {
+      // Redis available — queue the job for the worker
+      await enqueueAiJob({ familyId: request.familyId, triggerType: 'manual' });
+      reply.code(202);
+      return { message: 'Analysis queued' };
+    }
+
+    // No Redis — run inline so the user gets results immediately
     reply.code(202);
-    return { message: 'Analysis queued' };
+    void (async () => {
+      try {
+        const repo = makeScopedBundle(infrastructure, request.familyId);
+        const familyResult = infrastructure.pool
+          ? await infrastructure.pool.query<{ name: string | null }>('select name from families where id = $1', [request.familyId])
+          : null;
+        const familyName = familyResult?.rows[0]?.name ?? null;
+
+        await runProactiveAnalysis({
+          familyId: request.familyId,
+          triggerType: 'manual',
+          triggerContext: 'Manuelt igangsat analyse',
+          contextDeps: {
+            familyId: request.familyId,
+            familyName,
+            listMembers: () => repo.memberRepository.list(),
+            listUpcomingEntries: (from, to) => svc(request).entryService.listOccurrences(from, to),
+            listFoodPlan: (weekStart) => repo.foodPlanRepository.listByWeek(weekStart),
+            aiMemoryRepository,
+          },
+          aiMemoryRepository,
+          aiSuggestionRepository,
+        });
+      } catch (err) {
+        console.error('[ai-analyze] Inline analysis failed:', err instanceof Error ? err.message : err);
+      }
+    })();
+
+    return { message: 'Analysis running' };
   });
 
   app.post<{ Body: { calendarId: string; ownerMemberId: string; ics: string } }>('/api/v1/entries/import/ics', async (request, reply) => {
