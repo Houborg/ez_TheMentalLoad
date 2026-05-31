@@ -885,6 +885,12 @@ export async function buildApp() {
     }
     return svc(request).entryService.listEntries();
   });
+  // All active tasks for all members — no date filter, used by the tasks tab
+  app.get('/api/v1/entries/tasks', async (request) => {
+    const entries = await svc(request).entryService.listEntries();
+    return entries.filter(e => e.type === 'task' && e.status !== 'completed');
+  });
+
   app.get<{ Querystring: { from?: string; to?: string } }>('/api/v1/entries/occurrences', async (request, reply) => {
     const from = request.query.from ?? new Date().toISOString();
     const to = request.query.to ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();

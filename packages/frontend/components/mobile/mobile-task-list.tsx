@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { Entry, Member } from '@mental-load/contracts';
-import { loadUpcomingOccurrences, updateEntry } from '@/lib/api';
+import { loadAllTasks, updateEntry } from '@/lib/api';
 import { sameDay } from '@/lib/calendar-utils';
 import { deduplicateRecurringTasks } from '@/lib/entry-utils';
 import { cn } from '@/lib/utils';
@@ -19,9 +19,12 @@ type Group = { label: string; entries: Entry[] };
 
 function groupTasks(tasks: Entry[]): Group[] {
   const now = new Date();
-  const endOfWeek = new Date(now);
-  endOfWeek.setDate(now.getDate() + (7 - now.getDay()));
+  const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
+  const endOfToday = new Date(now); endOfToday.setHours(23, 59, 59, 999);
+  const endOfWeek = new Date(startOfToday);
+  endOfWeek.setDate(startOfToday.getDate() + (7 - startOfToday.getDay() || 7));
 
+  const overdue: Entry[] = [];
   const today: Entry[] = [];
   const thisWeek: Entry[] = [];
   const upcoming: Entry[] = [];
@@ -30,12 +33,14 @@ function groupTasks(tasks: Entry[]): Group[] {
   for (const t of tasks) {
     if (!t.startTime) { noDate.push(t); continue; }
     const d = new Date(t.startTime);
-    if (sameDay(d, now)) today.push(t);
+    if (d < startOfToday) overdue.push(t);
+    else if (sameDay(d, now)) today.push(t);
     else if (d <= endOfWeek) thisWeek.push(t);
     else upcoming.push(t);
   }
 
   return [
+    { label: '⚠️ Forfaldne', entries: overdue },
     { label: 'I dag', entries: today },
     { label: 'Denne uge', entries: thisWeek },
     { label: 'Kommende', entries: upcoming },
@@ -49,9 +54,9 @@ export function MobileTaskList({ members, onAddTask, onSelectEntry, refreshKey =
   const [completing, setCompleting] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    loadUpcomingOccurrences(60)
+    loadAllTasks()
       .then(entries => {
-        setAllTasks(deduplicateRecurringTasks(entries).filter(e => e.type === 'task'));
+        setAllTasks(deduplicateRecurringTasks(entries));
       })
       .catch(console.error);
   }, [refreshKey]);

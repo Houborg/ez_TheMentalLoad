@@ -127,6 +127,10 @@ export async function loadUpcomingOccurrences(days = 30) {
   return fetchJson<Entry[]>(`/api/v1/entries/occurrences?${params.toString()}`);
 }
 
+export async function loadAllTasks() {
+  return fetchJson<Entry[]>('/api/v1/entries/tasks');
+}
+
 export async function loadFoodPlan(weekStart = getWeekStart()) {
   return fetchJson<ListFoodPlanResponse>(`/api/v1/food-plan?weekStart=${weekStart}`);
 }
