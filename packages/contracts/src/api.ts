@@ -7,6 +7,7 @@ import type {
   Entry,
   FoodPlanDay,
   FoodPlanItem,
+  GroceryItem,
   Member,
   MemberTimelineSettings,
   MemberRole,
@@ -154,12 +155,27 @@ export interface UpsertFoodPlanItemRequest {
   weekStart: string;
   day: FoodPlanDay;
   dishName: string;
-  groceryList?: string[];
 }
 
 export interface DeleteFoodPlanItemRequest {
   weekStart: string;
   day: FoodPlanDay;
+}
+
+export interface CreateGroceryItemRequest {
+  text: string;
+  weekStart?: string;
+  foodPlanItemId?: string;
+}
+
+export interface UpdateGroceryItemRequest {
+  completed?: boolean;
+  text?: string;
+}
+
+export interface ListGroceryResponse {
+  weekStart: string;
+  items: GroceryItem[];
 }
 
 export type CreateEntryRequest = Pick<

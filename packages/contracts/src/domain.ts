@@ -232,9 +232,21 @@ export interface FoodPlanItem {
   weekStart: string;
   day: FoodPlanDay;
   dishName: string;
-  groceryList: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+export type GroceryCategory = 'kød' | 'mejeri' | 'grønt' | 'tørvarer' | 'andet';
+
+export interface GroceryItem {
+  id: string;
+  text: string;
+  category: GroceryCategory;
+  completed: boolean;
+  source: 'food_plan' | 'manual';
+  foodPlanItemId?: string;
+  weekStart?: string;
+  createdAt: string;
 }
 
 export interface MemberTimelineSettings {
