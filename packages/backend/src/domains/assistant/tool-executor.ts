@@ -35,7 +35,9 @@ export async function executeSuggestion(
           calendarId?: string;
           checklist?: Array<{ text: string; completed?: boolean }>;
         };
-        if (!d.title) throw new Error(`Missing title for ${suggestion.actionType}`);
+        // Fall back to the suggestion text if actionData.title was omitted
+        const title = d.title || suggestion.text;
+        if (!title) throw new Error(`Missing title for ${suggestion.actionType}`);
         // Fill in missing member/calendar from the first parent if not provided
         let memberId = d.memberId;
         let calendarId = d.calendarId;
@@ -58,7 +60,7 @@ export async function executeSuggestion(
           completed: item.completed ?? false,
         }));
         const created = await deps.createEntry({
-          title: d.title,
+          title,
           type: isTask ? 'task' : 'event',
           ownerMemberId: memberId,
           calendarId,
@@ -69,7 +71,7 @@ export async function executeSuggestion(
           checklist,
         });
         const subtaskNote = checklist.length > 0 ? ` (${checklist.length} delopgaver)` : '';
-        result = { ok: true, message: `Tilføjet: ${d.title}${subtaskNote}`, createdId: (created as { id: string }).id };
+        result = { ok: true, message: `Tilføjet: ${title}${subtaskNote}`, createdId: (created as { id: string }).id };
         break;
       }
 

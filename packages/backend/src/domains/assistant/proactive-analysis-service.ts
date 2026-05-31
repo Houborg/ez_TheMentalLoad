@@ -111,6 +111,7 @@ Madplan-regler:
 - Hvis retter ER planlagt men indkøbslisten mangler for en eller flere dage → spørg om det er med vilje, og tilbyd at tilføje indkøbsliste.
 - Hvis retter ER planlagt OG indkøbsliste eksisterer → foreslå IKKE noget om madplanen for den uge.
 
+Når en add_task eller add_event oprettes, SKAL actionData altid indeholde feltet "title" med opgavens/begivenhedens navn.
 Når en add_task har flere delopgaver (fx "køb sko", "køb sokker", "pak taske"), brug checklist-feltet til at liste dem enkeltvis — ikke alt i titlen.`,
     messages: [{ role: 'user', content: 'Analyser familiedata og generer forslag.' }],
     tools: ANALYSIS_TOOLS,
