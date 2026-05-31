@@ -885,10 +885,13 @@ export async function buildApp() {
     }
     return svc(request).entryService.listEntries();
   });
-  // All active tasks for all members — no date filter, used by the tasks tab
+  // All active tasks + events with incomplete checklist items — used by the tasks tab
   app.get('/api/v1/entries/tasks', async (request) => {
     const entries = await svc(request).entryService.listEntries();
-    return entries.filter(e => e.type === 'task' && e.status !== 'completed');
+    return entries.filter(e =>
+      (e.type === 'task' && e.status !== 'completed') ||
+      (e.type === 'event' && (e.checklist ?? []).some(c => !c.isCompleted)),
+    );
   });
 
   app.get<{ Querystring: { from?: string; to?: string } }>('/api/v1/entries/occurrences', async (request, reply) => {

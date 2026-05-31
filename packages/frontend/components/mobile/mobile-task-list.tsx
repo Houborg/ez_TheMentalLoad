@@ -143,38 +143,63 @@ export function MobileTaskList({ members, onAddTask, onSelectEntry, refreshKey =
             </div>
             <div className="flex flex-col gap-1.5">
               {group.entries.map(entry => {
+                const isEvent = entry.type === 'event';
                 const isDone = entry.status === 'completed';
                 const member = members.find(m => m.id === entry.ownerMemberId);
+                const pendingChecklist = (entry.checklist ?? []).filter(c => !c.isCompleted);
+
                 return (
-                  <div key={entry.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() => toggleDone(entry)}
-                      disabled={completing.has(entry.id)}
-                      className={cn(
-                        'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 transition-colors',
-                        isDone ? 'border-primary bg-primary' : 'border-muted-foreground',
+                  <div key={entry.id} className="rounded-xl border border-border/60 bg-card overflow-hidden">
+                    <div className="flex items-center gap-3 px-3 py-2.5">
+                      {!isEvent && (
+                        <button
+                          type="button"
+                          onClick={() => toggleDone(entry)}
+                          disabled={completing.has(entry.id)}
+                          className={cn(
+                            'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 transition-colors',
+                            isDone ? 'border-primary bg-primary' : 'border-muted-foreground',
+                          )}
+                          aria-label={isDone ? 'Markér som ikke udført' : 'Markér som udført'}
+                        >
+                          {isDone && (
+                            <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="none">
+                              <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            </svg>
+                          )}
+                        </button>
                       )}
-                      aria-label={isDone ? 'Markér som ikke udført' : 'Markér som udført'}
-                    >
-                      {isDone && (
-                        <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="none">
-                          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                        </svg>
+                      {isEvent && (
+                        <span className="text-base flex-shrink-0">📅</span>
                       )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onSelectEntry(entry)}
-                      className="flex-1 min-w-0 text-left"
-                    >
-                      <div className={cn('text-sm truncate', isDone && 'line-through text-muted-foreground')}>
-                        {entry.title}
-                      </div>
-                    </button>
-                    {member && (
-                      <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary/20 text-[9px] font-semibold">
-                        {member.name[0]}
+                      <button
+                        type="button"
+                        onClick={() => onSelectEntry(entry)}
+                        className="flex-1 min-w-0 text-left"
+                      >
+                        <div className={cn('text-sm truncate', isDone && 'line-through text-muted-foreground')}>
+                          {entry.title}
+                        </div>
+                        {isEvent && pendingChecklist.length > 0 && (
+                          <div className="text-[10px] text-muted-foreground mt-0.5">
+                            {pendingChecklist.length} ting at huske
+                          </div>
+                        )}
+                      </button>
+                      {member && (
+                        <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary/20 text-[9px] font-semibold">
+                          {member.name[0]}
+                        </div>
+                      )}
+                    </div>
+                    {isEvent && pendingChecklist.length > 0 && (
+                      <div className="border-t border-border/40 px-3 pb-2 pt-1 flex flex-col gap-1">
+                        {pendingChecklist.map((item, i) => (
+                          <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className="w-3.5 h-3.5 rounded border border-muted-foreground/40 flex-shrink-0" />
+                            <span>{item.text}</span>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
