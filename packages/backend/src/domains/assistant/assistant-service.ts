@@ -70,6 +70,7 @@ export class AssistantService {
         `Du er en hjælpsom familie-assistent for ${family}.`,
         `Familiemedlemmer: ${memberList || 'ingen endnu'}.`,
         `Svar på dansk. Vær ${tone}.`,
+        `Når du opretter en opgave med flere ting (fx indkøb, tjekliste, forberedelse), brug checklist-feltet til at liste delopgaverne — ikke alt i titlen.`,
       ];
 
       if (cfg.customInstructions?.trim()) lines.push(cfg.customInstructions.trim());

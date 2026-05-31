@@ -33,6 +33,7 @@ export async function executeSuggestion(
           endTime?: string;
           memberId?: string;
           calendarId?: string;
+          checklist?: Array<{ text: string; completed?: boolean }>;
         };
         if (!d.title) throw new Error(`Missing title for ${suggestion.actionType}`);
         // Fill in missing member/calendar from the first parent if not provided
@@ -52,6 +53,10 @@ export async function executeSuggestion(
         const todayNoon = new Date(); todayNoon.setHours(12, 0, 0, 0);
         const startTime = d.startTime ?? todayNoon.toISOString();
         const endTime = d.endTime ?? new Date(todayNoon.getTime() + 3600000).toISOString();
+        const checklist = (d.checklist ?? []).map(item => ({
+          text: item.text,
+          completed: item.completed ?? false,
+        }));
         const created = await deps.createEntry({
           title: d.title,
           type: isTask ? 'task' : 'event',
@@ -61,8 +66,10 @@ export async function executeSuggestion(
           endTime,
           timezone: process.env.DEFAULT_TIMEZONE ?? 'Europe/Copenhagen',
           allDay: isTask && !d.startTime,
+          checklist,
         });
-        result = { ok: true, message: `Tilføjet: ${d.title}`, createdId: (created as { id: string }).id };
+        const subtaskNote = checklist.length > 0 ? ` (${checklist.length} delopgaver)` : '';
+        result = { ok: true, message: `Tilføjet: ${d.title}${subtaskNote}`, createdId: (created as { id: string }).id };
         break;
       }
 

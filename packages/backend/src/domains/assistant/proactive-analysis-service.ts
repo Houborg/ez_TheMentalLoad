@@ -39,6 +39,11 @@ const ANALYSIS_TOOLS: Anthropic.Tool[] = [
             endTime: { type: 'string' },
             memberId: { type: 'string' },
             calendarId: { type: 'string' },
+            checklist: {
+              type: 'array',
+              description: 'Delopgaver til opgaven — brug dette når en opgave har flere ting at gøre',
+              items: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+            },
             day: { type: 'string' },
             dishName: { type: 'string' },
             groceryList: { type: 'array', items: { type: 'string' } },
@@ -88,7 +93,9 @@ Du er proaktiv familieassistent. Analyser familiedataene ovenfor og:
 2. Brug create_suggestion() til at foreslå 1-5 nyttige handlinger
 
 Forslag skal være konkrete, handlingsrettede og relevante for DENNE dag/uge.
-Forslå ikke ting der allerede er planlagt. Skriv på dansk. Vær kortfattet.`,
+Forslå ikke ting der allerede er planlagt. Skriv på dansk. Vær kortfattet.
+
+Når en add_task har flere delopgaver (fx "køb sko", "køb sokker", "pak taske"), brug checklist-feltet til at liste dem enkeltvis — ikke alt i titlen.`,
     messages: [{ role: 'user', content: 'Analyser familiedata og generer forslag.' }],
     tools: ANALYSIS_TOOLS,
     tool_choice: { type: 'auto' },
