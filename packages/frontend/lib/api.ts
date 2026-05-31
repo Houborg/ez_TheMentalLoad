@@ -37,6 +37,10 @@ import type {
   CreateScheduleEntryRequest,
   AiSuggestion,
   AiMemory,
+  GroceryItem,
+  ListGroceryResponse,
+  CreateGroceryItemRequest,
+  UpdateGroceryItemRequest,
 } from '@mental-load/contracts';
 
 export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
@@ -461,6 +465,37 @@ export async function deleteAiMemory(id: string): Promise<void> {
 
 export async function triggerAiAnalysis(): Promise<void> {
   await fetchJson<void>('/api/v1/ai/analyze', { method: 'POST', body: '{}' });
+}
+
+// ── Grocery ───────────────────────────────────────────────────────────────────
+
+export async function loadGroceryList(weekStart: string): Promise<ListGroceryResponse> {
+  return fetchJson<ListGroceryResponse>(`/api/v1/grocery?weekStart=${weekStart}`);
+}
+
+export async function createGroceryItem(input: CreateGroceryItemRequest): Promise<GroceryItem> {
+  return fetchJson<GroceryItem>('/api/v1/grocery', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateGroceryItem(id: string, patch: UpdateGroceryItemRequest): Promise<GroceryItem> {
+  return fetchJson<GroceryItem>(`/api/v1/grocery/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteGroceryItem(id: string): Promise<void> {
+  await fetchJson<void>(`/api/v1/grocery/${id}`, { method: 'DELETE' });
+}
+
+export async function clearCompletedGroceries(weekStart: string): Promise<{ deleted: number }> {
+  return fetchJson<{ deleted: number }>(
+    `/api/v1/grocery/completed?weekStart=${weekStart}`,
+    { method: 'DELETE' },
+  );
 }
 
 export async function resetAiSuggestions(): Promise<{ deleted: number }> {
