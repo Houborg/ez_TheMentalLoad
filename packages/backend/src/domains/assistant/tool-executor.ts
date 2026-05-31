@@ -3,8 +3,9 @@ import type { AiSuggestionRepository } from '../../repositories/ai-suggestion-re
 
 export interface ToolExecutorDeps {
   createEntry: (input: CreateEntryRequest) => Promise<{ id: string }>;
-  upsertFoodPlan: (input: { weekStart: string; day: FoodPlanDay; dishName: string; groceryList: string[] }) => Promise<unknown>;
+  upsertFoodPlan: (input: { weekStart: string; day: FoodPlanDay; dishName: string }) => Promise<unknown>;
   getDefaultMemberCalendar: () => Promise<{ memberId: string; calendarId: string } | null>;
+  addGroceryItems: (items: string[], weekStart: string) => Promise<void>;
 }
 
 export interface ExecuteResult {
@@ -89,24 +90,18 @@ export async function executeSuggestion(
           weekStart,
           day: normDay(d.day) as FoodPlanDay,
           dishName,
-          groceryList: d.groceryList ?? [],
         });
         result = { ok: true, message: `Madplan opdateret: ${dishName || 'tomt'} ${d.day}` };
         break;
       }
 
       case 'add_grocery': {
-        const d = suggestion.actionData as { items?: string[]; day?: string; dishName?: string };
-        if (!d.items?.length && !d.dishName) throw new Error('Missing items or dishName for add_grocery');
-        const day = normDay(d.day ?? getTodayDay()) as FoodPlanDay;
-        const weekStart = getThisMonday();
-        await deps.upsertFoodPlan({
-          weekStart,
-          day,
-          dishName: d.dishName ?? 'Indkøb',
-          groceryList: d.items ?? [],
-        });
-        result = { ok: true, message: `Indkøb tilføjet` };
+        const d = suggestion.actionData as { items?: string[]; weekStart?: string };
+        const groceryItems = Array.isArray(d.items) ? d.items.filter(Boolean) : [];
+        if (!groceryItems.length) throw new Error('No items for add_grocery');
+        const weekStart = d.weekStart ?? getThisMonday();
+        await deps.addGroceryItems(groceryItems, weekStart);
+        result = { ok: true, message: `${groceryItems.length} varer tilføjet til indkøbsliste` };
         break;
       }
 

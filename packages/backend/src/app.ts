@@ -1000,6 +1000,16 @@ export async function buildApp() {
           if (!cal) return null;
           return { memberId: parent.id, calendarId: cal.id };
         },
+        addGroceryItems: async (items, weekStart) => {
+          for (const text of items) {
+            await scopedRepo.groceryRepository.create(familyId, {
+              text,
+              category: categoriseGrocery(text),
+              source: 'manual',
+              weekStart,
+            });
+          }
+        },
       },
       aiSuggestionRepository,
     );
