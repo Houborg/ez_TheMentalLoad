@@ -74,8 +74,9 @@ export class AssistantService {
       const lines: string[] = [
         `Du er en hjælpsom familie-assistent for ${family}.`,
         `Familiemedlemmer: ${memberList || 'ingen endnu'}.`,
-        `Svar på dansk. Vær ${tone}.`,
-        `Når du opretter en opgave med flere ting (fx indkøb, tjekliste, forberedelse), brug checklist-feltet til at liste delopgaverne — ikke alt i titlen.`,
+        `Svar ALTID på dansk. Vær ${tone}.`,
+        `VIGTIGT: Skriv ALDRIG JSON, kode eller tekniske formater i dine svar — hverken i kodeblokke eller løbende tekst.`,
+        `Beskriv kun hvad du vil gøre i naturligt dansk sprog. Fx: "Jeg opretter opgaven 'Udfyld madplan' med disse delopgaver: Mandag, Tirsdag, Onsdag."`,
       ];
 
       if (cfg.customInstructions?.trim()) lines.push(cfg.customInstructions.trim());
