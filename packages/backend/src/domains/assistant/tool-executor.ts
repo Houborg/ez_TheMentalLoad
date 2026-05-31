@@ -134,7 +134,13 @@ export async function executeSuggestion(
 function getThisMonday(): string {
   const now = new Date();
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const day = d.getUTCDay(); d.setUTCDate(d.getUTCDate() + (day === 0 ? -6 : 1 - day));
+  const day = d.getUTCDay();
+  // On Sunday, the "current" food-plan week is the upcoming week (Monday ahead)
+  if (day === 0) {
+    d.setUTCDate(d.getUTCDate() + 1);
+  } else {
+    d.setUTCDate(d.getUTCDate() + (1 - day));
+  }
   return d.toISOString().slice(0, 10);
 }
 
