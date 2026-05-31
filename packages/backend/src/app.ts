@@ -54,7 +54,21 @@ import { Queue } from 'bullmq';
 import { AI_QUEUE_NAME, type AiJobData } from './workers/ai-queue-types.js';
 import { executeSuggestion } from './domains/assistant/tool-executor.js';
 import { runProactiveAnalysis } from './domains/assistant/proactive-analysis-service.js';
-import type { CreateAiMemoryRequest } from '@mental-load/contracts';
+import type { CreateAiMemoryRequest, GroceryCategory } from '@mental-load/contracts';
+
+const GROCERY_CATEGORY_RULES: Array<{ pattern: RegExp; category: GroceryCategory }> = [
+  { pattern: /oksekød|kylling|laks|fisk|bacon|pølse|kød|bøf|hakket/i, category: 'kød' },
+  { pattern: /mælk|ost|smør|fløde|yoghurt|æg|parmesan|mejeri|creme/i, category: 'mejeri' },
+  { pattern: /tomat|løg|gulerod|salat|broccoli|grønt|frugt|æble|banan|kartof|peber|spinat|kål/i, category: 'grønt' },
+  { pattern: /pasta|ris|mel|olie|dåse|konserves|lasagne|nudl|tørvare|brød|sukker|salt/i, category: 'tørvarer' },
+];
+
+function categoriseGrocery(text: string): GroceryCategory {
+  for (const rule of GROCERY_CATEGORY_RULES) {
+    if (rule.pattern.test(text)) return rule.category;
+  }
+  return 'andet';
+}
 
 const DEFAULT_FAMILY_ID = '00000000-0000-4000-8000-000000000001';
 const MEMBER_COLORS = ['#6366f1', '#f59e0b', '#ec4899', '#14b8a6', '#f97316', '#8b5cf6', '#06b6d4', '#84cc16'];
@@ -258,7 +272,7 @@ export async function buildApp() {
     );
     const memberScheduleRepository = infrastructure.memberScheduleRepository;
     const aulaConfirmationRepository = infrastructure.aulaConfirmationRepository;
-    return { ...repo, entryService, dailyTimelineService, syncService, syncConnectionService, assistantService, settingsService, memberScheduleRepository, aulaConfirmationRepository, aiMemoryRepository: infrastructure.aiMemoryRepository, aiSuggestionRepository: infrastructure.aiSuggestionRepository };
+    return { ...repo, entryService, dailyTimelineService, syncService, syncConnectionService, assistantService, settingsService, memberScheduleRepository, aulaConfirmationRepository, aiMemoryRepository: infrastructure.aiMemoryRepository, aiSuggestionRepository: infrastructure.aiSuggestionRepository, groceryRepository: infrastructure.groceryRepository };
   }
 
   app.get('/api/v1/health', async () => ({
@@ -826,12 +840,10 @@ export async function buildApp() {
       return { message: 'dishName is required' };
     }
 
-    const groceryList = (request.body.groceryList ?? []).map((item) => item.trim()).filter(Boolean);
     const item = await svc(request).foodPlanRepository.upsert({
       weekStart,
       day: request.body.day,
       dishName,
-      groceryList,
     });
 
     return item;
@@ -1044,6 +1056,59 @@ export async function buildApp() {
     const ok = await aiMemoryRepository.delete(familyId, request.params.id);
     if (!ok) { reply.code(404); return { message: 'Memory not found' }; }
     reply.code(204);
+  });
+
+  // ── Grocery List ──────────────────────────────────────────────────────────────
+
+  app.get<{ Querystring: { weekStart?: string } }>('/api/v1/grocery', async (request, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const weekStart = normalizeWeekStart(request.query.weekStart);
+    if (!weekStart) { reply.code(400); return { message: 'weekStart required' }; }
+    const items = await svc(request).groceryRepository.list(familyId, weekStart);
+    return { weekStart, items };
+  });
+
+  app.post<{ Body: { text: string; weekStart?: string; foodPlanItemId?: string } }>('/api/v1/grocery', async (request, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const text = request.body.text?.trim();
+    if (!text) { reply.code(400); return { message: 'text required' }; }
+    const weekStart = normalizeWeekStart(request.body.weekStart);
+    const item = await svc(request).groceryRepository.create(familyId, {
+      text,
+      category: categoriseGrocery(text),
+      source: request.body.foodPlanItemId ? 'food_plan' : 'manual',
+      foodPlanItemId: request.body.foodPlanItemId,
+      weekStart: weekStart ?? undefined,
+    });
+    reply.code(201);
+    return item;
+  });
+
+  app.patch<{ Params: { id: string }; Body: { completed?: boolean; text?: string } }>('/api/v1/grocery/:id', async (request, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const updated = await svc(request).groceryRepository.update(familyId, request.params.id, request.body);
+    if (!updated) { reply.code(404); return { message: 'Item not found' }; }
+    return updated;
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/v1/grocery/:id', async (request, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const ok = await svc(request).groceryRepository.delete(familyId, request.params.id);
+    if (!ok) { reply.code(404); return { message: 'Item not found' }; }
+    reply.code(204);
+  });
+
+  app.delete<{ Querystring: { weekStart?: string } }>('/api/v1/grocery/completed', async (request, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const weekStart = normalizeWeekStart(request.query.weekStart);
+    if (!weekStart) { reply.code(400); return { message: 'weekStart required' }; }
+    const deleted = await svc(request).groceryRepository.deleteCompleted(familyId, weekStart);
+    return { deleted };
   });
 
   // ── Manual analysis trigger ───────────────────────────────────────────────────

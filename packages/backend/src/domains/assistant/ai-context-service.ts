@@ -77,9 +77,9 @@ export async function buildAiContext(deps: AiContextDeps, triggerContext?: strin
     }
   }
 
-  // Food plan — include grocery list status so AI can spot missing lists
+  // Food plan
   lines.push('');
-  lines.push('MADPLAN (ret: navn | indkøbsliste: antal varer eller "ingen"):');
+  lines.push('MADPLAN:');
   const formatWeek = (items: FoodPlanItem[], label: string) => {
     if (items.length === 0) return `${label}: ingen retter planlagt`;
     const byDay: Record<string, FoodPlanItem> = {};
@@ -87,10 +87,7 @@ export async function buildAiContext(deps: AiContextDeps, triggerContext?: strin
     const parts = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(d => {
       const item = byDay[d];
       if (!item) return `${DAYS_DA[d]}: (tom)`;
-      const groceries = item.groceryList.length > 0
-        ? `${item.groceryList.length} varer`
-        : 'ingen indkøbsliste';
-      return `${DAYS_DA[d]}: ${item.dishName} [${groceries}]`;
+      return `${DAYS_DA[d]}: ${item.dishName}`;
     });
     return `${label}:\n  ${parts.join('\n  ')}`;
   };
