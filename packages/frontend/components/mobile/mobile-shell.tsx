@@ -13,6 +13,7 @@ import { MobileEntrySheet } from './mobile-entry-sheet';
 import { MobileSettingsContent } from './mobile-settings-content';
 import { MobileMemberList } from './mobile-member-list';
 import { MobileMemberView } from './mobile-member-view';
+import { MobileIdagView } from './mobile-idag-view';
 import { AiTab } from '@/components/ai-tab';
 import type { MobileEntryDraft } from './mobile-entry-draft';
 
@@ -190,6 +191,7 @@ export function MobileShell({ members, calendars, onRefresh, onNavigateDesktopSe
             refreshKey={calendarRefreshKey}
           />
         )}
+        {activeTab === 'idag' && <MobileIdagView members={members} />}
         {activeTab === 'mad' && <MobileFoodPlanner />}
         {activeTab === 'familie' && (
           <MobileMemberList

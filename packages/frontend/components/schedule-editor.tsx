@@ -103,9 +103,9 @@ export function ScheduleEditor({ member, aulaConnected, onClose, onMemberUpdated
         {/* Aula toggle */}
         <div className="mb-5 flex items-center justify-between rounded-xl bg-muted/40 px-4 py-3">
           <div>
-            <div className="text-sm font-semibold">Vis Aula-skema i I dag</div>
+            <div className="text-sm font-semibold">Tilføj Aula-timer til familiekalender</div>
             <div className="text-xs text-muted-foreground">
-              {aulaConnected ? 'Henter timer automatisk fra Aula' : 'Aula ikke tilknyttet — brug manuelt skema'}
+              {aulaConnected ? 'Timer vises altid i I dag · dette tilføjer dem også til kalendervisningen' : 'Aula ikke tilknyttet'}
             </div>
           </div>
           <button
