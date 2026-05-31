@@ -75,4 +75,12 @@ export class PostgresAiSuggestionRepository implements AiSuggestionRepository {
     );
     return Number(rows[0]?.n ?? 0);
   }
+
+  async deleteAll(familyId: string): Promise<number> {
+    const { rowCount } = await this.pool.query(
+      'delete from ai_suggestions where family_id = $1',
+      [familyId],
+    );
+    return rowCount ?? 0;
+  }
 }

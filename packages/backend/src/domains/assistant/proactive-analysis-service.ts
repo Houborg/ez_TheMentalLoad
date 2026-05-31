@@ -82,18 +82,29 @@ export async function runProactiveAnalysis(params: {
 
   const context = await buildAiContext(params.contextDeps, params.triggerContext);
 
+  // Fetch recently handled suggestions so the AI doesn't re-propose them
+  const allSuggestions = await params.aiSuggestionRepository.list(params.familyId);
+  const recentlyDone = allSuggestions
+    .filter(s => s.status === 'done' || s.status === 'dismissed')
+    .slice(0, 20)
+    .map(s => `- ${s.text}`)
+    .join('\n');
+  const doneSection = recentlyDone
+    ? `\nFORSLAG DER ALLEREDE ER HÅNDTERET (forslå IKKE disse igen):\n${recentlyDone}\n`
+    : '';
+
   const client = new Anthropic({ apiKey });
   const response = await client.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 1024,
-    system: `${context}
+    system: `${context}${doneSection}
 
 Du er proaktiv familieassistent. Analyser familiedataene ovenfor og:
 1. Brug save_memory() til at notere 0-3 vigtige facts du har lært
 2. Brug create_suggestion() til at foreslå 1-5 nyttige handlinger
 
 Forslag skal være konkrete, handlingsrettede og relevante for DENNE dag/uge.
-Forslå ikke ting der allerede er planlagt. Skriv på dansk. Vær kortfattet.
+Forslå ikke ting der allerede er planlagt eller håndteret. Skriv på dansk. Vær kortfattet.
 
 Når en add_task har flere delopgaver (fx "køb sko", "køb sokker", "pak taske"), brug checklist-feltet til at liste dem enkeltvis — ikke alt i titlen.`,
     messages: [{ role: 'user', content: 'Analyser familiedata og generer forslag.' }],

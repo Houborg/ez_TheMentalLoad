@@ -1003,6 +1003,16 @@ export async function buildApp() {
     reply.code(204);
   });
 
+  // Developer reset — clears all suggestion history for this family
+  app.delete('/api/v1/ai/suggestions', async (request, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    const { aiSuggestionRepository } = svc(request);
+    const deleted = await aiSuggestionRepository.deleteAll(familyId);
+    reply.code(200);
+    return { deleted };
+  });
+
   // ── AI Memory ─────────────────────────────────────────────────────────────────
 
   app.get('/api/v1/ai/memory', async (request) => {

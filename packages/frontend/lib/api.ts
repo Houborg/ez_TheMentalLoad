@@ -462,3 +462,7 @@ export async function deleteAiMemory(id: string): Promise<void> {
 export async function triggerAiAnalysis(): Promise<void> {
   await fetchJson<void>('/api/v1/ai/analyze', { method: 'POST', body: '{}' });
 }
+
+export async function resetAiSuggestions(): Promise<{ deleted: number }> {
+  return fetchJson<{ deleted: number }>('/api/v1/ai/suggestions', { method: 'DELETE' });
+}

@@ -14,7 +14,7 @@ import { SettingsHolidays } from '@/components/settings-holidays';
 import { SyncSettings } from '@/components/sync/sync-settings';
 import { MobileAulaSettings } from './mobile-aula-settings';
 import { AiKnowledgeMap } from '@/components/ai-knowledge-map';
-import { triggerAiAnalysis } from '@/lib/api';
+import { triggerAiAnalysis, resetAiSuggestions } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 type Tab = 'tema' | 'vejr' | 'familie' | 'kalendere' | 'assistent' | 'ai' | 'helligdage' | 'sync' | 'aula' | 'udvikler';
@@ -611,6 +611,8 @@ function DeveloperTab() {
   const [health, setHealth] = useState<{ version?: string; commit?: string; deployedAt?: string | null } | null>(null);
   const [updateState, setUpdateState] = useState<'idle' | 'updating' | 'done' | 'error'>('idle');
   const [updateMessage, setUpdateMessage] = useState('');
+  const [resetState, setResetState] = useState<'idle' | 'resetting' | 'done' | 'error'>('idle');
+  const [resetMessage, setResetMessage] = useState('');
 
   useEffect(() => {
     loadHealth().then(h => setHealth({ version: h.version, commit: h.commit, deployedAt: h.deployedAt })).catch(console.error);
@@ -632,6 +634,19 @@ function DeveloperTab() {
     } catch (err) {
       setUpdateState('error');
       setUpdateMessage(err instanceof Error ? err.message : 'Could not reach server');
+    }
+  }
+
+  async function handleResetSuggestions() {
+    setResetState('resetting');
+    setResetMessage('');
+    try {
+      const res = await resetAiSuggestions();
+      setResetState('done');
+      setResetMessage(`Slettet ${res.deleted} forslag — AI starter frisk ved næste analyse.`);
+    } catch {
+      setResetState('error');
+      setResetMessage('Kunne ikke nulstille forslag.');
     }
   }
 
@@ -666,6 +681,25 @@ function DeveloperTab() {
           {updateMessage}
         </p>
       )}
+
+      <div className="rounded-xl border border-border/60 bg-card/60 px-4 py-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">AI forslag</div>
+        <p className="text-xs text-muted-foreground mb-3">Slet al AI-forslagshistorik. AI starter frisk og genforeslår ikke allerede håndterede forslag.</p>
+        <button
+          type="button"
+          onClick={() => void handleResetSuggestions()}
+          disabled={resetState === 'resetting'}
+          className="w-full rounded-xl border border-destructive/40 bg-destructive/10 py-2.5 text-sm font-semibold text-destructive disabled:opacity-60 flex items-center justify-center gap-2"
+        >
+          {resetState === 'resetting' && <Loader2 className="h-4 w-4 animate-spin" />}
+          {resetState === 'resetting' ? 'Nulstiller…' : '🗑 Nulstil AI-forslagshistorik'}
+        </button>
+        {resetMessage && (
+          <p className={`text-xs px-1 mt-2 ${resetState === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}>
+            {resetMessage}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

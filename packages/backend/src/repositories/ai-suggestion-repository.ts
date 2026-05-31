@@ -16,6 +16,7 @@ export interface AiSuggestionRepository {
   setStatus(familyId: string, id: string, status: AiSuggestionStatus): Promise<boolean>;
   expireOld(familyId: string): Promise<number>;
   countByTriggerRef(familyId: string, triggerRef: string, since: Date): Promise<number>;
+  deleteAll(familyId: string): Promise<number>;
 }
 
 export class InMemoryAiSuggestionRepository implements AiSuggestionRepository {
@@ -71,5 +72,11 @@ export class InMemoryAiSuggestionRepository implements AiSuggestionRepository {
     return this.rows.filter(
       r => r.familyId === familyId && r.triggerRef === triggerRef && r.createdAt >= since.toISOString(),
     ).length;
+  }
+
+  async deleteAll(familyId: string): Promise<number> {
+    const before = this.rows.length;
+    this.rows = this.rows.filter(r => r.familyId !== familyId);
+    return before - this.rows.length;
   }
 }
