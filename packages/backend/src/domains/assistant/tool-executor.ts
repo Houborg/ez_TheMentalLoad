@@ -4,6 +4,7 @@ import type { AiSuggestionRepository } from '../../repositories/ai-suggestion-re
 export interface ToolExecutorDeps {
   createEntry: (input: CreateEntryRequest) => Promise<{ id: string }>;
   upsertFoodPlan: (input: { weekStart: string; day: FoodPlanDay; dishName: string; groceryList: string[] }) => Promise<unknown>;
+  getDefaultMemberCalendar: () => Promise<{ memberId: string; calendarId: string } | null>;
 }
 
 export interface ExecuteResult {
@@ -33,18 +34,33 @@ export async function executeSuggestion(
           memberId?: string;
           calendarId?: string;
         };
-        if (!d.title || !d.startTime || !d.endTime || !d.memberId || !d.calendarId) {
-          throw new Error(`Missing required fields for ${suggestion.actionType}`);
+        if (!d.title) throw new Error(`Missing title for ${suggestion.actionType}`);
+        // Fill in missing member/calendar from the first parent if not provided
+        let memberId = d.memberId;
+        let calendarId = d.calendarId;
+        if (!memberId || !calendarId) {
+          const defaults = await deps.getDefaultMemberCalendar();
+          if (!defaults) throw new Error('No members found to assign task to');
+          memberId = memberId ?? defaults.memberId;
+          calendarId = calendarId ?? defaults.calendarId;
         }
+        // Default times: all-day today for tasks, require times for events
+        const isTask = suggestion.actionType === 'add_task';
+        if (!isTask && (!d.startTime || !d.endTime)) {
+          throw new Error('Missing startTime/endTime for add_event');
+        }
+        const todayNoon = new Date(); todayNoon.setHours(12, 0, 0, 0);
+        const startTime = d.startTime ?? todayNoon.toISOString();
+        const endTime = d.endTime ?? new Date(todayNoon.getTime() + 3600000).toISOString();
         const created = await deps.createEntry({
           title: d.title,
-          type: suggestion.actionType === 'add_task' ? 'task' : 'event',
-          ownerMemberId: d.memberId,
-          calendarId: d.calendarId,
-          startTime: d.startTime,
-          endTime: d.endTime,
+          type: isTask ? 'task' : 'event',
+          ownerMemberId: memberId,
+          calendarId,
+          startTime,
+          endTime,
           timezone: process.env.DEFAULT_TIMEZONE ?? 'Europe/Copenhagen',
-          allDay: suggestion.actionType === 'add_task',
+          allDay: isTask && !d.startTime,
         });
         result = { ok: true, message: `Tilføjet: ${d.title}`, createdId: (created as { id: string }).id };
         break;

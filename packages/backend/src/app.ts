@@ -972,7 +972,6 @@ export async function buildApp() {
     if (!suggestion) { reply.code(404); return { message: 'Suggestion not found' }; }
     if (suggestion.status !== 'confirmed') { reply.code(400); return { message: 'Suggestion must be confirmed first' }; }
 
-    // Get the food plan repository from the scoped repo bundle
     const scopedRepo = svc(request);
     const result = await executeSuggestion(
       familyId,
@@ -980,6 +979,15 @@ export async function buildApp() {
       {
         createEntry: (input) => entryService.createEntry(input) as Promise<{ id: string }>,
         upsertFoodPlan: (input) => scopedRepo.foodPlanRepository.upsert(input),
+        getDefaultMemberCalendar: async () => {
+          const members = await scopedRepo.memberRepository.list();
+          const parent = members.find(m => m.role === 'parent') ?? members[0];
+          if (!parent) return null;
+          const calendars = await scopedRepo.calendarRepository.list();
+          const cal = calendars.find(c => c.ownerMemberId === parent.id) ?? calendars[0];
+          if (!cal) return null;
+          return { memberId: parent.id, calendarId: cal.id };
+        },
       },
       aiSuggestionRepository,
     );
