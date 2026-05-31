@@ -13,6 +13,8 @@ import { InMemoryAiMemoryRepository } from './ai-memory-repository';
 import { InMemoryAiSuggestionRepository } from './ai-suggestion-repository';
 import type { AiMemoryRepository } from './ai-memory-repository';
 import type { AiSuggestionRepository } from './ai-suggestion-repository';
+import { InMemoryGroceryRepository } from './grocery-repository';
+import type { GroceryRepository } from './grocery-repository';
 import { PostgresCalendarRepository } from './postgres/calendar-repository';
 import { PostgresDailyTimelineRepository } from './postgres/daily-timeline-repository';
 import { PostgresEntryRepository } from './postgres/entry-repository';
@@ -22,6 +24,7 @@ import { PostgresMemberScheduleRepository } from './postgres/member-schedule-rep
 import { PostgresAulaConfirmationRepository } from './postgres/aula-confirmation-repository';
 import { PostgresAiMemoryRepository } from './postgres/ai-memory-repository';
 import { PostgresAiSuggestionRepository } from './postgres/ai-suggestion-repository';
+import { PostgresGroceryRepository } from './postgres/grocery-repository';
 
 const DEMO_IDS = {
   mom: '11111111-1111-4111-8111-111111111111',
@@ -41,6 +44,7 @@ export interface RepositoryBundle {
   aulaConfirmationRepository: AulaConfirmationRepository;
   aiMemoryRepository: AiMemoryRepository;
   aiSuggestionRepository: AiSuggestionRepository;
+  groceryRepository: GroceryRepository;
   reminderScheduler: ReminderScheduler;
   persistence: 'memory' | 'postgres';
   pool: Pool | null;
@@ -68,6 +72,7 @@ export async function createRepositoryBundle(): Promise<RepositoryBundle> {
         aulaConfirmationRepository: new PostgresAulaConfirmationRepository(pool),
         aiMemoryRepository: new PostgresAiMemoryRepository(pool),
         aiSuggestionRepository: new PostgresAiSuggestionRepository(pool),
+        groceryRepository: new PostgresGroceryRepository(pool),
         reminderScheduler: scheduler,
         persistence: 'postgres',
         pool,
@@ -102,6 +107,7 @@ export async function createRepositoryBundle(): Promise<RepositoryBundle> {
     aulaConfirmationRepository: new InMemoryAulaConfirmationRepository(),
     aiMemoryRepository: new InMemoryAiMemoryRepository(),
     aiSuggestionRepository: new InMemoryAiSuggestionRepository(),
+    groceryRepository: new InMemoryGroceryRepository(),
     reminderScheduler: scheduler,
     persistence: 'memory',
     pool: null,

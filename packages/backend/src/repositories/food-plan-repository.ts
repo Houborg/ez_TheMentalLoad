@@ -2,7 +2,7 @@ import type { FoodPlanDay, FoodPlanItem } from '@mental-load/contracts';
 
 export interface FoodPlanRepository {
   listByWeek(weekStart: string, familyId?: string): Promise<FoodPlanItem[]>;
-  upsert(input: { weekStart: string; day: FoodPlanDay; dishName: string; groceryList: string[] }, familyId?: string): Promise<FoodPlanItem>;
+  upsert(input: { weekStart: string; day: FoodPlanDay; dishName: string }, familyId?: string): Promise<FoodPlanItem>;
   deleteByWeekAndDay(weekStart: string, day: FoodPlanDay, familyId?: string): Promise<boolean>;
 }
 
@@ -15,12 +15,11 @@ export class InMemoryFoodPlanRepository implements FoodPlanRepository {
       .sort((left, right) => left.day.localeCompare(right.day));
   }
 
-  async upsert(input: { weekStart: string; day: FoodPlanDay; dishName: string; groceryList: string[] }, _familyId?: string): Promise<FoodPlanItem> {
+  async upsert(input: { weekStart: string; day: FoodPlanDay; dishName: string }, _familyId?: string): Promise<FoodPlanItem> {
     const existing = this.items.find((item) => item.weekStart === input.weekStart && item.day === input.day);
 
     if (existing) {
       existing.dishName = input.dishName;
-      existing.groceryList = [...input.groceryList];
       existing.updatedAt = new Date().toISOString();
       return existing;
     }
@@ -30,7 +29,6 @@ export class InMemoryFoodPlanRepository implements FoodPlanRepository {
       weekStart: input.weekStart,
       day: input.day,
       dishName: input.dishName,
-      groceryList: [...input.groceryList],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
