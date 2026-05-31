@@ -62,29 +62,10 @@ export function MealDetailSheet({ item, onClose }: Props) {
           </button>
         </div>
 
-        {/* Grocery list */}
-        {item.groceryList.length > 0 ? (
-          <>
-            <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
-              Indkøbsliste
-            </div>
-            <div className="flex flex-col gap-1">
-              {item.groceryList.map((ingredient, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-2 text-sm text-foreground"
-                >
-                  <span aria-hidden="true">🛒</span>
-                  <span>{ingredient}</span>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Ingen indkøbsliste endnu. Rediger måltidsplanen for at tilføje ingredienser.
-          </p>
-        )}
+        {/* Grocery list moved to Mad → Indkøb tab */}
+        <p className="text-sm text-muted-foreground">
+          Se og rediger indkøbslisten under Mad → Indkøb.
+        </p>
       </div>
     </>
   );

@@ -187,11 +187,6 @@ export function KioskPlanner({ members, memberColorById, onAdd, onAI, onExit }: 
               {todayMeal ? (
                 <>
                   <div className="text-sm font-bold text-foreground/90">{todayMeal.dishName}</div>
-                  {todayMeal.groceryList.length > 0 && (
-                    <div className="mt-1 text-[11px] leading-relaxed text-muted-foreground/70">
-                      {todayMeal.groceryList.join(' · ')}
-                    </div>
-                  )}
                 </>
               ) : (
                 <div className="text-sm text-muted-foreground/50">Intet planlagt</div>
