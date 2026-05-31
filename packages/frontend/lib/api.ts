@@ -98,6 +98,7 @@ export function getMonthRange(date: Date) {
 
 export function getUpcomingRange(days: number) {
   const from = new Date();
+  from.setHours(0, 0, 0, 0); // start of today so tasks created earlier today are visible
   const to = new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
   return { from: from.toISOString(), to: to.toISOString() };
 }
