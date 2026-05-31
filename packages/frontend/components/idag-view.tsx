@@ -299,6 +299,7 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
               suggestion={s}
               onAccept={() => setConfirmingSuggestion(s)}
               onDismiss={(id) => { dismissAiSuggestion(id).catch(() => undefined); setFoodSuggestions(prev => prev.filter(x => x.id !== id)); }}
+              onDismissPermanent={(sug) => { dismissAiSuggestion(sug.id).catch(() => undefined); setFoodSuggestions(prev => prev.filter(x => x.id !== sug.id)); }}
             />
           ))}
         </div>

@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Send, RefreshCw } from 'lucide-react';
 import type { AiSuggestion, Member } from '@mental-load/contracts';
-import { getAiSuggestions, dismissAiSuggestion, triggerAiAnalysis, askAssistant } from '@/lib/api';
+import { getAiSuggestions, dismissAiSuggestion, triggerAiAnalysis, askAssistant, createAiMemory } from '@/lib/api';
 import { AiSuggestionCard } from '@/components/ai-suggestion-card';
 import { AiConfirmationSheet } from '@/components/ai-confirmation-sheet';
 import { AiKnowledgeMap } from '@/components/ai-knowledge-map';
@@ -59,6 +59,17 @@ export function AiTab({ members }: Props) {
   function handleDismiss(id: string) {
     dismissAiSuggestion(id).catch(() => undefined);
     setSuggestions(prev => prev.filter(s => s.id !== id));
+  }
+
+  function handleDismissPermanent(suggestion: AiSuggestion) {
+    dismissAiSuggestion(suggestion.id).catch(() => undefined);
+    setSuggestions(prev => prev.filter(s => s.id !== suggestion.id));
+    // Save a memory so Claude never re-suggests this
+    createAiMemory({
+      category: 'preference',
+      key: `ikke_relevant: ${suggestion.text.slice(0, 60)}`,
+      value: 'brugeren markerede dette som ikke relevant — foreslå ikke igen',
+    }).catch(() => undefined);
   }
 
   function handleDone(id: string) {
@@ -176,6 +187,7 @@ export function AiTab({ members }: Props) {
                         suggestion={s}
                         onAccept={handleAccept}
                         onDismiss={handleDismiss}
+                        onDismissPermanent={handleDismissPermanent}
                       />
                     ))}
                   </div>

@@ -25,9 +25,10 @@ interface Props {
   suggestion: AiSuggestion;
   onAccept: (suggestion: AiSuggestion) => void;
   onDismiss: (id: string) => void;
+  onDismissPermanent: (suggestion: AiSuggestion) => void;
 }
 
-export function AiSuggestionCard({ suggestion, onAccept, onDismiss }: Props) {
+export function AiSuggestionCard({ suggestion, onAccept, onDismiss, onDismissPermanent }: Props) {
   const [done, setDone] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
@@ -68,13 +69,21 @@ export function AiSuggestionCard({ suggestion, onAccept, onDismiss }: Props) {
         </button>
       </div>
       {suggestion.actionType !== 'info' && (
-        <div className="mt-3">
+        <div className="mt-3 flex gap-2">
           <button
             type="button"
             onClick={() => { setDone(true); onAccept(suggestion); }}
-            className="w-full rounded-lg bg-primary py-2 text-xs font-semibold text-primary-foreground"
+            className="flex-1 rounded-lg bg-primary py-2 text-xs font-semibold text-primary-foreground"
           >
             {actionLabel}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setDismissed(true); onDismissPermanent(suggestion); }}
+            className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:text-destructive hover:border-destructive transition-colors"
+            title="Gem som 'ikke relevant' — AI foreslår ikke dette igen"
+          >
+            🚫
           </button>
         </div>
       )}

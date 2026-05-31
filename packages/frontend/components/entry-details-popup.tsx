@@ -219,6 +219,7 @@ export function EntryDetailsPopup({ entry, ownerName, onClose, onSave, onDelete 
                   suggestion={s}
                   onAccept={() => setConfirmingSuggestion(s)}
                   onDismiss={(id) => { dismissAiSuggestion(id).catch(() => undefined); setEntrySuggestions(prev => prev.filter(x => x.id !== id)); }}
+                  onDismissPermanent={(sug) => { dismissAiSuggestion(sug.id).catch(() => undefined); setEntrySuggestions(prev => prev.filter(x => x.id !== sug.id)); }}
                 />
               ))}
             </div>
