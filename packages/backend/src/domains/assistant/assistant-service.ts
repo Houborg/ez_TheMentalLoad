@@ -44,6 +44,7 @@ export class AssistantService {
     private readonly getCurrentFoodPlan?: (weekStart: string) => Promise<FoodPlanItem[]>,
     private readonly getFamilyName?: () => Promise<string | null>,
     private readonly getCurrentGroceryList?: (weekStart: string) => Promise<GroceryItem[]>,
+    private readonly getAiMemories?: () => Promise<Array<{ memberId?: string; key: string; value: string }>>,
   ) {}
 
   private resolveAnthropicKey(cfg: RuntimeConfig): string | undefined {
@@ -62,18 +63,35 @@ export class AssistantService {
 
   private async buildSystemPrompt(cfg: RuntimeConfig): Promise<string | undefined> {
     try {
-      const [members, familyName] = await Promise.all([
+      const [members, familyName, memories] = await Promise.all([
         this.listMembers(),
         this.getFamilyName?.() ?? null,
+        this.getAiMemories?.().catch(() => []) ?? [],
       ]);
 
       const tone = cfg.tone === 'formal' ? 'formel' : 'uformel og venlig';
-      const memberList = members.map(m => `${m.name} (${m.role === 'parent' ? 'forælder' : 'barn'})`).join(', ');
       const family = familyName ? `familien ${familyName}` : 'familien';
+
+      // Build member list with their known facts from AI memory
+      const memberList = members.map(m => {
+        const role = m.role === 'parent' ? 'forælder' : 'barn';
+        const facts = (memories as Array<{ memberId?: string; key: string; value: string }>)
+          .filter(mem => mem.memberId === m.id)
+          .map(mem => `${mem.key}: ${mem.value}`)
+          .join('; ');
+        return facts ? `${m.name} (${role} — ${facts})` : `${m.name} (${role})`;
+      }).join(', ');
+
+      // Family-wide facts
+      const familyFacts = (memories as Array<{ memberId?: string; key: string; value: string }>)
+        .filter(mem => !mem.memberId)
+        .map(mem => `${mem.key}: ${mem.value}`)
+        .join('; ');
 
       const lines: string[] = [
         `Du er en hjælpsom familie-assistent for ${family}.`,
         `Familiemedlemmer: ${memberList || 'ingen endnu'}.`,
+        ...(familyFacts ? [`Familiefacts: ${familyFacts}.`] : []),
         `Svar ALTID på dansk. Vær ${tone}.`,
         `VIGTIGT: Skriv ALDRIG JSON, kode eller tekniske formater i dine svar — hverken i kodeblokke eller løbende tekst.`,
         `Beskriv kun hvad du vil gøre i naturligt dansk sprog. Fx: "Jeg opretter opgaven 'Udfyld madplan' med disse delopgaver: Mandag, Tirsdag, Onsdag."`,
