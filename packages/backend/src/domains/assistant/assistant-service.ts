@@ -243,7 +243,7 @@ async function callClaude(
   const apiKey = cfg.apiKey?.trim() || process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) return undefined;
   try {
-    const client = new Anthropic({ apiKey });
+    const client = new Anthropic({ apiKey, timeout: 20000 });
     const response = await client.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 512,
