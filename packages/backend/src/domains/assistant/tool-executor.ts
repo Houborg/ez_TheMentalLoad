@@ -62,7 +62,7 @@ export async function executeSuggestion(
         const weekStart = d.weekStart ?? getThisMonday();
         await deps.upsertFoodPlan({
           weekStart,
-          day: d.day as FoodPlanDay,
+          day: normDay(d.day) as FoodPlanDay,
           dishName,
           groceryList: d.groceryList ?? [],
         });
@@ -73,7 +73,7 @@ export async function executeSuggestion(
       case 'add_grocery': {
         const d = suggestion.actionData as { items?: string[]; day?: string; dishName?: string };
         if (!d.items?.length && !d.dishName) throw new Error('Missing items or dishName for add_grocery');
-        const day = (d.day ?? getTodayDay()) as FoodPlanDay;
+        const day = normDay(d.day ?? getTodayDay()) as FoodPlanDay;
         const weekStart = getThisMonday();
         await deps.upsertFoodPlan({
           weekStart,
@@ -140,4 +140,15 @@ function getThisMonday(): string {
 
 function getTodayDay(): string {
   return ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][new Date().getDay()];
+}
+
+const DA_TO_EN_DAY: Record<string, string> = {
+  mandag: 'monday', tirsdag: 'tuesday', onsdag: 'wednesday',
+  torsdag: 'thursday', fredag: 'friday', lørdag: 'saturday', søndag: 'sunday',
+  monday: 'monday', tuesday: 'tuesday', wednesday: 'wednesday',
+  thursday: 'thursday', friday: 'friday', saturday: 'saturday', sunday: 'sunday',
+};
+
+function normDay(day: string): string {
+  return DA_TO_EN_DAY[day.toLowerCase()] ?? day.toLowerCase();
 }
