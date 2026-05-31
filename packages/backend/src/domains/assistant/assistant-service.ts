@@ -45,6 +45,7 @@ export class AssistantService {
     private readonly getFamilyName?: () => Promise<string | null>,
     private readonly getCurrentGroceryList?: (weekStart: string) => Promise<GroceryItem[]>,
     private readonly getAiMemories?: () => Promise<Array<{ memberId?: string; key: string; value: string }>>,
+    private readonly listTodayAulaLessons?: () => Promise<Array<{ memberId: string; title: string; startTime?: string; endTime?: string }>>,
   ) {}
 
   private resolveAnthropicKey(cfg: RuntimeConfig): string | undefined {
@@ -138,6 +139,18 @@ export class AssistantService {
       lines.push('', 'Madplan:');
       lines.push(fmt(thisWeek as FoodPlanItem[] | undefined, 'Denne uge'));
       lines.push(fmt(nextWeek as FoodPlanItem[] | undefined, 'Næste uge'));
+
+      // Aula lessons for today
+      const aulaLessons = await this.listTodayAulaLessons?.().catch(() => []) ?? [];
+      if (aulaLessons.length > 0) {
+        const memberById = Object.fromEntries(members.map(m => [m.id, m.name]));
+        lines.push('', 'Skoleskema i dag (Aula):');
+        for (const l of aulaLessons) {
+          const name = memberById[l.memberId] ?? l.memberId;
+          const time = l.startTime && l.endTime ? ` (${l.startTime}–${l.endTime})` : '';
+          lines.push(`  ${name}: ${l.title}${time}`);
+        }
+      }
 
       // Grocery list — current week's unchecked items
       const groceries = await this.getCurrentGroceryList?.(currentWeekStart).catch(() => []);

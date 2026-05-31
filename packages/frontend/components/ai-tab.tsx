@@ -201,23 +201,50 @@ export function AiTab({ members }: Props) {
       </div>
 
       {view === 'suggestions' && (
-        <div className="border-t border-border bg-card px-3 py-2 flex items-center gap-2">
-          <input
-            type="text"
-            value={chatInput}
-            onChange={e => setChatInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && void handleChat()}
-            placeholder="Spørg AI om familien…"
-            className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-          />
-          <button
-            type="button"
-            onClick={() => void handleChat()}
-            disabled={!chatInput.trim()}
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground disabled:opacity-40"
-          >
-            <Send className="h-4 w-4" />
-          </button>
+        <div className="border-t border-border bg-card px-3 pt-2 pb-3 flex flex-col gap-2">
+          {/* Quick action chips */}
+          <div className="flex gap-2 overflow-x-auto pb-0.5">
+            <button
+              type="button"
+              onClick={() => { setChatInput(''); void (async () => { const msg = 'Giv mig en morgenbriefing: hvad sker der i dag for familien, hvilke timer/klasser har børnene i dag, og hvad skal vi huske inden da?'; const saved = chatInput; setChatInput(''); const res = await askAssistant({ message: msg }).catch(() => null); if (res) { const tempId = crypto.randomUUID(); setSuggestions(prev => [{ id: tempId, triggerType: 'manual', category: 'info', text: res.response, actionType: 'info', actionData: {}, status: 'pending', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86400000).toISOString() }, ...prev]); } })(); }}
+              className="flex-shrink-0 flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+            >
+              ☀️ Morgenbriefing
+            </button>
+            <button
+              type="button"
+              onClick={() => setChatInput('Hvad mangler vi på indkøbslisten denne uge?')}
+              className="flex-shrink-0 flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+            >
+              🛒 Indkøb?
+            </button>
+            <button
+              type="button"
+              onClick={() => setChatInput('Hvornår er vi alle fri til noget fælles?')}
+              className="flex-shrink-0 flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+            >
+              📅 Ledig tid?
+            </button>
+          </div>
+          {/* Chat input */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && void handleChat()}
+              placeholder="Spørg AI om familien…"
+              className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+            <button
+              type="button"
+              onClick={() => void handleChat()}
+              disabled={!chatInput.trim()}
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground disabled:opacity-40"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
 

@@ -271,6 +271,20 @@ export async function buildApp() {
       },
       (weekStart) => infrastructure.groceryRepository.list(familyId, weekStart),
       () => infrastructure.aiMemoryRepository.list(familyId),
+      async () => {
+        if (!infrastructure.pool) return [];
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const { rows } = await infrastructure.pool.query<{ member_id: string; title: string; raw_json: Record<string, unknown> }>(
+          `select member_id, title, raw_json from aula_items
+           where family_id = $1 and type = 'calendar_lesson' and hidden_at is null
+           and (raw_json->>'startTime')::text like $2`,
+          [familyId, `${todayStr}%`],
+        );
+        return rows.map(r => {
+          const toHHMM = (iso: string) => iso ? new Date(iso).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Copenhagen' }) : undefined;
+          return { memberId: String(r.member_id), title: String(r.title ?? r.raw_json.title ?? 'Lektion'), startTime: toHHMM(String(r.raw_json.startTime ?? '')), endTime: toHHMM(String(r.raw_json.endTime ?? '')) };
+        });
+      },
     );
     const memberScheduleRepository = infrastructure.memberScheduleRepository;
     const aulaConfirmationRepository = infrastructure.aulaConfirmationRepository;
