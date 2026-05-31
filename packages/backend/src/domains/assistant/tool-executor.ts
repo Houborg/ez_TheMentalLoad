@@ -57,15 +57,16 @@ export async function executeSuggestion(
           groceryList?: string[];
           weekStart?: string;
         };
-        if (!d.day || !d.dishName) throw new Error('Missing day or dishName for update_food');
+        if (!d.day) throw new Error('Missing day for update_food');
+        const dishName = d.dishName ?? '';
         const weekStart = d.weekStart ?? getThisMonday();
         await deps.upsertFoodPlan({
           weekStart,
           day: d.day as FoodPlanDay,
-          dishName: d.dishName,
+          dishName,
           groceryList: d.groceryList ?? [],
         });
-        result = { ok: true, message: `Madplan opdateret: ${d.dishName} ${d.day}` };
+        result = { ok: true, message: `Madplan opdateret: ${dishName || 'tomt'} ${d.day}` };
         break;
       }
 
