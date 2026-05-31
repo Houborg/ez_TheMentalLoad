@@ -269,6 +269,7 @@ export async function buildApp() {
         );
         return result.rows[0]?.name ?? null;
       },
+      (weekStart) => infrastructure.groceryRepository.list(familyId, weekStart),
     );
     const memberScheduleRepository = infrastructure.memberScheduleRepository;
     const aulaConfirmationRepository = infrastructure.aulaConfirmationRepository;

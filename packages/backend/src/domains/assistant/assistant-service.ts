@@ -12,9 +12,12 @@ import type {
   CreateEntryRequest,
   Entry,
   FoodPlanItem,
+  GroceryItem,
   Member,
 } from '@mental-load/contracts';
 
+// Haiku for parse/fallback (fast, cheap). Sonnet for chat (user is waiting, quality matters).
+const CLAUDE_MODEL_CHAT = 'claude-sonnet-4-6';
 const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 
@@ -28,6 +31,7 @@ interface RuntimeConfig {
   ollamaModel?: string;
   tone?: string;
   customInstructions?: string;
+  _chatModel?: string; // internal: override model for chat calls
 }
 
 export class AssistantService {
@@ -39,6 +43,7 @@ export class AssistantService {
     private readonly listUpcomingEntries?: (from: string, to: string) => Promise<Entry[]>,
     private readonly getCurrentFoodPlan?: (weekStart: string) => Promise<FoodPlanItem[]>,
     private readonly getFamilyName?: () => Promise<string | null>,
+    private readonly getCurrentGroceryList?: (weekStart: string) => Promise<GroceryItem[]>,
   ) {}
 
   private resolveAnthropicKey(cfg: RuntimeConfig): string | undefined {
@@ -115,6 +120,18 @@ export class AssistantService {
       lines.push(fmt(thisWeek as FoodPlanItem[] | undefined, 'Denne uge'));
       lines.push(fmt(nextWeek as FoodPlanItem[] | undefined, 'Næste uge'));
 
+      // Grocery list — current week's unchecked items
+      const groceries = await this.getCurrentGroceryList?.(currentWeekStart).catch(() => []);
+      if (groceries && groceries.length > 0) {
+        const pending = groceries.filter(g => !g.completed);
+        const done = groceries.filter(g => g.completed);
+        lines.push('', 'Indkøbsliste (denne uge):');
+        if (pending.length > 0) lines.push(`  Mangler: ${pending.map(g => g.text).join(', ')}`);
+        if (done.length > 0) lines.push(`  I kurven: ${done.map(g => g.text).join(', ')}`);
+      } else {
+        lines.push('', 'Indkøbsliste: (tom)');
+      }
+
       return lines.join('\n');
     } catch {
       return undefined;
@@ -165,7 +182,8 @@ export class AssistantService {
     const cfg = await this.getAssistantRuntimeConfig?.() ?? {};
     const provider = this.resolveProvider(cfg);
     const systemPrompt = await this.buildSystemPrompt(cfg);
-    const reply = await callAiChat(input.message, systemPrompt, provider, cfg);
+    // Use Sonnet for chat — user is waiting, quality matters more than cost
+    const reply = await callAiChat(input.message, systemPrompt, provider, { ...cfg, _chatModel: CLAUDE_MODEL_CHAT });
     if (reply) return { source: provider as AssistantFunResponse['source'], response: reply };
     return { source: 'rule-based', response: buildFunFallback(input.message) };
   }
@@ -243,10 +261,11 @@ async function callClaude(
   const apiKey = cfg.apiKey?.trim() || process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) return undefined;
   try {
-    const client = new Anthropic({ apiKey, timeout: 20000 });
+    const client = new Anthropic({ apiKey, timeout: 30000 });
+    const model = cfg._chatModel ?? CLAUDE_MODEL;
     const response = await client.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 512,
+      model,
+      max_tokens: model === CLAUDE_MODEL_CHAT ? 1024 : 512,
       ...(systemPrompt ? { system: systemPrompt } : {}),
       messages: [{ role: 'user', content: message }],
     });
