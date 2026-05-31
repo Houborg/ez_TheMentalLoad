@@ -119,11 +119,8 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
           }
 
           // 2. Try Aula calendar_lesson
-          const { items } = await aulaGetItems({ type: 'calendar_lesson', memberId: child.id, pageSize: 100 });
-          const todayLessons = items.filter((item) => {
-            const raw = item.raw_json as Record<string, unknown> | undefined;
-            return String(raw?.startTime ?? '').startsWith(selectedDateStr);
-          });
+          const { items } = await aulaGetItems({ type: 'calendar_lesson', memberId: child.id, date: selectedDateStr, pageSize: 200 });
+          const todayLessons = items;
 
           if (todayLessons.length > 0) {
             return {
@@ -140,8 +137,8 @@ export function IDagView({ members, entries, memberColorById, foodPlanItems, wea
           }
 
           // 3. Try weekplan_lesson
-          const { items: wpItems } = await aulaGetItems({ type: 'weekplan_lesson', memberId: child.id, pageSize: 50 });
-          const wpToday = wpItems.filter(i => (i.raw_json as Record<string, unknown>)?.date === selectedDateStr);
+          const { items: wpItems } = await aulaGetItems({ type: 'weekplan_lesson', memberId: child.id, date: selectedDateStr, pageSize: 50 });
+          const wpToday = wpItems;
           if (wpToday.length > 0) {
             return {
               childId: child.id, noSchedule: false,

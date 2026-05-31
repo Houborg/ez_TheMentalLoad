@@ -122,13 +122,13 @@ export async function registerAulaRoutes(
   });
 
   app.get<{
-    Querystring: { type?: string; memberId?: string; page?: string; pageSize?: string; include_hidden?: string };
+    Querystring: { type?: string; memberId?: string; page?: string; pageSize?: string; include_hidden?: string; date?: string };
   }>('/api/v1/aula/items', async (req, reply) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const familyId = (req as any).familyId as string | undefined;
     if (!familyId) return reply.status(401).send({ error: 'unauthorized' });
 
-    const { type, memberId, page = '0', pageSize = '20', include_hidden } = req.query;
+    const { type, memberId, page = '0', pageSize = '20', include_hidden, date } = req.query;
     const offset = Number(page) * Number(pageSize);
 
     const conditions: string[] = ['family_id = $1'];
@@ -137,6 +137,11 @@ export async function registerAulaRoutes(
     if (!include_hidden) conditions.push('hidden_at is null');
     if (type) { conditions.push(`type = $${params.length + 1}`); params.push(type); }
     if (memberId) { conditions.push(`member_id = $${params.length + 1}`); params.push(memberId); }
+    // Filter by date (YYYY-MM-DD) matching raw_json startTime or date field
+    if (date) {
+      conditions.push(`(raw_json->>'startTime' like $${params.length + 1} OR raw_json->>'date' = $${params.length + 2})`);
+      params.push(`${date}%`, date);
+    }
 
     params.push(Number(pageSize), offset);
     const [result, confirmedResult] = await Promise.all([

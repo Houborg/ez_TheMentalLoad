@@ -122,12 +122,14 @@ export async function aulaGetItems(opts?: {
   memberId?: string;
   page?: number;
   pageSize?: number;
+  date?: string; // YYYY-MM-DD — filter by startTime/date field
 }): Promise<{ items: AulaItem[] }> {
   const params = new URLSearchParams();
   if (opts?.type) params.set('type', opts.type);
   if (opts?.memberId) params.set('memberId', opts.memberId);
   if (opts?.page != null) params.set('page', String(opts.page));
   if (opts?.pageSize != null) params.set('pageSize', String(opts.pageSize));
+  if (opts?.date) params.set('date', opts.date);
   return apiFetch(`/v1/aula/items?${params}`);
 }
 

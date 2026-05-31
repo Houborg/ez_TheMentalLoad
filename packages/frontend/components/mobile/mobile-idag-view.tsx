@@ -72,13 +72,11 @@ export function MobileIdagView({ members }: Props) {
     const lessons: AulaLesson[] = [];
     Promise.all(children.map(async child => {
       try {
-        const { items } = await aulaGetItems({ type: 'calendar_lesson', memberId: child.id, pageSize: 100 });
+        const { items } = await aulaGetItems({ type: 'calendar_lesson', memberId: child.id, date: dateStr, pageSize: 200 });
         const toHHMM = (iso: string) => iso ? new Date(iso).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Copenhagen' }) : undefined;
         for (const item of items) {
           const raw = item.raw_json as Record<string, unknown>;
-          if (String(raw.startTime ?? '').startsWith(dateStr)) {
-            lessons.push({ memberId: child.id, title: String(raw.title ?? item.title ?? 'Lektion'), startTime: toHHMM(String(raw.startTime ?? '')), endTime: toHHMM(String(raw.endTime ?? '')) });
-          }
+          lessons.push({ memberId: child.id, title: String(raw.title ?? item.title ?? 'Lektion'), startTime: toHHMM(String(raw.startTime ?? '')), endTime: toHHMM(String(raw.endTime ?? '')) });
         }
       } catch { /* ignore */ }
     })).then(() => setAulaLessons([...lessons]));
