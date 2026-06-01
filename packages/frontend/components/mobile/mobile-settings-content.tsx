@@ -613,6 +613,8 @@ function DeveloperTab() {
   const [updateMessage, setUpdateMessage] = useState('');
   const [resetState, setResetState] = useState<'idle' | 'resetting' | 'done' | 'error'>('idle');
   const [resetMessage, setResetMessage] = useState('');
+  const [aulaCleanState, setAulaCleanState] = useState<'idle' | 'cleaning' | 'done' | 'error'>('idle');
+  const [aulaCleanMessage, setAulaCleanMessage] = useState('');
 
   useEffect(() => {
     loadHealth().then(h => setHealth({ version: h.version, commit: h.commit, deployedAt: h.deployedAt })).catch(console.error);
@@ -634,6 +636,20 @@ function DeveloperTab() {
     } catch (err) {
       setUpdateState('error');
       setUpdateMessage(err instanceof Error ? err.message : 'Could not reach server');
+    }
+  }
+
+  async function handleCleanAulaEntries() {
+    setAulaCleanState('cleaning');
+    setAulaCleanMessage('');
+    try {
+      const res = await fetch('/api/v1/entries/aula-imported', { method: 'DELETE' });
+      const data = await res.json() as { deleted?: number };
+      setAulaCleanState('done');
+      setAulaCleanMessage(`Slettet ${data.deleted ?? 0} Aula-timer fra kalender.`);
+    } catch {
+      setAulaCleanState('error');
+      setAulaCleanMessage('Kunne ikke slette Aula-timer.');
     }
   }
 
@@ -681,6 +697,25 @@ function DeveloperTab() {
           {updateMessage}
         </p>
       )}
+
+      <div className="rounded-xl border border-border/60 bg-card/60 px-4 py-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Aula → Kalender</div>
+        <p className="text-xs text-muted-foreground mb-3">Fjern alle Aula-timer der er blevet importeret til familiekalenderen. Timerne forsvinder fra kalendervisningen men er stadig synlige i I dag.</p>
+        <button
+          type="button"
+          onClick={() => void handleCleanAulaEntries()}
+          disabled={aulaCleanState === 'cleaning'}
+          className="w-full rounded-xl border border-destructive/40 bg-destructive/10 py-2.5 text-sm font-semibold text-destructive disabled:opacity-60 flex items-center justify-center gap-2"
+        >
+          {aulaCleanState === 'cleaning' && <Loader2 className="h-4 w-4 animate-spin" />}
+          {aulaCleanState === 'cleaning' ? 'Rydder…' : '🗑 Ryd Aula-timer fra kalender'}
+        </button>
+        {aulaCleanMessage && (
+          <p className={`text-xs px-1 mt-2 ${aulaCleanState === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}>
+            {aulaCleanMessage}
+          </p>
+        )}
+      </div>
 
       <div className="rounded-xl border border-border/60 bg-card/60 px-4 py-3">
         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">AI forslag</div>

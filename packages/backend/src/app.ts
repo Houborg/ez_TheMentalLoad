@@ -899,6 +899,18 @@ export async function buildApp() {
     }
     return svc(request).entryService.listEntries();
   });
+  // Developer: delete all Aula-imported entries from main calendar
+  app.delete('/api/v1/entries/aula-imported', async (request, reply) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const familyId = (request as any).familyId as string;
+    if (!infrastructure.pool) { reply.code(400); return { message: 'Postgres required' }; }
+    const { rowCount } = await infrastructure.pool.query(
+      `DELETE FROM entries WHERE family_id = $1 AND external_uid LIKE 'aula-%'`,
+      [familyId],
+    );
+    return { deleted: rowCount ?? 0 };
+  });
+
   // All active tasks + events with incomplete checklist items — used by the tasks tab
   app.get('/api/v1/entries/tasks', async (request) => {
     const entries = await svc(request).entryService.listEntries();

@@ -20,7 +20,8 @@ export class AulaConnectionService {
     const storedOpts = conn.syncOptions as Partial<AulaConnection['syncOptions']>;
     return {
       ...conn,
-      syncOptions: { muTasks: true, presence: true, ...storedOpts } as AulaConnection['syncOptions'],
+      // importToCalendar is always overridden to false — Aula lessons appear only in I dag, never auto-imported to main calendar
+      syncOptions: { muTasks: true, presence: true, ...storedOpts, importToCalendar: false } as AulaConnection['syncOptions'],
     };
   }
 
